@@ -1,54 +1,97 @@
-# CoCo
+# TRELLIS on Modal
 
-### Prerequisites
+This repository contains code to run Microsoft's TRELLIS 3D generation model on [Modal](https://modal.com).
 
-- Node.js 18+
-- Python 3.10+
-- API keys for Claude, Gemini, Groq, and PiAPI
+## Setup
 
-### Frontend Setup
-
+1. Install Modal CLI:
 ```bash
-cd frontend
-
-npm install
-
-npm run dev
+pip install modal
 ```
 
-### Backend Setup
-
+2. Authenticate with Modal:
 ```bash
-cd backend
-
-# remember to add api keys
-cp .env.example .env
-
-docker compose up
+modal token new
 ```
 
-## Architecture
+3. Deploy the application:
+```bash
+modal deploy trellis_modal.py
+```
 
-### Frontend
+## Usage
 
-- **Next.js & React**: Responsive, user-friendly UI
-- **Three.js**: Rendering interactive 3D models
-- **TLDraw**: Powerful 2D drawing canvas
-- **Zustand**: State management
+After deployment, you can generate 3D models from images using the deployed endpoint.
 
-### Backend
+### Using the API directly
 
-- **FastAPI**: High-performance API framework
-- **Celery**: Asynchronous task queue for AI operations
-- **Redis**: Pub/Sub for real-time updates and task result storage
-- **SSE (Server-Sent Events)**: Real-time progress updates
+```python
+import requests
+import base64
+import json
 
-## Inspiration
+# URL will be provided by Modal when you deploy the app
+ENDPOINT_URL = "https://your-username--trellis-generate.modal.run"
 
-Creativity is often constrained by technical skills or complex software. CoCo makes 3D modeling accessible to anyone regardless of artistic or technical abilities.
+# Prepare your image
+with open("your_image.png", "rb") as f:
+    # Use multipart/form-data format
+    files = {"image": ("image.png", f, "image/jpeg")}
+    
+    # Parameters need to be sent as form data
+    data = {
+        "output_format": "glb",  # or "ply"
+        "seed": "42",
+        "ss_steps": "12",
+        "ss_cfg_strength": "7.5",
+        "slat_steps": "12",
+        "slat_cfg_strength": "3.0",
+    }
+    
+    # Make the request
+    response = requests.post(ENDPOINT_URL, files=files, data=data)
+    result = response.json()
+    
+    # Save the model
+    model_data = base64.b64decode(result["model"])
+    model_format = result["model_format"]
+    with open(f"output_model.{model_format}", "wb") as f:
+        f.write(model_data)
+    
+    # Save the videos if needed
+    if "gaussian_video" in result:
+        with open("gaussian_video.mp4", "wb") as f:
+            f.write(base64.b64decode(result["gaussian_video"]))
+    
+    if "rf_video" in result:
+        with open("rf_video.mp4", "wb") as f:
+            f.write(base64.b64decode(result["rf_video"]))
+    
+    if "mesh_video" in result:
+        with open("mesh_video.mp4", "wb") as f:
+            f.write(base64.b64decode(result["mesh_video"]))
+```
 
-Our goal is to empower people to freely express their imagination and bring their ideas effortlessly into 3D worlds.
+### Using the test client
 
-## License
+We provide a test client script that simplifies the API usage:
 
-[AGPL](LICENSE)
+```bash
+python test_client.py --url https://your-username--trellis-generate.modal.run --image your_image.png --format glb
+```
+
+## Parameters
+
+- `output_format`: Export format for the 3D model (`"glb"` or `"ply"`)
+- `seed`: Random seed for reproducibility
+- `ss_steps`: Number of steps for the sparse structure sampler (default: 12)
+- `ss_cfg_strength`: Classifier-free guidance strength for the sparse structure sampler (default: 7.5)
+- `slat_steps`: Number of steps for the SLat sampler (default: 12)
+- `slat_cfg_strength`: Classifier-free guidance strength for the SLat sampler (default: 3.0)
+
+## Notes
+
+- The first request may take longer as the model needs to be loaded into memory
+- The model requires an A100 GPU to run efficiently, which will be automatically provisioned by Modal
+- The generated 3D model is returned in the requested format (GLB or PLY) along with preview videos
+- All parameters are sent as form data (strings) rather than query parameters
