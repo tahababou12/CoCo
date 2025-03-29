@@ -16,6 +16,7 @@ import {
   getFingerTipDistances,
   FingerSeparationAnalysis
 } from '../utils/fingerDistance';
+import DraggableDebugPanel from './DraggableDebugPanel';
 
 // Debug configuration
 const DEBUG = true;
@@ -24,7 +25,7 @@ const DEBUG_COLLAB = false;
 
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
-  const { isHandTrackingActive, setCurrentGestures, setIsHandTrackingActive } = useHandGesture();
+  const { isHandTrackingActive, setCurrentGestures, setIsHandTrackingActive, showDebugPanels } = useHandGesture();
   const webSocket = useWebSocket();
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1085,186 +1086,199 @@ const HandDrawing: React.FC = () => {
       </div>
       
       {/* Hand mode legend */}
-      {isHandTrackingActive && (
-        <div className="absolute left-4 bottom-4 bg-white p-2 rounded shadow-md text-xs z-10">
-          <div className="text-sm font-bold mb-1">Hand Gestures:</div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
-            <span>Index Finger Only: Draw</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-2 flex items-center justify-center">
-              <span className="text-purple-500 font-bold text-xs">⌽</span>
+      {isHandTrackingActive && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Hand Gestures"
+          initialPosition={{ x: 20, y: window.innerHeight - 200 }}
+        >
+          <div className="text-xs">
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
+              <span>Index Finger Only: Draw</span>
             </div>
-            <span>Index + Middle: Pixel Eraser</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
-            <span>Closed Fist: Click Buttons</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
-            <span>Thumb + Index + Middle: Drag Canvas</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
-              <span className="text-red-500 font-bold text-xs">✕</span>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-2 flex items-center justify-center">
+                <span className="text-purple-500 font-bold text-xs">⌽</span>
+              </div>
+              <span>Index + Middle: Pixel Eraser</span>
             </div>
-            <span>Thumb + Pinky: Clear All Drawings</span>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
+              <span>Closed Fist: Click Buttons</span>
+            </div>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
+              <span>Thumb + Index + Middle: Drag Canvas</span>
+            </div>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
+                <span className="text-red-500 font-bold text-xs">✕</span>
+              </div>
+              <span>Thumb + Pinky: Clear All Drawings</span>
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
+            </div>
           </div>
-          <div className="text-xs text-gray-600 mt-1">
-            Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
-          </div>
-        </div>
+        </DraggableDebugPanel>
       )}
       
       {/* Debug panel for finger drawing - only shown when DEBUG_FINGER_DRAWING is enabled */}
-      {isHandTrackingActive && DEBUG_FINGER_DRAWING && (
-        <div className="absolute right-4 top-60 bg-white p-2 rounded shadow-md text-xs z-10 max-w-xs">
-          <div><strong>Finger Drawing Debug:</strong></div>
-          <div>Drawing mode: {activeHandModesRef.current[0]}</div>
-          <div>IsDrawing state: {isDrawing ? 'true' : 'false'}</div>
-          <div>Has currentShape: {state.currentShape ? 'yes' : 'no'}</div>
-          <div>Current tool: {state.tool}</div>
-          <div>Shapes in canvas: {state.shapes.length}</div>
-          {state.currentShape && (
-            <>
-              <div>Current points: {state.currentShape.points.length}</div>
-              <div>Stroke color: {state.currentShape.style.strokeColor}</div>
-              <div>Stroke width: {state.currentShape.style.strokeWidth}</div>
-            </>
-          )}
-          <div>Last cursor position: {handCursors[0] ? 
-            `x:${handCursors[0].x.toFixed(2)}, y:${handCursors[0].y.toFixed(2)}` : 
-            'none'
-          }</div>
-          <div>Last transformed point: {prevPointsRef.current[0] ? 
-            `x:${prevPointsRef.current[0].x.toFixed(2)}, y:${prevPointsRef.current[0].y.toFixed(2)}` : 
-            'none'
-          }</div>
-          <div>View transform: scale:{state.viewTransform.scale.toFixed(2)}, 
-            offset:({state.viewTransform.offsetX.toFixed(0)},{state.viewTransform.offsetY.toFixed(0)})</div>
-        </div>
+      {isHandTrackingActive && DEBUG_FINGER_DRAWING && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Finger Drawing Debug"
+          initialPosition={{ x: window.innerWidth - 400, y: 240 }}
+        >
+          <div className="text-xs">
+            <div>Drawing mode: {activeHandModesRef.current[0]}</div>
+            <div>IsDrawing state: {isDrawing ? 'true' : 'false'}</div>
+            <div>Has currentShape: {state.currentShape ? 'yes' : 'no'}</div>
+            <div>Current tool: {state.tool}</div>
+            <div>Shapes in canvas: {state.shapes.length}</div>
+            {state.currentShape && (
+              <>
+                <div>Current points: {state.currentShape.points.length}</div>
+                <div>Stroke color: {state.currentShape.style.strokeColor}</div>
+                <div>Stroke width: {state.currentShape.style.strokeWidth}</div>
+              </>
+            )}
+            <div>Last cursor position: {handCursors[0] ? 
+              `x:${handCursors[0].x.toFixed(2)}, y:${handCursors[0].y.toFixed(2)}` : 
+              'none'
+            }</div>
+            <div>Last transformed point: {prevPointsRef.current[0] ? 
+              `x:${prevPointsRef.current[0].x.toFixed(2)}, y:${prevPointsRef.current[0].y.toFixed(2)}` : 
+              'none'
+            }</div>
+            <div>View transform: scale:{state.viewTransform.scale.toFixed(2)}, 
+              offset:({state.viewTransform.offsetX.toFixed(0)},{state.viewTransform.offsetY.toFixed(0)})</div>
+          </div>
+        </DraggableDebugPanel>
       )}
       
       {/* Finger state debug panel */}
-      {isHandTrackingActive && (
-        <div className="absolute left-4 top-60 bg-white p-2 rounded shadow-md z-10">
-          <div className="text-sm font-bold mb-1">
-            Hand Finger States: 
-            <span className="text-xs font-normal ml-2">
+      {isHandTrackingActive && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Hand Finger States"
+          initialPosition={{ x: 20, y: 240 }}
+        >
+          <div className="text-xs">
+            <div className="text-sm font-bold mb-1">
               ({dualHandMode ? "Dual Hand Mode" : "Single Hand Mode"})
-            </span>
-          </div>
-          
-          {/* First hand */}
-          <div className="mb-2">
-            <div className="mb-1">Hand 1: {fingerStates.handType}</div>
-            <div className="flex space-x-2">
-              <div className={`w-8 h-12 border ${fingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">👍</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">☝️</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">🖕</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">💍</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">🤙</span>
-              </div>
             </div>
-          </div>
-          
-          {/* Second hand - only show in dual hand mode */}
-          {dualHandMode && (
-            <div>
-              <div className="mb-1">Hand 2: {secondHandFingerStates.handType}</div>
+            
+            {/* First hand */}
+            <div className="mb-2">
+              <div className="mb-1">Hand 1: {fingerStates.handType}</div>
               <div className="flex space-x-2">
-                <div className={`w-8 h-12 border ${secondHandFingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">👍</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">☝️</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">🖕</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">💍</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">🤙</span>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+            
+            {/* Second hand - only show in dual hand mode */}
+            {dualHandMode && (
+              <div>
+                <div className="mb-1">Hand 2: {secondHandFingerStates.handType}</div>
+                <div className="flex space-x-2">
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">👍</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">☝️</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">🖕</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">💍</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">🤙</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </DraggableDebugPanel>
       )}
       
       {/* Finger Distance Tracking Panel */}
-      {isHandTrackingActive && (
-        <div className="absolute left-4 top-4 bg-white p-2 rounded shadow-md text-xs z-10 max-w-xs">
-          <div className="text-sm font-bold mb-1">Finger Distance Tracking 🤏</div>
-          
-          {/* Peace Sign Detection */}
-          <div className={`mb-2 p-2 rounded ${peaceSignDetected ? 'bg-green-100 border border-green-400' : 'bg-gray-100 border border-gray-300'}`}>
-            <div className="font-bold text-center">
-              {peaceSignDetected ? '✌️ Peace Sign Detected!' : '✌️ Peace Sign: Not Detected'}
+      {isHandTrackingActive && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Finger Distance Tracking 🤏"
+          initialPosition={{ x: 20, y: 20 }}
+        >
+          <div className="text-xs max-w-xs">
+            {/* Peace Sign Detection */}
+            <div className={`mb-2 p-2 rounded ${peaceSignDetected ? 'bg-green-100 border border-green-400' : 'bg-gray-100 border border-gray-300'}`}>
+              <div className="font-bold text-center">
+                {peaceSignDetected ? '✌️ Peace Sign Detected!' : '✌️ Peace Sign: Not Detected'}
+              </div>
             </div>
-          </div>
-          
-          {/* Finger Separation Analysis */}
-          {fingerSeparationAnalysis && (
+            
+            {/* Finger Separation Analysis */}
+            {fingerSeparationAnalysis && (
+              <div className="mb-2">
+                <div className="font-bold">Finger Analysis:</div>
+                <div className={`text-xs ${fingerSeparationAnalysis.peaceSeparated ? 'text-green-600' : 'text-gray-500'}`}>
+                  • Peace (Separated): {fingerSeparationAnalysis.peaceSeparated ? 'Yes ✓' : 'No'}
+                </div>
+                <div className={`text-xs ${fingerSeparationAnalysis.peaceStuckTogether ? 'text-orange-600' : 'text-gray-500'}`}>
+                  • Peace (Stuck Together): {fingerSeparationAnalysis.peaceStuckTogether ? 'Yes ⚠️' : 'No'}
+                </div>
+              </div>
+            )}
+            
+            {/* Finger Distances */}
             <div className="mb-2">
-              <div className="font-bold">Finger Analysis:</div>
-              <div className={`text-xs ${fingerSeparationAnalysis.peaceSeparated ? 'text-green-600' : 'text-gray-500'}`}>
-                • Peace (Separated): {fingerSeparationAnalysis.peaceSeparated ? 'Yes ✓' : 'No'}
-              </div>
-              <div className={`text-xs ${fingerSeparationAnalysis.peaceStuckTogether ? 'text-orange-600' : 'text-gray-500'}`}>
-                • Peace (Stuck Together): {fingerSeparationAnalysis.peaceStuckTogether ? 'Yes ⚠️' : 'No'}
+              <div className="font-bold">Finger Distances:</div>
+              <div className="max-h-32 overflow-y-auto">
+                {Object.entries(fingerDistances).map(([pair, distance]) => {
+                  const isStuck = distance < 0.03;
+                  const isSeparated = distance > 0.05;
+                  
+                  return (
+                    <div key={pair} className="text-xs flex justify-between items-center py-0.5">
+                      <span className="flex-1">
+                        • {pair.replace('_', ' ↔ ')}: 
+                        <span className="font-mono ml-1">{distance.toFixed(4)}</span>
+                      </span>
+                      <span className={`ml-2 px-1 rounded text-xs font-bold ${
+                        isStuck ? 'bg-orange-200 text-orange-800' : 
+                        isSeparated ? 'bg-green-200 text-green-800' : 
+                        'bg-gray-200 text-gray-700'
+                      }`}>
+                        {isStuck ? '🤏 Stuck' : isSeparated ? '✋ Apart' : '👌 Normal'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )}
-          
-          {/* Finger Distances */}
-          <div className="mb-2">
-            <div className="font-bold">Finger Distances:</div>
-            <div className="max-h-32 overflow-y-auto">
-              {Object.entries(fingerDistances).map(([pair, distance]) => {
-                const isStuck = distance < 0.03;
-                const isSeparated = distance > 0.05;
-                
-                return (
-                  <div key={pair} className="text-xs flex justify-between items-center py-0.5">
-                    <span className="flex-1">
-                      • {pair.replace('_', ' ↔ ')}: 
-                      <span className="font-mono ml-1">{distance.toFixed(4)}</span>
-                    </span>
-                    <span className={`ml-2 px-1 rounded text-xs font-bold ${
-                      isStuck ? 'bg-orange-200 text-orange-800' : 
-                      isSeparated ? 'bg-green-200 text-green-800' : 
-                      'bg-gray-200 text-gray-700'
-                    }`}>
-                      {isStuck ? '🤏 Stuck' : isSeparated ? '✋ Apart' : '👌 Normal'}
-                    </span>
-                  </div>
-                );
-              })}
+            
+            {/* Instructions */}
+            <div className="text-xs text-gray-600 mt-2 border-t pt-1">
+              <div className="font-bold">Try these gestures:</div>
+              <div>• ✌️ Peace sign (separated fingers)</div>
+              <div>• 🤏 Index + middle stuck together</div>
+              <div>• 👆 Single finger pointing</div>
             </div>
           </div>
-          
-          {/* Instructions */}
-          <div className="text-xs text-gray-600 mt-2 border-t pt-1">
-            <div className="font-bold">Try these gestures:</div>
-            <div>• ✌️ Peace sign (separated fingers)</div>
-            <div>• 🤏 Index + middle stuck together</div>
-            <div>• 👆 Single finger pointing</div>
-          </div>
-        </div>
+        </DraggableDebugPanel>
       )}
     </div>
   );
