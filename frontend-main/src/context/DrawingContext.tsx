@@ -35,6 +35,7 @@ const initialState: DrawingState = {
     offsetX: 0,
     offsetY: 0,
   },
+
   defaultStyle: {
     strokeColor: '#000000',
     fillColor: 'transparent',
