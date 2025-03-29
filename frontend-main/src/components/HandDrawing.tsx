@@ -72,13 +72,16 @@ const HandDrawing: React.FC = () => {
   
   // Smoothing buffers for hand positions
   const smoothingBuffersRef = useRef<{ [key: number]: SmoothingBuffer }>({
-    0: { points: [], maxSize: 5, modeHistory: [] },
-    1: { points: [], maxSize: 5, modeHistory: [] }
+    0: { points: [], maxSize: 3, modeHistory: [] },
+    1: { points: [], maxSize: 3, modeHistory: [] }
   });
   
   // Last time we detected a "Clear All" gesture to avoid rapid clearing
   const lastClearTimeRef = useRef<number>(0);
   const CLEAR_COOLDOWN_MS = 1500; // Cooldown of 1.5 seconds between clear actions
+
+  // Track the last positions of hands to maintain identity
+  const lastHandPositionsRef = useRef<Point[]>([]);
 
   // Track drawing state
   const drawingColorsRef = useRef<{ [key: number]: string }>({
@@ -124,7 +127,7 @@ const HandDrawing: React.FC = () => {
       y: totalY / totalWeight
     };
   };
-  
+
   // Helper function to get the stable hand mode
   const getStableHandMode = (handIndex: number, currentMode: HandMode): HandMode => {
     const buffer = smoothingBuffersRef.current[handIndex];
@@ -195,6 +198,51 @@ const HandDrawing: React.FC = () => {
     }
     
     return mostCommonMode;
+  };
+  
+  // Helper function to assign consistent hand identities to prevent jumping
+  const assignHandIdentity = (detectionIndex: number, currentPoint: Point): number => {
+    // If this is the first detection, just use the original index
+    if (lastHandPositionsRef.current.length === 0) {
+      // Initialize with the current point
+      lastHandPositionsRef.current[detectionIndex] = { ...currentPoint };
+      return detectionIndex;
+    }
+    
+    // Calculate distances to previous hand positions
+    const distances: number[] = [];
+    
+    // Check distances to all previously known hand positions
+    lastHandPositionsRef.current.forEach((lastPos, idx) => {
+      if (!lastPos) return;
+      
+      const dx = currentPoint.x - lastPos.x;
+      const dy = currentPoint.y - lastPos.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      distances[idx] = distance;
+    });
+    
+    // Find the closest previous hand position
+    let closestIndex = detectionIndex;
+    let minDistance = Number.MAX_VALUE;
+    
+    distances.forEach((distance, idx) => {
+      if (distance && distance < minDistance) {
+        minDistance = distance;
+        closestIndex = idx;
+      }
+    });
+    
+    // If the closest hand is reasonably close, use that index
+    if (minDistance < 200) { // Threshold for considering it the same hand
+      // Update the hand position
+      lastHandPositionsRef.current[closestIndex] = { ...currentPoint };
+      return closestIndex;
+    }
+    
+    // Otherwise, use the original detection index and update its position
+    lastHandPositionsRef.current[detectionIndex] = { ...currentPoint };
+    return detectionIndex;
   };
   
   // Convert video coordinates to canvas coordinates for cursor display
@@ -376,8 +424,8 @@ const HandDrawing: React.FC = () => {
         
         // Reset smoothing buffers
         smoothingBuffersRef.current = {
-          0: { points: [], maxSize: 5, modeHistory: [] },
-          1: { points: [], maxSize: 5, modeHistory: [] }
+          0: { points: [], maxSize: 3, modeHistory: [] },
+          1: { points: [], maxSize: 3, modeHistory: [] }
         };
         
         // Initialize the model with parameters
@@ -530,7 +578,6 @@ const HandDrawing: React.FC = () => {
               predictions.forEach((prediction, index) => {
                 if (index > 1) return; // Only process first two hands
                 
-                processedHandIndices.add(index);
                 const { bbox } = prediction;
                 
                 // Extract hand coordinates
@@ -538,32 +585,34 @@ const HandDrawing: React.FC = () => {
                 const handY = bbox[1] + bbox[3] / 2;
                 
                 // Calculate finger positions based on bounding box
-                // In a real implementation, you'd use actual finger landmarks
-                // For handtrack.js we're using the center of the bounding box
                 const rawFingerTip = { x: handX, y: handY };
                 
+                // Assign hand identity based on position
+                const handIndex = assignHandIdentity(index, rawFingerTip);
+                processedHandIndices.add(handIndex);
+                
                 // Apply smoothing to stabilize the finger position
-                const smoothedPoint = getSmoothPoint(index, rawFingerTip);
+                const smoothedPoint = getSmoothPoint(handIndex, rawFingerTip);
                 
                 // Update cursor position
-                newHandCursors[index] = smoothedPoint;
+                newHandCursors[handIndex] = smoothedPoint;
                 
                 // Determine hand mode
                 const detectedMode = determineHandMode(prediction);
                 
                 // Apply stability to the hand mode
-                const stableMode = getStableHandMode(index, detectedMode);
-                activeHandModesRef.current[index] = stableMode;
+                const stableMode = getStableHandMode(handIndex, detectedMode);
+                activeHandModesRef.current[handIndex] = stableMode;
                 
                 // Handle the stable hand mode
-                handleHandMode(stableMode, index, smoothedPoint);
+                handleHandMode(stableMode, handIndex, smoothedPoint);
                 
                 // Draw visualization if canvas is available
                 if (canvasRef.current) {
                   const ctx = canvasRef.current.getContext('2d');
                   if (ctx) {
                     // Draw bounding box
-                    ctx.strokeStyle = drawingColorsRef.current[index] || '#FF0000';
+                    ctx.strokeStyle = drawingColorsRef.current[handIndex] || '#FF0000';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(bbox[0], bbox[1], bbox[2], bbox[3]);
                     
@@ -576,19 +625,19 @@ const HandDrawing: React.FC = () => {
                     // Draw smoothed finger position
                     ctx.beginPath();
                     ctx.arc(smoothedPoint.x, smoothedPoint.y, 5, 0, 2 * Math.PI);
-                    ctx.fillStyle = drawingColorsRef.current[index] || '#FF0000';
+                    ctx.fillStyle = drawingColorsRef.current[handIndex] || '#FF0000';
                     ctx.fill();
                     
                     // Show hand mode label
                     ctx.fillStyle = '#FFFFFF';
                     ctx.font = '12px Arial';
-                    ctx.fillText(stableMode, bbox[0], bbox[1] > 20 ? bbox[1] - 5 : bbox[1] + 15);
+                    ctx.fillText(`Hand ${handIndex}: ${stableMode}`, bbox[0], bbox[1] > 20 ? bbox[1] - 5 : bbox[1] + 15);
                     
                     // If in drawing mode, show a thicker point
                     if (stableMode === 'Drawing') {
                       ctx.beginPath();
                       ctx.arc(smoothedPoint.x, smoothedPoint.y, 8, 0, 2 * Math.PI);
-                      ctx.strokeStyle = drawingColorsRef.current[index];
+                      ctx.strokeStyle = drawingColorsRef.current[handIndex];
                       ctx.lineWidth = 2;
                       ctx.stroke();
                     }
@@ -740,7 +789,7 @@ const HandDrawing: React.FC = () => {
       
       // If this is the first detection for this hand, just store the point
       if (prevPoint === null) {
-        console.log(`Hand ${handIndex} first drawing point at`, transformedPoint);
+        console.log(`Hand ${handIndex} first drawing point stored at`, transformedPoint);
         prevPointsRef.current[handIndex] = transformedPoint;
         return;
       }
@@ -751,24 +800,24 @@ const HandDrawing: React.FC = () => {
       const distance = Math.sqrt(dx * dx + dy * dy);
       
       // Only draw if we've moved enough (prevents tiny jitter)
-      if (distance < 2 && state.currentShape) {
+      // But don't filter if we're just starting to draw
+      if (distance < 5 && state.currentShape) {
+        // Small movements still update the cursor
         return;
       }
       
-      console.log(`Hand ${handIndex} drawing from`, prevPoint, 'to', transformedPoint, `distance=${distance.toFixed(2)}`);
+      console.log(`Hand ${handIndex} DRAWING from`, prevPoint, 'to', transformedPoint, `distance=${distance.toFixed(2)}`);
       
       // Start drawing if not already drawing
       if (!state.currentShape) {
-        // Switch to pencil tool if not already
-        if (state.tool !== 'pencil') {
-          dispatch({ type: 'SET_TOOL', payload: 'pencil' });
-        }
+        // Switch to pencil tool
+        dispatch({ type: 'SET_TOOL', payload: 'pencil' });
         
-        // Start drawing from the previous point
+        // Start drawing from the current point (more reliable than using prevPoint)
         dispatch({
           type: 'START_DRAWING',
           payload: { 
-            point: prevPoint, 
+            point: transformedPoint, 
             type: 'pencil' 
           }
         });
@@ -780,12 +829,6 @@ const HandDrawing: React.FC = () => {
             strokeColor: drawingColorsRef.current[handIndex],
             strokeWidth: drawingThickness
           }
-        });
-        
-        // Continue to the current point
-        dispatch({
-          type: 'CONTINUE_DRAWING', 
-          payload: transformedPoint
         });
       } 
       // Continue drawing
@@ -811,9 +854,12 @@ const HandDrawing: React.FC = () => {
         dispatch({ type: 'END_DRAWING' });
       }
       
-      // To implement true erasing with finger motions like in Python,
-      // we would need to add a new eraser mode that tracks movement
-      // and deletes shapes directly
+      // Implement direct erasing by finding shapes under the cursor
+      // This simulates actual erasing rather than just setting the tool
+      const shapeIds = findShapesUnderPoint(transformedPoint);
+      if (shapeIds.length > 0) {
+        dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
+      }
       
       // Store the current point
       prevPointsRef.current[handIndex] = transformedPoint;
@@ -839,6 +885,57 @@ const HandDrawing: React.FC = () => {
       // Reset this hand's previous point
       prevPointsRef.current[handIndex] = null;
     }
+  };
+
+  // Helper function to find shapes under a point
+  const findShapesUnderPoint = (point: Point): string[] => {
+    // Get nearby shapes that intersect with this point
+    const nearbyShapes = state.shapes.filter(shape => {
+      // For now, we'll implement a simple hit test for pencil lines
+      if (shape.type === 'pencil' && shape.points.length >= 2) {
+        // Check if point is close to any segment of the line
+        for (let i = 1; i < shape.points.length; i++) {
+          const p1 = shape.points[i-1];
+          const p2 = shape.points[i];
+          
+          // Calculate distance from point to line segment
+          const distance = distanceToLineSegment(p1, p2, point);
+          
+          // If point is close enough to the line, include this shape
+          if (distance < 20) { // 20px threshold for erasing
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+    
+    return nearbyShapes.map(shape => shape.id);
+  };
+  
+  // Helper to calculate distance from point to line segment
+  const distanceToLineSegment = (p1: Point, p2: Point, p: Point): number => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const lenSquared = dx * dx + dy * dy;
+    
+    // If segment is a point, just return distance to that point
+    if (lenSquared === 0) {
+      return Math.sqrt((p.x - p1.x) * (p.x - p1.x) + (p.y - p1.y) * (p.y - p1.y));
+    }
+    
+    // Calculate projection of point onto line
+    let t = ((p.x - p1.x) * dx + (p.y - p1.y) * dy) / lenSquared;
+    t = Math.max(0, Math.min(1, t)); // Clamp t to range [0,1]
+    
+    // Calculate closest point on line segment
+    const closest = {
+      x: p1.x + t * dx,
+      y: p1.y + t * dy
+    };
+    
+    // Return distance to closest point
+    return Math.sqrt((p.x - closest.x) * (p.x - closest.x) + (p.y - closest.y) * (p.y - closest.y));
   };
 
   // Toggle hand tracking
