@@ -1,36 +1,36 @@
 import asyncio
-from cerebras.cloud.sdk import AsyncCerebras
+from groq import AsyncGroq
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.tasks.tasks import AsyncAITask, GenericPromptTask, DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE
 from typing import Dict, Any, Optional, List
 
-# Default model configuration for Cerebras
-DEFAULT_MODEL = "llama3.1-8b"
+# Default model configuration for Groq
+DEFAULT_MODEL = "mixtral-8x7b-32768"
 
-# Create Cerebras client
-async def get_cerebras_client() -> AsyncCerebras:
-    client = AsyncCerebras(api_key=settings.CEREBRAS_API_KEY)
+# Create Groq client
+async def get_groq_client() -> AsyncGroq:
+    client = AsyncGroq(api_key=settings.GROQ_API_KEY)
     return client
 
-class AsyncCerebrasTask(AsyncAITask):
-    """Base class for Cerebras Celery tasks that use async functions."""
+class AsyncGroqTask(AsyncAITask):
+    """Base class for Groq Celery tasks that use async functions."""
     _client = None
     
     @property
-    async def client(self) -> AsyncCerebras:
+    async def client(self) -> AsyncGroq:
         if self._client is None:
-            self._client = await get_cerebras_client()
+            self._client = await get_groq_client()
         return self._client
 
-class CerebrasPromptTask(GenericPromptTask, AsyncCerebrasTask):
-    """Task to process a prompt with Cerebras LLaMA."""
+class GroqPromptTask(GenericPromptTask, AsyncGroqTask):
+    """Task to process a prompt with Groq Mixtral."""
     
     def prepare_message_params(self, prompt: str, system_prompt: Optional[str] = None,
                              max_tokens: int = DEFAULT_MAX_TOKENS, 
                              temperature: float = DEFAULT_TEMPERATURE,
                              additional_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Prepare the message parameters for Cerebras."""
+        """Prepare the message parameters for Groq."""
         messages = []
         
         # Add system message if provided
@@ -60,17 +60,17 @@ class CerebrasPromptTask(GenericPromptTask, AsyncCerebrasTask):
             
         return message_params
     
-    async def send_message(self, client: AsyncCerebras, message_params: Dict[str, Any]) -> Any:
-        """Send the message to Cerebras."""
+    async def send_message(self, client: AsyncGroq, message_params: Dict[str, Any]) -> Any:
+        """Send the message to Groq."""
         model = message_params.pop("model")
-        return await client.chat.completions.create(model=model, top_p=1, **message_params)
+        return await client.chat.completions.create(model=model, **message_params)
     
     def extract_content(self, response: Any) -> str:
-        """Extract the content from Cerebras response."""
+        """Extract the content from Groq response."""
         return response.choices[0].message.content.lstrip("```javascript").rstrip("```")
     
     def prepare_final_response(self, task_id: str, response: Any, content: str) -> Dict[str, Any]:
-        """Prepare the final response with Cerebras-specific metadata."""
+        """Prepare the final response with Groq-specific metadata."""
         return {
             "status": "success",
             "content": content,
@@ -84,4 +84,4 @@ class CerebrasPromptTask(GenericPromptTask, AsyncCerebrasTask):
         }
 
 # Register the task properly with Celery
-CerebrasPromptTask = celery_app.register_task(CerebrasPromptTask()) 
+GroqPromptTask = celery_app.register_task(GroqPromptTask()) 

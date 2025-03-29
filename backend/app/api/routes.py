@@ -6,7 +6,7 @@ from app.api.models import (
 )
 from app.tasks.claude_tasks import ClaudePromptTask, ClaudeEditTask
 from app.tasks.gemini_tasks import GeminiPromptTask, GeminiImageGenerationTask
-from app.tasks.cerebras_tasks import get_cerebras_client
+from app.tasks.groq_tasks import get_groq_client
 from app.core.redis import redis_service
 from app.core.config import settings
 import json
@@ -83,7 +83,7 @@ async def queue_task(type: str, request: StreamRequest):
     - 3d_magic: For 3D magic generation (unimplemented)
     - image: For image generation using Gemini Imagen
     - extract_object: For object extraction (unimplemented)
-    - llama: Uses Cerebras LLaMA model
+    - llama: Uses Groq Mixtral model
     - edit: Uses Claude 3.7 to edit existing Three.js code
     """
     # Generate a task ID if not provided
@@ -206,14 +206,14 @@ async def subscribe_claude_events(task_id: str, request: Request):
     # Return an event source response
     return EventSourceResponse(event_generator(task_id, request))
 
-@router.post("/cerebras/parse")
-async def parse_code_with_cerebras(code: str = Body(..., media_type="text/plain")):
-    """Direct endpoint to parse code using Cerebras LLaMA model without SSE.
+@router.post("/groq/parse")
+async def parse_code_with_groq(code: str = Body(..., media_type="text/plain")):
+    """Direct endpoint to parse code using Groq Mixtral model without SSE.
     
     Takes a plain text body containing the code to be parsed and returns the result directly.
     """
-    # Initialize Cerebras client
-    client = await get_cerebras_client()
+    # Initialize Groq client
+    client = await get_groq_client()
     
     # Prepare the message parameters
     messages = [
@@ -232,13 +232,12 @@ Do not wrap the code in a function or module. Do not import anything.
         }
     ]
     
-    # Send the request to Cerebras
+    # Send the request to Groq
     response = await client.chat.completions.create(
-        model="llama3.3-70b",
+        model="mixtral-8x7b-32768",
         messages=messages,
         max_tokens=4096,
-        temperature=0.2,
-        top_p=1
+        temperature=0.2
     )
     
     # Extract and clean the content

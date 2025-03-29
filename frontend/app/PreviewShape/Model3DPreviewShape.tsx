@@ -566,7 +566,7 @@ export class Model3DPreviewShapeUtil extends BaseBoxShapeUtil<Model3DPreviewShap
                 }
               } else if (shape.props.threeJsCode) {
                 // Handle ThreeJS code
-                const res = await fetch("http://localhost:8000/api/cerebras/parse", {
+                const res = await fetch("http://localhost:8000/api/groq/parse", {
                   method: "POST",
                   body: shape.props.threeJsCode
                 });
@@ -625,7 +625,7 @@ export class Model3DPreviewShapeUtil extends BaseBoxShapeUtil<Model3DPreviewShap
                 }
               } else if (shape.props.threeJsCode) {
                 // Handle ThreeJS code
-                const res = await fetch("http://localhost:8000/api/cerebras/parse", {
+                const res = await fetch("http://localhost:8000/api/groq/parse", {
                   method: "POST",
                   body: shape.props.threeJsCode
                 });
