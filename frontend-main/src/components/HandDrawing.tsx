@@ -53,6 +53,10 @@ const HandDrawing: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isWebcamSupported, setIsWebcamSupported] = useState(true);
+  const [handCursors, setHandCursors] = useState<{ [key: number]: Point | null }>({
+    0: null,
+    1: null
+  });
   
   // Track previous finger positions for drawing
   const prevPointsRef = useRef<{ [key: number]: Point | null }>({
@@ -193,6 +197,59 @@ const HandDrawing: React.FC = () => {
     return mostCommonMode;
   };
   
+  // Convert video coordinates to canvas coordinates for cursor display
+  const videoToCanvasCoords = (point: Point): Point => {
+    if (!point) return { x: 0, y: 0 };
+    
+    // First, normalize the point relative to the video dimensions
+    const normalizedPoint = {
+      x: point.x / (videoRef.current?.videoWidth || 640),
+      y: point.y / (videoRef.current?.videoHeight || 480)
+    };
+    
+    // Then, scale to the window dimensions
+    return {
+      x: normalizedPoint.x * window.innerWidth,
+      y: normalizedPoint.y * window.innerHeight
+    };
+  };
+  
+  // Convert canvas coordinates to drawing coordinates (with transform)
+  const canvasToDrawingCoords = (point: Point): Point => {
+    return {
+      x: (point.x - state.viewTransform.offsetX) / state.viewTransform.scale,
+      y: (point.y - state.viewTransform.offsetY) / state.viewTransform.scale
+    };
+  };
+  
+  // Update cursor positions
+  useEffect(() => {
+    // If hand tracking is not active, hide cursors
+    if (!isHandTrackingActive) {
+      return;
+    }
+    
+    // Otherwise, update the cursor positions based on handCursors state
+    Object.entries(handCursors).forEach(([indexStr, point]) => {
+      const index = parseInt(indexStr);
+      const cursorDiv = document.getElementById(`hand-cursor-${index}`);
+      
+      if (!cursorDiv || !point) return;
+      
+      // Convert point to screen coordinates
+      const canvasPoint = videoToCanvasCoords(point);
+      
+      // Position and style cursor
+      cursorDiv.style.left = `${canvasPoint.x}px`;
+      cursorDiv.style.top = `${canvasPoint.y}px`;
+      cursorDiv.style.display = 'block';
+      
+      // Style based on hand mode
+      const mode = activeHandModesRef.current[index];
+      cursorDiv.className = `hand-cursor hand-cursor-${index} ${mode.toLowerCase()}-mode`;
+    });
+  }, [handCursors, isHandTrackingActive]);
+  
   // Check browser compatibility
   useEffect(() => {
     // Check if the browser supports getUserMedia
@@ -216,6 +273,82 @@ const HandDrawing: React.FC = () => {
     if (!window.handTrack) {
       setErrorMessage('HandTrack.js failed to load');
     }
+    
+    // Add cursor elements to the document
+    const createCursorElement = (index: number) => {
+      // Check if cursor already exists
+      let cursor = document.getElementById(`hand-cursor-${index}`);
+      if (cursor) return;
+      
+      cursor = document.createElement('div');
+      cursor.id = `hand-cursor-${index}`;
+      cursor.className = `hand-cursor hand-cursor-${index}`;
+      cursor.style.position = 'absolute';
+      cursor.style.width = '20px';
+      cursor.style.height = '20px';
+      cursor.style.borderRadius = '50%';
+      cursor.style.backgroundColor = drawingColorsRef.current[index];
+      cursor.style.opacity = '0.7';
+      cursor.style.pointerEvents = 'none'; // Don't interfere with normal pointer events
+      cursor.style.zIndex = '1000';
+      cursor.style.display = 'none';
+      cursor.style.transform = 'translate(-50%, -50%)'; // Center the cursor
+      
+      document.body.appendChild(cursor);
+    };
+    
+    // Create cursors for both hands
+    createCursorElement(0);
+    createCursorElement(1);
+    
+    // Add cursor styles
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .hand-cursor {
+        transition: all 0.05s ease-out;
+        box-shadow: 0 0 5px rgba(0,0,0,0.5);
+      }
+      .hand-cursor-0 {
+        border: 2px solid #FF0000;
+      }
+      .hand-cursor-1 {
+        border: 2px solid #00FF00;
+      }
+      .drawing-mode {
+        background-color: rgba(255,255,255,0.8) !important;
+        width: 15px !important;
+        height: 15px !important;
+      }
+      .erasing-mode {
+        background-color: rgba(255,255,255,0.5) !important;
+        width: 30px !important;
+        height: 30px !important;
+        border: 2px dashed #000 !important;
+      }
+      .clear-all-mode {
+        background-color: rgba(255,0,0,0.3) !important;
+        width: 40px !important;
+        height: 40px !important;
+        border-radius: 0 !important;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    // Clean up on unmount
+    return () => {
+      // Remove cursor elements
+      [0, 1].forEach(index => {
+        const cursor = document.getElementById(`hand-cursor-${index}`);
+        if (cursor) {
+          document.body.removeChild(cursor);
+        }
+      });
+      
+      // Remove style
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
+    };
   }, []);
 
   // Initialize hand tracking
@@ -336,6 +469,7 @@ const HandDrawing: React.FC = () => {
               // Reset starting points
               prevPointsRef.current = { 0: null, 1: null };
               activeHandModesRef.current = { 0: 'None', 1: 'None' };
+              setHandCursors({ 0: null, 1: null });
               isDetectionRunning = true;
               detectHands();
             } else {
@@ -390,6 +524,7 @@ const HandDrawing: React.FC = () => {
               
               // Keep track of which hand indices were processed this frame
               const processedHandIndices = new Set<number>();
+              const newHandCursors: { [key: number]: Point | null } = { ...handCursors };
               
               // Process each detected hand
               predictions.forEach((prediction, index) => {
@@ -403,10 +538,15 @@ const HandDrawing: React.FC = () => {
                 const handY = bbox[1] + bbox[3] / 2;
                 
                 // Calculate finger positions based on bounding box
+                // In a real implementation, you'd use actual finger landmarks
+                // For handtrack.js we're using the center of the bounding box
                 const rawFingerTip = { x: handX, y: handY };
                 
                 // Apply smoothing to stabilize the finger position
                 const smoothedPoint = getSmoothPoint(index, rawFingerTip);
+                
+                // Update cursor position
+                newHandCursors[index] = smoothedPoint;
                 
                 // Determine hand mode
                 const detectedMode = determineHandMode(prediction);
@@ -456,14 +596,21 @@ const HandDrawing: React.FC = () => {
                 }
               });
               
+              // Update cursors state
+              setHandCursors(newHandCursors);
+              
               // For any hands that were previously detected but not in this frame,
               // trigger "None" mode to end any ongoing drawing
               [0, 1].forEach(handIndex => {
                 if (!processedHandIndices.has(handIndex) && 
                     prevPointsRef.current[handIndex] !== null) {
                   handleHandMode('None', handIndex, { x: 0, y: 0 });
+                  newHandCursors[handIndex] = null;
                 }
               });
+              
+              // Update cursor visibility
+              setHandCursors(newHandCursors);
             } else {
               // No hands detected
               setCurrentHandCount(0);
@@ -474,6 +621,9 @@ const HandDrawing: React.FC = () => {
                   handleHandMode('None', handIndex, { x: 0, y: 0 });
                 }
               });
+              
+              // Hide cursors
+              setHandCursors({ 0: null, 1: null });
             }
             
             // Continue detection loop
@@ -503,6 +653,17 @@ const HandDrawing: React.FC = () => {
     // Initialize if hand tracking is active
     if (isHandTrackingActive) {
       initializeHandTracking();
+    } else {
+      // Hide cursors when not active
+      setHandCursors({ 0: null, 1: null });
+      
+      // Remove cursor elements
+      [0, 1].forEach(index => {
+        const cursor = document.getElementById(`hand-cursor-${index}`);
+        if (cursor) {
+          cursor.style.display = 'none';
+        }
+      });
     }
     
     // Cleanup function
@@ -522,6 +683,9 @@ const HandDrawing: React.FC = () => {
       if (handTracker) {
         handTracker.dispose();
       }
+      
+      // Hide cursors
+      setHandCursors({ 0: null, 1: null });
     };
   }, [isHandTrackingActive, isWebcamSupported]);
 
@@ -557,30 +721,11 @@ const HandDrawing: React.FC = () => {
   ) => {
     if (!canvasRef.current) return;
     
-    // Convert video coordinates to drawing canvas coordinates
-    const videoCanvas = canvasRef.current;
+    // Get the canvas-space position (relative to video)
+    const canvasSpacePoint = videoToCanvasCoords(currentPoint);
     
-    // First, normalize the point relative to the video/overlay canvas size
-    const normalizedPoint = {
-      x: currentPoint.x / videoCanvas.width,
-      y: currentPoint.y / videoCanvas.height
-    };
-    
-    // Calculate main canvas dimensions
-    const mainCanvasWidth = window.innerWidth;
-    const mainCanvasHeight = window.innerHeight;
-    
-    // Then, scale to the main canvas size
-    const viewPoint = {
-      x: normalizedPoint.x * mainCanvasWidth,
-      y: normalizedPoint.y * mainCanvasHeight
-    };
-    
-    // Finally, apply the view transformation
-    const transformedPoint = {
-      x: (viewPoint.x - state.viewTransform.offsetX) / state.viewTransform.scale,
-      y: (viewPoint.y - state.viewTransform.offsetY) / state.viewTransform.scale
-    };
+    // Then convert to drawing space (with transform)
+    const transformedPoint = canvasToDrawingCoords(canvasSpacePoint);
 
     // If we have a new mode for this hand, end any previous drawing
     const prevMode = activeHandModesRef.current[handIndex];
@@ -614,6 +759,11 @@ const HandDrawing: React.FC = () => {
       
       // Start drawing if not already drawing
       if (!state.currentShape) {
+        // Switch to pencil tool if not already
+        if (state.tool !== 'pencil') {
+          dispatch({ type: 'SET_TOOL', payload: 'pencil' });
+        }
+        
         // Start drawing from the previous point
         dispatch({
           type: 'START_DRAWING',
@@ -660,6 +810,10 @@ const HandDrawing: React.FC = () => {
       if (state.currentShape) {
         dispatch({ type: 'END_DRAWING' });
       }
+      
+      // To implement true erasing with finger motions like in Python,
+      // we would need to add a new eraser mode that tracks movement
+      // and deletes shapes directly
       
       // Store the current point
       prevPointsRef.current[handIndex] = transformedPoint;
@@ -735,6 +889,25 @@ const HandDrawing: React.FC = () => {
           )}
         </div>
       </div>
+      
+      {/* Hand mode legend */}
+      {isHandTrackingActive && (
+        <div className="absolute left-4 bottom-4 bg-white p-2 rounded shadow-md text-xs z-10">
+          <div className="text-sm font-bold mb-1">Hand Gestures:</div>
+          <div className="flex items-center mb-1">
+            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
+            <span>Open Hand: Draw</span>
+          </div>
+          <div className="flex items-center mb-1">
+            <div className="w-4 h-4 bg-white border-2 border-dashed border-black rounded-full mr-2"></div>
+            <span>Closed Fist: Erase</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-red-200 mr-2"></div>
+            <span>Pointing: Clear All</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
