@@ -83,7 +83,7 @@ async def queue_task(type: str, request: StreamRequest):
     - 3d_magic: For 3D magic generation (unimplemented)
     - image: For image generation using Gemini Imagen
     - extract_object: For object extraction (unimplemented)
-    - llama: Uses Groq Mixtral model
+    - llama: Uses llama-3.1-8b-instant
     - edit: Uses Claude 3.7 to edit existing Three.js code
     """
     # Generate a task ID if not provided

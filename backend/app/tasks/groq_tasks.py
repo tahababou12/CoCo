@@ -6,7 +6,7 @@ from app.tasks.tasks import AsyncAITask, GenericPromptTask, DEFAULT_MAX_TOKENS, 
 from typing import Dict, Any, Optional, List
 
 # Default model configuration for Groq
-DEFAULT_MODEL = "mixtral-8x7b-32768"
+DEFAULT_MODEL = "llama-3.1-8b-instant"
 
 # Create Groq client
 async def get_groq_client() -> AsyncGroq:
@@ -24,7 +24,7 @@ class AsyncGroqTask(AsyncAITask):
         return self._client
 
 class GroqPromptTask(GenericPromptTask, AsyncGroqTask):
-    """Task to process a prompt with Groq Mixtral."""
+    """Task to process a prompt with Groq llama-3.1-8b-instant."""
     
     def prepare_message_params(self, prompt: str, system_prompt: Optional[str] = None,
                              max_tokens: int = DEFAULT_MAX_TOKENS, 
