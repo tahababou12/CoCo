@@ -208,7 +208,7 @@ async def subscribe_claude_events(task_id: str, request: Request):
 
 @router.post("/groq/parse")
 async def parse_code_with_groq(code: str = Body(..., media_type="text/plain")):
-    """Direct endpoint to parse code using Groq Mixtral model without SSE.
+    """Direct endpoint to parse code using llama-3.1-8b-instant model.
     
     Takes a plain text body containing the code to be parsed and returns the result directly.
     """
@@ -234,9 +234,9 @@ Do not wrap the code in a function or module. Do not import anything.
     
     # Send the request to Groq
     response = await client.chat.completions.create(
-        model="mixtral-8x7b-32768",
+        model="llama-3.1-8b-instant",
         messages=messages,
-        max_tokens=4096,
+        max_tokens=8192,
         temperature=0.2
     )
     

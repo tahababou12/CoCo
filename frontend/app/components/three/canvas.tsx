@@ -147,9 +147,12 @@ export default function ThreeJSCanvas({
   visible?: boolean
 }) {
   const exportScene = () => {
+    // Only run on client side
+    if (typeof window === 'undefined') return;
+    
     // @ts-ignore - Access the scene from the global variable
     const scene = window.__threeScene
-    if (!scene) return
+    if (!scene) return;
 
     console.log('Original scene:', scene);
     
@@ -195,6 +198,9 @@ export default function ThreeJSCanvas({
   
   // Function to test importing a GLTF model
   const testGltfImport = async () => {
+    // Only run on client side
+    if (typeof window === 'undefined') return;
+    
     try {
       const { addObjectWithGltf } = useObjectStore.getState();
       // Example GLTF files from the public glTF samples repository
@@ -237,7 +243,7 @@ export default function ThreeJSCanvas({
           failIfMajorPerformanceCaveat: false,
         }}
       >
-        {/* {visible && <Perf position="top-left" />} */}
+        {/* {visible && <PerfStats />} */}
         <ambientLight intensity={Math.PI / 2} />
         {/* Add directional light for better material rendering */}
         <directionalLight 
