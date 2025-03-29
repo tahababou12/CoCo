@@ -45,9 +45,9 @@ docker compose up
 
 ## Inspiration
 
-Creativity is often constrained by technical skills or complex software. CoCo makes 3D modeling accessible to anyone regardless of artistic or technical abilities.
+Creativity is often constrained by technical skills, complex software, and letting powerful AI models take the creative freedom from us. CoCo makes the composition of art – both in 2D and 3D – accessible to anyone regardless of artistic or technical abilities. Using computer vision, CoCo acts as an interactive assistant that improves and gives you feedbacks on your drawing – all done without a trackpad or pen!
 
-Our goal is to empower people to freely express their imagination and bring their ideas effortlessly into 3D worlds.
+Our goal is to empower people to freely express their imagination and bring their ideas effortlessly into the real world.
 
 ## License
 
