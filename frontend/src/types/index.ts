@@ -40,3 +40,6 @@ export type DrawingState = {
   viewTransform: ViewTransform
   defaultStyle: ShapeStyle
 }
+
+// Export all types from handTracking file
+export * from './handTracking';

@@ -1,14 +1,14 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { useDrawing } from '../context/DrawingContext';
-import { Point } from '../types';
-import { HandMode, SmoothingBuffer } from '../types/handTracking';
+import { useDrawing } from '../../context/DrawingContext';
+import { Point } from '../../types';
+import { HandMode, SmoothingBuffer } from '../../types/handTracking';
 import { Camera } from '@mediapipe/camera_utils';
 import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
 import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
-import { videoToCanvasCoords, canvasToDrawingCoords } from '../utils/coordinates';
-import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/handTracking';
-import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
-import { useHandGesture } from '../context/HandGestureContext';
+import { videoToCanvasCoords, canvasToDrawingCoords } from '../../utils/coordinates';
+import { determineHandMode, getSmoothPoint, getStableHandMode } from '../../utils/handTracking';
+import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../../utils/cursor';
+import { useHandGesture } from '../../context/HandGestureContext';
 
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();

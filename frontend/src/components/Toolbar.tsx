@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { useHandGesture } from './HandDrawing'
+import { useHandGesture } from '../context/HandGestureContext'
 import { Tool } from '../types'
 import { 
   MousePointer, 
