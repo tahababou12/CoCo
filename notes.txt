@@ -1,0 +1,2 @@
+- Add .env file in root directory and establish the following variable names: VITE_AUTH0_DOMAIN and VITE_AUTH0_CLIENT_ID
+- Run npm i --save-dev @types/node
