@@ -1,6 +1,6 @@
-# CoCo - Co-Composer of Ideas
+# CoCo
 
-A creative drawing application with hand gesture recognition and AI enhancement capabilities.
+The Co-Composer for your ideas. CoCo is a creative drawing application with hand gesture recognition and AI enhancement capabilities. We put creativity back in the user's hands (quite literally).
 
 ## Features
 
