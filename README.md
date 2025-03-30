@@ -33,7 +33,6 @@ import json
 # URL will be provided by Modal when you deploy the app
 ENDPOINT_URL = "https://your-username--trellis-generate.modal.run"
 
-<<<<<<< HEAD
 # Prepare your image
 with open("your_image.png", "rb") as f:
     # Use multipart/form-data format
@@ -74,11 +73,6 @@ with open("your_image.png", "rb") as f:
 ```
 
 ### Using the test client
-=======
-Creativity is often constrained by technical skills, complex software, and letting powerful AI models take the creative freedom from us. CoCo makes the composition of art – both in 2D and 3D – accessible to anyone regardless of artistic or technical abilities. Using computer vision, CoCo acts as an interactive assistant that improves and gives you feedbacks on your drawing – all done without a trackpad or pen!
-
-Our goal is to empower people to freely express their imagination and bring their ideas effortlessly into the real world.
->>>>>>> 7f0b7eec293ab1f9baa8df84157a898b85f2ad80
 
 We provide a test client script that simplifies the API usage:
 
@@ -101,3 +95,109 @@ python test_client.py --url https://your-username--trellis-generate.modal.run --
 - The model requires an A100 GPU to run efficiently, which will be automatically provisioned by Modal
 - The generated 3D model is returned in the requested format (GLB or PLY) along with preview videos
 - All parameters are sent as form data (strings) rather than query parameters
+
+# CoCo - Collaborative Canvas
+
+A creative drawing application with hand gesture recognition and AI enhancement capabilities.
+
+## Features
+
+- Interactive canvas for drawing and sketching
+- Hand gesture recognition for intuitive control
+- Various drawing tools: pencil, rectangle, ellipse, text, etc.
+- Clear all functionality with button or hand gesture
+- Save drawings directly to the `img` folder on the server
+- AI drawing enhancement powered by Google's Gemini model
+- Interactive enhanced images that can be moved, resized, and positioned on the canvas
+
+## Setup
+
+1. Install Node.js dependencies:
+```bash
+npm install
+```
+
+2. Install Python dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Set up your environment variables:
+```bash
+# Copy the example env file and add your Google Gemini API key
+cp .env.example .env
+# Edit .env and add your actual API key
+```
+
+4. Start the Flask server:
+```bash
+python app.py
+# This will start the Flask server on port 5001
+```
+
+5. In a separate terminal, start the development server for the React application:
+```bash
+npm run dev
+```
+
+## Using Hand Gestures
+
+The application supports several hand gestures for intuitive control:
+- Index finger extended: Draw on the canvas
+- Closed fist: Click buttons and UI elements
+- Two fingers (index and middle) extended: Clear the canvas
+
+## Saving and Enhancing Images
+
+### Save to Folder
+When you click the "Save to Folder" button, your drawing will be:
+1. Cropped to only include the area with content
+2. Saved as a PNG file to the `img` folder on the server
+3. Named with a timestamp for easy identification
+
+### Enhance with Gemini
+The "Enhance with Gemini" feature lets you transform your sketches using AI:
+1. First save your drawing or click the Enhance button directly
+2. Enter a prompt describing how you want your drawing enhanced
+3. Google's Gemini model will generate an enhanced version
+4. The enhanced image appears on your canvas as an interactive object
+5. All enhanced images are saved to the `enhanced_drawings` folder
+
+### Interactive Enhanced Images
+After enhancing your drawing:
+1. The enhanced image appears on your canvas as a movable, resizable element
+2. Drag the image to reposition it anywhere on your canvas
+3. Use the resize handles (small circles) to resize the image from any edge or corner
+4. Click the "X" button to remove the enhanced image from the canvas
+5. You can have multiple enhanced images on your canvas at once
+
+## Technical Architecture
+
+### Frontend (React)
+- React application with TypeScript
+- Canvas API for drawing
+- MediaPipe for hand gesture recognition (when used in standalone mode)
+
+### Backend (Flask)
+- Flask server to handle image saving and enhancement (running on port 5001)
+- Integration with Google Gemini API for AI image generation
+- Image processing with OpenCV
+
+## How Gemini Enhancement Works
+
+1. The drawing is sent to the Flask server
+2. The server processes the image and sends it to Google's Gemini model
+3. A custom prompt guides Gemini to enhance the drawing
+4. The enhanced image is saved and returned to the frontend
+5. The frontend displays the enhanced image as an interactive element on the canvas
+
+## Requirements
+
+- Node.js 16+ for the frontend
+- Python 3.8+ for the Flask backend
+- Google Gemini API key for AI enhancement
+- Webcam access (for hand tracking in standalone mode)
+
+## Development
+
+This project is built using Vite with React and TypeScript for the frontend and Flask for the backend.

@@ -47,9 +47,9 @@ const Toolbar: React.FC = () => {
       case 'Drawing':
         return 'Drawing ✍️'
       case 'Erasing':
-        return 'Erasing 🧹'
+        return 'Clicking 👆'
       case 'Clear All':
-        return 'Clear All 🗑️'
+        return 'Clear All ✌️🗑️'
       case 'None':
         // When a hand is detected but no specific gesture is recognized
         return 'Hand Detected 👋'

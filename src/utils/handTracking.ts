@@ -43,8 +43,8 @@ export const determineHandMode = (landmarks: HandLandmark[]): HandMode => {
   else if (!fingersExtended[0] && !fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
     return 'Erasing';
   }
-  // FEATURE 3: CLEAR ALL - Only middle finger extended
-  else if (!fingersExtended[0] && !fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
+  // FEATURE 3: CLEAR ALL - Two fingers (index and middle) extended
+  else if (!fingersExtended[0] && fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
     return 'Clear All';
   }
   else {

@@ -51,15 +51,25 @@ export const addCursorStyles = (): HTMLStyleElement => {
     }
     .erasing-mode {
       background-color: rgba(255,255,255,0.5) !important;
-      width: 30px !important;
-      height: 30px !important;
-      border: 2px dashed #000 !important;
+      width: 25px !important;
+      height: 25px !important;
+      border: 2px solid #0055FF !important;
+      border-radius: 50% !important;
+      cursor: pointer !important;
+      transition: transform 0.15s ease-out !important;
+    }
+    .erasing-mode[data-clicked="true"] {
+      background-color: rgba(0,85,255,0.3) !important;
+      transform: translate(-50%, -50%) scale(0.8) !important;
+      box-shadow: 0 0 10px rgba(0,85,255,0.7) !important;
     }
     .clear-all-mode {
       background-color: rgba(255,0,0,0.3) !important;
       width: 40px !important;
       height: 40px !important;
       border-radius: 0 !important;
+      border: 3px solid #FF0000 !important;
+      transform: translate(-50%, -50%) rotate(45deg) !important;
     }
     .none-mode {
       background-color: rgba(200,200,200,0.5) !important;
@@ -84,6 +94,76 @@ export const updateCursor = (
   
   // Style based on hand mode
   cursorElement.className = `hand-cursor hand-cursor-0 ${mode.toLowerCase()}-mode`;
+  
+  // If it's erasing mode (closed fist), check for elements at this position and click them
+  if (mode === 'Erasing') {
+    // Skip if we recently clicked (prevent rapid clicks)
+    if (cursorElement.getAttribute('data-clicked') === 'true') {
+      return;
+    }
+    
+    // Get element at cursor position
+    const elementAtPoint = document.elementFromPoint(x, y);
+    
+    if (!elementAtPoint) return;
+    
+    // Find if this element or any of its parents are clickable
+    const isClickable = (element: Element): boolean => {
+      if (!element) return false;
+      
+      // Check common clickable elements
+      if (element.tagName === 'BUTTON' || 
+          element.tagName === 'A' ||
+          element.tagName === 'INPUT' ||
+          element.tagName === 'SELECT' ||
+          element.tagName === 'LABEL' ||
+          element.hasAttribute('onclick') ||
+          element.getAttribute('role') === 'button' ||
+          element.classList.contains('btn') ||
+          window.getComputedStyle(element).cursor === 'pointer') {
+        return true;
+      }
+      
+      // Check for click event listeners (indirect method)
+      if (element.hasAttribute('data-testid') || 
+          element.id || 
+          element.className.includes('button') ||
+          element.className.includes('btn')) {
+        return true;
+      }
+      
+      // Check if any parent is clickable (up to 3 levels)
+      let parent = element.parentElement;
+      let level = 0;
+      while (parent && level < 3) {
+        if (isClickable(parent)) return true;
+        parent = parent.parentElement;
+        level++;
+      }
+      
+      return false;
+    };
+    
+    // Check if element is clickable
+    if (isClickable(elementAtPoint)) {
+      // Add visual feedback for click
+      cursorElement.setAttribute('data-clicked', 'true');
+      
+      // Dispatch click event
+      const clickEvent = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      });
+      
+      elementAtPoint.dispatchEvent(clickEvent);
+      
+      // Allow another click after delay
+      setTimeout(() => {
+        cursorElement.removeAttribute('data-clicked');
+      }, 800); // 800ms cooldown between clicks
+    }
+  }
 };
 
 // Clean up cursor elements

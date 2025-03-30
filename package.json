@@ -14,7 +14,11 @@
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/hands": "^0.4.1675469240",
     "@mediapipe/tasks-vision": "^0.10.22-rc.20250304",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "lucide-react": "^0.344.0",
+    "multer": "^1.4.5-lts.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

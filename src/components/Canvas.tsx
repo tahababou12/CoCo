@@ -4,6 +4,34 @@ import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
 
+// Define a type for the enhanced image
+interface EnhancedImage {
+  id: string;
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  prompt: string;
+  base64Data?: string;
+  isDragging: boolean;
+  isResizing: boolean;
+  resizeHandle: string | null;
+}
+
+// Define a type for the enhanced image result from API
+interface EnhancedImageResult {
+  filename: string;
+  path: string;
+  absolute_path: string;
+  width: number;
+  height: number;
+  original_width: number;
+  original_height: number;
+  base64Data: string;
+  prompt: string;
+}
+
 const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -21,6 +49,16 @@ const Canvas: React.FC = () => {
     position: { x: 0, y: 0 },
     value: '',
   })
+  const [enhancedImage, setEnhancedImage] = useState<string | null>(null)
+  const [enhancementStatus, setEnhancementStatus] = useState<string>('idle')
+  const [lastSavedFilename, setLastSavedFilename] = useState<string | null>(null)
+  const [enhancementPrompt, setEnhancementPrompt] = useState<string>('')
+  const [isPromptInputVisible, setIsPromptInputVisible] = useState<boolean>(false)
+  
+  // Add state for interactive enhanced images
+  const [interactiveEnhancedImages, setInteractiveEnhancedImages] = useState<EnhancedImage[]>([])
+  const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
+  const [initialImageState, setInitialImageState] = useState<EnhancedImage | null>(null)
 
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -354,6 +392,56 @@ const Canvas: React.FC = () => {
     
     const point = getCanvasPoint(e.clientX, e.clientY);
 
+    // Handle enhanced image dragging and resizing
+    if (dragStartPos && initialImageState) {
+      const dx = e.clientX - dragStartPos.x;
+      const dy = e.clientY - dragStartPos.y;
+
+      setInteractiveEnhancedImages(images => images.map(img => {
+        if (img.isDragging) {
+          // Handle dragging
+          return {
+            ...img,
+            x: initialImageState.x + dx,
+            y: initialImageState.y + dy
+          };
+        } else if (img.isResizing && img.resizeHandle) {
+          // Handle resizing based on which handle was grabbed
+          let newWidth = img.width;
+          let newHeight = img.height;
+          let newX = img.x;
+          let newY = img.y;
+
+          // Handle different resize positions
+          if (img.resizeHandle.includes('e')) {
+            newWidth = Math.max(50, initialImageState.width + dx);
+          }
+          if (img.resizeHandle.includes('s')) {
+            newHeight = Math.max(50, initialImageState.height + dy);
+          }
+          if (img.resizeHandle.includes('w')) {
+            newWidth = Math.max(50, initialImageState.width - dx);
+            newX = initialImageState.x + dx;
+          }
+          if (img.resizeHandle.includes('n')) {
+            newHeight = Math.max(50, initialImageState.height - dy);
+            newY = initialImageState.y + dy;
+          }
+
+          return {
+            ...img,
+            width: newWidth,
+            height: newHeight,
+            x: newX,
+            y: newY
+          };
+        }
+        return img;
+      }));
+
+      return; // Don't proceed with other pointer move handlers
+    }
+
     // For touch input, always treat it as if the primary button is pressed
     // For mouse input, check if button is actually pressed
     const isPrimaryButtonPressed = e.pointerType === 'touch' || e.buttons === 1;
@@ -394,6 +482,18 @@ const Canvas: React.FC = () => {
       canvasRef.current.releasePointerCapture(e.pointerId);
     } catch (err) {
       console.error('Failed to release pointer capture', err);
+    }
+    
+    // Reset enhanced image interaction states
+    if (dragStartPos) {
+      setInteractiveEnhancedImages(images => images.map(img => ({
+        ...img,
+        isDragging: false,
+        isResizing: false,
+        resizeHandle: null
+      })));
+      setDragStartPos(null);
+      setInitialImageState(null);
     }
     
     if (isPanning) {
@@ -480,23 +580,209 @@ const Canvas: React.FC = () => {
 
   const handleClearAll = () => {
     if (state.shapes.length > 0) {
-      // Ask for confirmation before clearing
-      const confirmClear = window.confirm("Are you sure you want to clear all drawings?");
+      // End any current drawing first
+      if (state.currentShape) {
+        dispatch({ type: 'END_DRAWING' });
+        setIsDrawing(false);
+      }
       
-      if (confirmClear) {
-        // End any current drawing first
-        if (state.currentShape) {
-          dispatch({ type: 'END_DRAWING' });
-          setIsDrawing(false);
-        }
+      // Get all shape IDs
+      const shapeIds = state.shapes.map(shape => shape.id);
+      
+      // Delete all shapes
+      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
+    }
+  }
+
+  const saveCanvasAsPNG = async () => {
+    if (!canvasRef.current || state.shapes.length === 0) return;
+    
+    // Create a temporary canvas for rendering just the drawings
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+    
+    // Find the bounding box of all shapes
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    
+    // Calculate the bounds for all shapes
+    state.shapes.forEach(shape => {
+      shape.points.forEach(point => {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      });
+      
+      // For text, estimate the bounds based on the text and font size
+      if (shape.type === 'text' && shape.text) {
+        const fontSize = shape.style.fontSize || 16;
+        const textWidth = shape.text.length * fontSize * 0.6; // Rough estimate
+        const textHeight = fontSize * 1.2; // Rough estimate
         
-        // Get all shape IDs
-        const shapeIds = state.shapes.map(shape => shape.id);
-        
-        // Delete all shapes
-        dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
+        minX = Math.min(minX, shape.points[0].x);
+        minY = Math.min(minY, shape.points[0].y);
+        maxX = Math.max(maxX, shape.points[0].x + textWidth);
+        maxY = Math.max(maxY, shape.points[0].y + textHeight);
+      }
+    });
+    
+    // Add padding
+    const padding = 20;
+    minX -= padding;
+    minY -= padding;
+    maxX += padding;
+    maxY += padding;
+    
+    // Set canvas size to fit the bounding box
+    const width = Math.max(maxX - minX, 1);
+    const height = Math.max(maxY - minY, 1);
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    
+    // Fill with a white background
+    tempCtx.fillStyle = '#FFFFFF';
+    tempCtx.fillRect(0, 0, width, height);
+    
+    // Apply transform to center the drawings
+    tempCtx.translate(-minX, -minY);
+    
+    // Draw all shapes
+    state.shapes.forEach(shape => {
+      renderShape(tempCtx, shape);
+    });
+    
+    // Convert to image
+    try {
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      
+      // Send image data to server
+      const response = await fetch('http://localhost:5001/api/save-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageData: dataUrl }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Server error: ${errorData.error || 'Unknown error'}`);
+      }
+      
+      const result = await response.json();
+      console.log(`Image saved successfully to: ${result.absolutePath}`);
+      
+      // Save the filename for potential enhancement
+      setLastSavedFilename(result.filename);
+      
+      // Show success message
+      alert(`Image saved successfully to img folder as: ${result.filename}`);
+      
+    } catch (err) {
+      console.error('Error saving canvas:', err);
+      alert(`Error saving image: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const enhanceDrawingWithGemini = async () => {
+    // Make sure we have a saved image to enhance
+    if (!lastSavedFilename) {
+      // If no image has been saved yet, save it first
+      await saveCanvasAsPNG();
+      // If we still don't have a filename, something went wrong
+      if (!lastSavedFilename) {
+        alert('Please save your drawing first before enhancing');
+        return;
       }
     }
+
+    setEnhancementStatus('processing');
+    setEnhancedImage(null);
+
+    try {
+      // Request image enhancement from Flask server
+      const response = await fetch('http://localhost:5001/api/enhance-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          filename: lastSavedFilename,
+          prompt: enhancementPrompt || 'Enhance this sketch into an image with more detail.'
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Server error: ${errorData.error || 'Unknown error'}`);
+      }
+
+      const result = await response.json();
+      console.log('Enhancement started:', result);
+
+      if (result.success && result.requestId) {
+        // Poll for enhancement status
+        pollEnhancementStatus(result.requestId);
+      } else {
+        throw new Error('Failed to start enhancement process');
+      }
+    } catch (err) {
+      console.error('Error enhancing drawing:', err);
+      alert(`Error enhancing drawing: ${err instanceof Error ? err.message : String(err)}`);
+      setEnhancementStatus('error');
+    }
+  }
+
+  const pollEnhancementStatus = async (requestId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/enhancement-status/${requestId}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Error response: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch enhancement status: ${response.status} ${response.statusText}`);
+      }
+      
+      const status = await response.json();
+      console.log('Enhancement status:', status);
+      
+      if (status.status === 'processing') {
+        // Continue polling every 2 seconds
+        setTimeout(() => pollEnhancementStatus(requestId), 2000);
+      } else if (status.status === 'complete' && status.result) {
+        // Enhancement is complete, add the enhanced image to the canvas
+        setEnhancementStatus('complete');
+        
+        // Add as interactive image
+        addEnhancedImageToCanvas(status.result);
+      } else if (status.status === 'error') {
+        // Enhancement failed
+        setEnhancementStatus('error');
+        
+        // Show a more detailed error message
+        const errorMessage = status.message || 'Unknown error occurred';
+        console.error('Enhancement error:', errorMessage);
+        alert(`Error in enhancement process: ${errorMessage}`);
+      } else {
+        // Unexpected status
+        setEnhancementStatus('error');
+        alert(`Unexpected status returned: ${status.status}`);
+      }
+    } catch (err) {
+      console.error('Error polling enhancement status:', err);
+      setEnhancementStatus('error');
+      alert(`Error checking enhancement status: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  const handlePromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsPromptInputVisible(false);
+    enhanceDrawingWithGemini();
   }
 
   const getCursorForTool = (tool: string): string => {
@@ -516,6 +802,133 @@ const Canvas: React.FC = () => {
     }
   }
 
+  // Add a function to handle enhanced image interactions
+  const handlePointerDownOnEnhancedImage = (
+    e: React.PointerEvent, 
+    imageIndex: number, 
+    isResizeHandle: boolean = false,
+    handlePosition: string | null = null
+  ) => {
+    e.stopPropagation();
+
+    const updatedImages = [...interactiveEnhancedImages];
+    
+    // First, reset all images dragging/resizing state
+    updatedImages.forEach((img, idx) => {
+      if (idx !== imageIndex) {
+        img.isDragging = false;
+        img.isResizing = false;
+        img.resizeHandle = null;
+      }
+    });
+
+    // Set the current image state
+    if (isResizeHandle) {
+      updatedImages[imageIndex].isResizing = true;
+      updatedImages[imageIndex].resizeHandle = handlePosition;
+    } else {
+      updatedImages[imageIndex].isDragging = true;
+    }
+
+    setInteractiveEnhancedImages(updatedImages);
+    setDragStartPos({ x: e.clientX, y: e.clientY });
+    setInitialImageState({...updatedImages[imageIndex]});
+
+    // Ensure the pointer events are captured
+    if (canvasRef.current) {
+      canvasRef.current.setPointerCapture(e.pointerId);
+    }
+  };
+
+  // Add a function to convert an enhanced image result to an interactive image
+  const addEnhancedImageToCanvas = (result: EnhancedImageResult) => {
+    const newImage: EnhancedImage = {
+      id: `enhanced-${new Date().getTime()}`,
+      url: `http://localhost:5001${result.path}`,
+      x: state.viewTransform.offsetX + 100, // Position in the visible area
+      y: state.viewTransform.offsetY + 100,
+      width: result.width / 2, // Display at half size initially
+      height: result.height / 2,
+      prompt: result.prompt,
+      base64Data: result.base64Data,
+      isDragging: false,
+      isResizing: false,
+      resizeHandle: null
+    };
+
+    setInteractiveEnhancedImages(prev => [...prev, newImage]);
+    
+    // Hide the static enhanced image display
+    setEnhancedImage(null);
+  };
+
+  // Add a function to render enhanced images on the canvas
+  const renderEnhancedImages = () => {
+    return interactiveEnhancedImages.map((img, index) => (
+      <div 
+        key={img.id}
+        className="absolute"
+        style={{
+          left: img.x,
+          top: img.y,
+          width: img.width,
+          height: img.height,
+          cursor: img.isResizing ? 'nwse-resize' : 'move',
+          zIndex: 10
+        }}
+        onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index)}
+      >
+        <img 
+          src={img.url}
+          alt={`Enhanced: ${img.prompt}`}
+          className="w-full h-full object-contain"
+          style={{ 
+            pointerEvents: 'none',
+            border: '2px solid #9333ea',
+            borderRadius: '4px',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)'
+          }}
+        />
+        
+        {/* Resize handles */}
+        <div className="absolute top-0 left-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nwse-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'nw')}
+        />
+        <div className="absolute top-0 right-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nesw-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'ne')}
+        />
+        <div className="absolute bottom-0 left-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nesw-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'sw')}
+        />
+        <div className="absolute bottom-0 right-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nwse-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'se')}
+        />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ns-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'n')}
+        />
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ns-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 's')}
+        />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ew-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'w')}
+        />
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ew-resize"
+          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'e')}
+        />
+        
+        {/* Delete button */}
+        <button
+          className="absolute -top-3 -right-3 bg-white rounded-full w-6 h-6 flex items-center justify-center text-purple-700 hover:text-red-600 border border-purple-600 shadow-sm"
+          onClick={() => {
+            setInteractiveEnhancedImages(images => images.filter((_, i) => i !== index));
+          }}
+        >
+          ✕
+        </button>
+      </div>
+    ));
+  }
+
   return (
     <div 
       ref={containerRef}
@@ -530,15 +943,88 @@ const Canvas: React.FC = () => {
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
-          className="absolute top-4 left-4 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200 group relative"
+          className="absolute left-4 top-1/2 -translate-y-1/2 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200 group relative"
           onClick={handleClearAll}
           title="Clear All Drawings"
         >
           Clear All
-          <span className="absolute -top-2 -right-2 bg-white text-red-600 text-xs rounded-full w-5 h-5 flex items-center justify-center shadow-sm">
-            {state.shapes.length}
-          </span>
         </button>
+      )}
+      
+      {/* Save to Folder button - only shown when there are shapes */}
+      {state.shapes.length > 0 && (
+        <button
+          className="absolute left-4 top-1/2 mt-12 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+          onClick={saveCanvasAsPNG}
+          title="Save to img folder"
+        >
+          Save to Folder
+        </button>
+      )}
+
+      {/* Enhance with Gemini button - only shown when there are shapes */}
+      {state.shapes.length > 0 && (
+        <button
+          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+          onClick={() => setIsPromptInputVisible(true)}
+          disabled={enhancementStatus === 'processing'}
+          title="Enhance with Gemini"
+        >
+          {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
+        </button>
+      )}
+
+      {/* Enhanced image display - replaced by interactive images */}
+      {enhancedImage && (
+        <div className="absolute right-4 bottom-4 z-20 shadow-lg rounded-lg overflow-hidden">
+          <img 
+            src={enhancedImage} 
+            alt="Gemini Enhanced" 
+            className="max-h-80 max-w-sm object-contain bg-white"
+            style={{ border: '3px solid #9333ea' }}
+          />
+          <button
+            className="absolute top-2 right-2 bg-white rounded-full w-6 h-6 flex items-center justify-center text-gray-700 hover:text-red-600"
+            onClick={() => setEnhancedImage(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Render interactive enhanced images */}
+      {renderEnhancedImages()}
+
+      {/* Prompt input for Gemini enhancement */}
+      {isPromptInputVisible && (
+        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-lg shadow-lg z-30 w-96">
+          <h3 className="text-lg font-bold mb-2">Enhance Drawing with Gemini</h3>
+          <form onSubmit={handlePromptSubmit}>
+            <input
+              type="text"
+              className="w-full p-2 border border-gray-300 rounded mb-3"
+              placeholder="Describe how to enhance your drawing..."
+              value={enhancementPrompt}
+              onChange={(e) => setEnhancementPrompt(e.target.value)}
+              autoFocus
+            />
+            <div className="flex justify-end space-x-2">
+              <button
+                type="button"
+                className="px-4 py-2 bg-gray-200 rounded"
+                onClick={() => setIsPromptInputVisible(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-purple-600 text-white rounded"
+              >
+                Enhance
+              </button>
+            </div>
+          </form>
+        </div>
       )}
       
       <canvas
