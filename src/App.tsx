@@ -6,6 +6,7 @@ import Toolbar from './components/Toolbar';
 import Header from './components/Header';
 import HandDrawing from './components/HandDrawing';
 import LoginButton from './components/LoginButton';
+import PostLoginAuth from './components/PostLoginAuth';
 import { DrawingProvider } from './context/DrawingContext';
 import { HandGestureProvider } from './context/HandGestureContext';
 
@@ -75,7 +76,12 @@ function App() {
     );
   }
 
-  return <ProtectedAppWithAuth />;
+  return (
+    <>
+      <PostLoginAuth />
+      <ProtectedAppWithAuth />
+    </>
+  );
 }
 
 export default App;
