@@ -3,3 +3,12 @@ node_modules/
 .env
 
 venv/
+
+# Project specific
+saved_drawings/
+enhanced_drawings/
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.mp3
