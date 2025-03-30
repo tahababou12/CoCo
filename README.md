@@ -1,4 +1,4 @@
-# CoCo - Collaborative Canvas
+# CoCo - Co-Composer of Ideas
 
 A creative drawing application with hand gesture recognition and AI enhancement capabilities.
 
@@ -73,9 +73,7 @@ After enhancing your drawing:
 ## Development
 
 This project is built using Vite with React and TypeScript for the frontend and Flask for the backend.
-# CoCo - Collaborative Whiteboard
 
-CoCo is a real-time collaborative drawing application that allows multiple users to draw simultaneously on a shared canvas. It features real-time cursor tracking, various drawing tools, and collaborative features.
 
 ## Features
 
