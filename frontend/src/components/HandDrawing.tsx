@@ -460,13 +460,139 @@ const HandDrawing: React.FC = () => {
         saveDrawing();
       }
       
-      // Switch to eraser tool
-      if (state.tool !== 'eraser') {
-        dispatch({ type: 'SET_TOOL', payload: 'eraser' });
+      // Switch to pixel eraser tool
+      if (state.tool !== 'pixel_eraser') {
+        dispatch({ type: 'SET_TOOL', payload: 'pixel_eraser' });
       }
       
-      // Store the current point
+      // Implement simpler, more performant pixel-level erasing
+      const prevPoint = prevPointsRef.current[handIndex];
       prevPointsRef.current[handIndex] = transformedPoint;
+      
+      // If this is the first detection, just store the point
+      if (prevPoint === null) {
+        return;
+      }
+      
+      const eraserRadius = 15; // Larger radius for easier erasing
+      const eraserRadiusSquared = eraserRadius * eraserRadius;
+      
+      // Find shapes to modify from eraser path
+      // We'll only process a maximum of 1 shape per frame to keep things smooth
+      for (let i = 0; i < state.shapes.length; i++) {
+        const shape = state.shapes[i];
+        
+        // Only pencil strokes can be partially erased
+        if (shape.type !== 'pencil' || shape.points.length < 2) {
+          continue;
+        }
+        
+        // Linear interpolation between previous and current eraser points
+        // to ensure we don't miss anything even with fast movements
+        const steps = 3; // Small number of steps for performance
+        const eraserPoints = [];
+        
+        for (let j = 0; j <= steps; j++) {
+          const t = j / steps;
+          eraserPoints.push({
+            x: prevPoint.x + (transformedPoint.x - prevPoint.x) * t,
+            y: prevPoint.y + (transformedPoint.y - prevPoint.y) * t
+          });
+        }
+        
+        // Check if any part of the shape is under the eraser path
+        let pointsToKeep = [];
+        let hasErasedSegment = false;
+        
+        // Check each point in the shape
+        for (let j = 0; j < shape.points.length; j++) {
+          const p = shape.points[j];
+          let shouldKeep = true;
+          
+          // Check if this point is under any part of the eraser path
+          for (const eraserPoint of eraserPoints) {
+            const dx = p.x - eraserPoint.x;
+            const dy = p.y - eraserPoint.y;
+            const distSquared = dx*dx + dy*dy;
+            
+            if (distSquared <= eraserRadiusSquared) {
+              shouldKeep = false;
+              hasErasedSegment = true;
+              break;
+            }
+          }
+          
+          if (shouldKeep) {
+            pointsToKeep.push(p);
+          }
+        }
+        
+        // If we erased some points but not all, create new shapes with remaining points
+        if (hasErasedSegment && pointsToKeep.length > 0) {
+          // Delete the original shape
+          dispatch({ type: 'DELETE_SHAPES', payload: [shape.id] });
+          
+          // Find continuous segments in the remaining points
+          let currentSegment: Point[] = [];
+          
+          for (let j = 0; j < pointsToKeep.length; j++) {
+            // Start of a new segment
+            if (currentSegment.length === 0) {
+              currentSegment.push(pointsToKeep[j]);
+              continue;
+            }
+            
+            // If this point is close to the last one in the current segment, add it
+            const lastPoint = currentSegment[currentSegment.length - 1];
+            const dx = pointsToKeep[j].x - lastPoint.x;
+            const dy = pointsToKeep[j].y - lastPoint.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            if (dist < eraserRadius * 2) {
+              // This point is connected to the previous one
+              currentSegment.push(pointsToKeep[j]);
+            } else {
+              // This point starts a new segment - save current segment if valid
+              if (currentSegment.length >= 2) {
+                // Create new shape for this segment
+                const newShape = {
+                  id: shape.id + '_' + Math.random().toString(36).substring(2, 9),
+                  type: 'pencil' as const,
+                  points: [...currentSegment],
+                  style: { ...shape.style },
+                  isSelected: false
+                };
+                
+                dispatch({ type: 'ADD_SHAPE', payload: newShape });
+              }
+              
+              // Start a new segment
+              currentSegment = [pointsToKeep[j]];
+            }
+          }
+          
+          // Add the last segment if valid
+          if (currentSegment.length >= 2) {
+            const newShape = {
+              id: shape.id + '_' + Math.random().toString(36).substring(2, 9),
+              type: 'pencil' as const,
+              points: [...currentSegment],
+              style: { ...shape.style },
+              isSelected: false
+            };
+            
+            dispatch({ type: 'ADD_SHAPE', payload: newShape });
+          }
+          
+          // Only process one shape per frame for performance
+          break;
+        }
+        // If all points were erased, just delete the shape
+        else if (hasErasedSegment && pointsToKeep.length === 0) {
+          dispatch({ type: 'DELETE_SHAPES', payload: [shape.id] });
+          break;
+        }
+      }
     }
     // Clear all mode
     else if (mode === "Clear All") {
