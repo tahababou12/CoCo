@@ -69,10 +69,16 @@ const Toolbar: React.FC = () => {
   }
 
   const handleStrokeColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Update color without changing the current tool
     dispatch({
       type: 'SET_STYLE',
       payload: { strokeColor: e.target.value },
     })
+    
+    // Make sure current tool remains active
+    if (['pencil', 'rectangle', 'ellipse', 'line', 'text'].includes(state.tool)) {
+      console.log(`Keeping current tool (${state.tool}) active after color change`)
+    }
   }
 
   const handleFillColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,6 +86,11 @@ const Toolbar: React.FC = () => {
       type: 'SET_FILL_COLOR',
       payload: e.target.value === '#000000' ? 'transparent' : e.target.value,
     })
+    
+    // Make sure current tool remains active
+    if (['rectangle', 'ellipse'].includes(state.tool)) {
+      console.log(`Keeping current tool (${state.tool}) active after fill color change`)
+    }
   }
 
   const handleStrokeWidthChange = (value: number) => {

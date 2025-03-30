@@ -52,8 +52,7 @@ const Canvas: React.FC = () => {
   })
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null)
   const [enhancementStatus, setEnhancementStatus] = useState<string>('idle')
-  const [lastSavedFilename, setLastSavedFilename] = useState<string | null>(null)
-  
+
   // Add state for interactive enhanced images
   const [interactiveEnhancedImages, setInteractiveEnhancedImages] = useState<EnhancedImage[]>([])
   const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
@@ -134,17 +133,32 @@ const Canvas: React.FC = () => {
       });
     }
 
+    // Set current stroke color and width from defaultStyle
+    context.strokeStyle = state.defaultStyle.strokeColor;
+    context.lineWidth = state.defaultStyle.strokeWidth;
+    
     // Draw current shape being created
     if (state.currentShape) {
       console.log('Drawing current shape:', state.currentShape.type);
       console.log('Current shape has points:', state.currentShape.points.length);
+      console.log('Using color:', state.defaultStyle.strokeColor);
       
       // Extra validation to help debugging
       if (state.currentShape.points.length === 0) {
         console.warn('Current shape has no points!');
       }
       
-      renderShape(context, state.currentShape);
+      // Make sure current shape uses current style
+      const currentShapeWithStyle = {
+        ...state.currentShape,
+        style: {
+          ...state.currentShape.style,
+          strokeColor: state.defaultStyle.strokeColor,
+          strokeWidth: state.defaultStyle.strokeWidth
+        }
+      };
+      
+      renderShape(context, currentShapeWithStyle);
       
       // If we have a current shape, we should be in drawing mode
       if (!isDrawing) {
@@ -376,7 +390,7 @@ const Canvas: React.FC = () => {
       case 'ellipse':
       case 'line':
       case 'pencil':
-        console.log('Starting to draw with', state.tool);
+        console.log('Starting to draw with', state.tool, 'using color', state.defaultStyle.strokeColor);
         setIsDrawing(true);
         dispatch({
           type: 'START_DRAWING',
@@ -485,8 +499,12 @@ const Canvas: React.FC = () => {
 
     // For drawing, check if we're in drawing mode rather than relying only on button state
     if (isDrawing && state.currentShape) {
-      console.log('Drawing in progress...', state.tool, point, 'pointerType:', e.pointerType);
+      console.log('Drawing in progress...', state.tool, point, 'pointerType:', e.pointerType, 'using color:', state.defaultStyle.strokeColor);
+      
+      // Continue drawing with current point
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
+      
+      // No need to re-dispatch SET_STYLE here since renderCanvas will handle it
     }
 
     // Add this to the section handling image resizing
@@ -773,9 +791,6 @@ const Canvas: React.FC = () => {
       const result = await response.json();
       console.log(`Image saved successfully to: ${result.absolutePath}`);
       
-      // Save the filename for potential enhancement
-      setLastSavedFilename(result.filename);
-      
       // Show success message with toast instead of alert
       window.showToast(`Image saved as: ${result.filename}`, 'success', 3000);
       
@@ -877,10 +892,6 @@ const Canvas: React.FC = () => {
       const saveResult = await saveResponse.json();
       console.log(`Image saved for enhancement: ${saveResult.absolutePath}`);
       
-      // Save the filename for enhancement
-      const filename = saveResult.filename;
-      setLastSavedFilename(filename);
-      
       // Use a default enhancement prompt
       const defaultPrompt = 'Enhance this sketch into an image with more detail';
 
@@ -891,7 +902,7 @@ const Canvas: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          filename: filename,
+          filename: saveResult.filename,
           prompt: defaultPrompt
         }),
       });
