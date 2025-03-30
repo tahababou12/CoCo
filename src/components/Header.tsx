@@ -1,9 +1,13 @@
 import React, { useState } from 'react'
 import { useDrawing } from '../context/DrawingContext'
 import { Download, Share2, Clock, User, ChevronDown } from 'lucide-react'
+import LoginButton from './LoginButton'
+import LogoutButton from './LogoutButton'  
+import { useAuth0 } from "@auth0/auth0-react"
 
 const Header: React.FC = () => {
   const { state } = useDrawing()
+  const { isAuthenticated } = useAuth0()
   const [documentName, setDocumentName] = useState('Untitled')
   
   const handleExport = () => {
@@ -92,6 +96,11 @@ const Header: React.FC = () => {
       
       <div className="flex items-center space-x-1">
         <div className="flex items-center bg-neutral-100 rounded-md p-0.5">
+          {isAuthenticated ? (
+            <LogoutButton />
+          ) : (
+            <LoginButton />
+          )}
           <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
             <User size={16} />
           </button>
