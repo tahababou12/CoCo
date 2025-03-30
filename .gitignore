@@ -76,6 +76,15 @@ yarn-error.log*
 /tmp
 /out
 /build
+# Project specific
+saved_drawings/
+enhanced_drawings/
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.mp3
+
 
 # Coverage
 /coverage
