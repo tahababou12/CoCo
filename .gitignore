@@ -12,3 +12,5 @@ enhanced_drawings/
 *.jpeg
 *.mp4
 *.mp3
+
+.DS_Store

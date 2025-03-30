@@ -10,6 +10,10 @@ import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/h
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
 import { useHandGesture } from '../context/HandGestureContext';
 
+// Debug configuration
+const DEBUG = false;
+const DEBUG_FINGER_DRAWING = true;
+
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
   const { isHandTrackingActive, setCurrentGestures, setIsHandTrackingActive } = useHandGesture();
@@ -322,6 +326,13 @@ const HandDrawing: React.FC = () => {
       saveDrawing();
     }
 
+    // Debug finger drawing issues
+    if (DEBUG_FINGER_DRAWING && mode === 'Drawing') {
+      console.log('Drawing mode detected, transformed point:', transformedPoint);
+      console.log('Current drawing state:', state.currentShape ? 'Drawing in progress' : 'No active drawing');
+      console.log('Current selected tool:', state.tool);
+    }
+
     // Handle different modes
     if (mode === "Drawing") {
       const prevPoint = prevPointsRef.current[handIndex];
@@ -334,28 +345,30 @@ const HandDrawing: React.FC = () => {
         
         // Only set tool if not already pencil
         if (state.tool !== 'pencil') {
+          if (DEBUG_FINGER_DRAWING) console.log('Setting tool to pencil');
           dispatch({ type: 'SET_TOOL', payload: 'pencil' });
         }
         
         // Only start drawing if we're not already drawing
-        if (!state.currentShape) {
-          dispatch({
-            type: 'START_DRAWING',
-            payload: { 
-              point: transformedPoint, 
-              type: 'pencil' 
-            }
-          });
+        // if (!state.currentShape) {
+        //   if (DEBUG_FINGER_DRAWING) console.log('Starting new drawing at', transformedPoint);
+        //   dispatch({
+        //     type: 'START_DRAWING',
+        //     payload: { 
+        //       point: transformedPoint, 
+        //       type: 'pencil' 
+        //     }
+        //   });
           
-          // Set stroke color
-          dispatch({
-            type: 'SET_STYLE',
-            payload: { 
-              strokeColor: drawingColorsRef.current[handIndex],
-              strokeWidth: drawingThickness
-            }
-          });
-        }
+        //   // Set stroke color
+        //   dispatch({
+        //     type: 'SET_STYLE',
+        //     payload: { 
+        //       strokeColor: drawingColorsRef.current[handIndex],
+        //       strokeWidth: drawingThickness
+        //     }
+        //   });
+        // }
         
         // Update local drawing state
         setIsDrawing(true);
@@ -371,8 +384,13 @@ const HandDrawing: React.FC = () => {
       const dy = transformedPoint.y - prevPoint.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // Only draw if we have a significant movement
-      if (distance < 1 && state.currentShape) {
+      // Reduce the threshold for movement detection - allow smaller movements
+      const MOVEMENT_THRESHOLD = 0.25; // Much smaller threshold for smoother drawing
+      
+      // Only draw if we have a significant movement, but still update timestamp
+      if (distance < MOVEMENT_THRESHOLD && state.currentShape) {
+        if (DEBUG_FINGER_DRAWING) console.log('Movement too small, skipping point but updating timestamp');
+        lastDrawingUpdateRef.current = Date.now();
         return;
       }
       
@@ -380,11 +398,14 @@ const HandDrawing: React.FC = () => {
       if (!state.currentShape) {
         // Switch to pencil tool
         if (state.tool !== 'pencil') {
+          if (DEBUG_FINGER_DRAWING) console.log('Setting tool to pencil (during drawing)');
           dispatch({ type: 'SET_TOOL', payload: 'pencil' });
         }
         
         // Update local drawing state
         setIsDrawing(true);
+        
+        if (DEBUG_FINGER_DRAWING) console.log('Starting drawing from previous point', prevPoint);
         
         // Start drawing from the previous point for continuity
         dispatch({
@@ -405,6 +426,8 @@ const HandDrawing: React.FC = () => {
         });
       } 
       
+      if (DEBUG_FINGER_DRAWING) console.log('Continuing drawing at', transformedPoint);
+      
       // Continue drawing - always update with new point
       dispatch({
         type: 'CONTINUE_DRAWING', 
@@ -421,6 +444,7 @@ const HandDrawing: React.FC = () => {
       // This ensures strokes persist even if hand tracking is lost
       const now = Date.now();
       if (now - lastDrawingUpdateRef.current > 500 && state.currentShape && state.currentShape.points.length > 10) {
+        if (DEBUG_FINGER_DRAWING) console.log('Periodic save of drawing with', state.currentShape.points.length, 'points');
         saveDrawing();
         
         // Immediately start a new drawing from the current point
@@ -448,6 +472,7 @@ const HandDrawing: React.FC = () => {
     else if (mode === "Erasing") {
       // Save any current drawing
       if (state.currentShape) {
+        if (DEBUG) console.log('Switching to eraser, saving current drawing');
         saveDrawing();
       }
       
@@ -463,6 +488,7 @@ const HandDrawing: React.FC = () => {
     else if (mode === "Clear All") {
       // Save any current drawing
       if (state.currentShape) {
+        if (DEBUG) console.log('Clearing canvas, saving current drawing first');
         saveDrawing();
       }
       
@@ -478,6 +504,7 @@ const HandDrawing: React.FC = () => {
     else {
       // Any other hand position - stop drawing
       if (state.currentShape) {
+        if (DEBUG) console.log('Hand mode changed, saving drawing');
         saveDrawing();
       }
       
@@ -495,6 +522,7 @@ const HandDrawing: React.FC = () => {
     const checkAndSaveTimeout = setTimeout(() => {
       const now = Date.now();
       if (state.currentShape && now - lastDrawingUpdateRef.current > 500) {
+        if (DEBUG) console.log('Auto-saving drawing due to inactivity');
         saveDrawing();
       }
     }, 500);
@@ -510,6 +538,7 @@ const HandDrawing: React.FC = () => {
     return () => {
       // Make sure we end any active drawing
       if (state.currentShape) {
+        if (DEBUG) console.log('Cleanup: ending active drawing');
         dispatch({ type: 'END_DRAWING' });
       }
     };
@@ -519,6 +548,7 @@ const HandDrawing: React.FC = () => {
   const toggleHandTracking = () => {
     // If turning off, make sure we end any active drawing
     if (isHandTrackingActive && state.currentShape) {
+      if (DEBUG) console.log('Turning off hand tracking, ending drawing');
       dispatch({ type: 'END_DRAWING' });
       setIsDrawing(false);
     }
@@ -543,8 +573,10 @@ const HandDrawing: React.FC = () => {
   // Add synchronization effect for drawing state
   useEffect(() => {
     if (state.currentShape && !isDrawing) {
+      if (DEBUG_FINGER_DRAWING) console.log('Syncing local drawing state to true');
       setIsDrawing(true);
     } else if (!state.currentShape && isDrawing) {
+      if (DEBUG_FINGER_DRAWING) console.log('Syncing local drawing state to false');
       setIsDrawing(false);
     }
   }, [state.currentShape, isDrawing]);
@@ -552,6 +584,7 @@ const HandDrawing: React.FC = () => {
   // Function to check for stale drawings and end them
   const checkStaleDrawings = () => {
     if (state.currentShape && Date.now() - lastDrawingUpdateRef.current > DRAWING_TIMEOUT_MS) {
+      if (DEBUG) console.log('Stale drawing detected, ending drawing');
       dispatch({ type: 'END_DRAWING' });
       setIsDrawing(false);
     }
@@ -580,9 +613,33 @@ const HandDrawing: React.FC = () => {
     
     // Check if shape has enough points to be valid
     if (state.currentShape.points.length < 2) {
+      if (DEBUG_FINGER_DRAWING) console.log('Not enough points to save drawing, discarding');
       dispatch({ type: 'END_DRAWING' });
       setIsDrawing(false);
       return;
+    }
+    
+    if (DEBUG_FINGER_DRAWING) {
+      console.log('Saving drawing with', state.currentShape.points.length, 'points');
+      console.log('First point:', state.currentShape.points[0]);
+      console.log('Last point:', state.currentShape.points[state.currentShape.points.length - 1]);
+    }
+    
+    // Make sure stroke style is correct before finalizing
+    if (state.currentShape && state.currentShape.style) {
+      // Ensure stroke color and width are set correctly
+      if (state.currentShape.style.strokeColor !== drawingColorsRef.current[0] ||
+          state.currentShape.style.strokeWidth !== drawingThickness) {
+        
+        // Update style before ending drawing
+        dispatch({
+          type: 'SET_STYLE',
+          payload: { 
+            strokeColor: drawingColorsRef.current[0],
+            strokeWidth: drawingThickness
+          }
+        });
+      }
     }
     
     // End the current drawing to save it to shapes array
@@ -650,6 +707,35 @@ const HandDrawing: React.FC = () => {
             <div className="w-4 h-4 bg-red-200 mr-2"></div>
             <span>Middle Finger Only: Clear All</span>
           </div>
+        </div>
+      )}
+      
+      {/* Debug panel for finger drawing - only shown when DEBUG_FINGER_DRAWING is enabled */}
+      {isHandTrackingActive && DEBUG_FINGER_DRAWING && (
+        <div className="absolute right-4 top-60 bg-white p-2 rounded shadow-md text-xs z-10 max-w-xs">
+          <div><strong>Finger Drawing Debug:</strong></div>
+          <div>Drawing mode: {activeHandModesRef.current[0]}</div>
+          <div>IsDrawing state: {isDrawing ? 'true' : 'false'}</div>
+          <div>Has currentShape: {state.currentShape ? 'yes' : 'no'}</div>
+          <div>Current tool: {state.tool}</div>
+          <div>Shapes in canvas: {state.shapes.length}</div>
+          {state.currentShape && (
+            <>
+              <div>Current points: {state.currentShape.points.length}</div>
+              <div>Stroke color: {state.currentShape.style.strokeColor}</div>
+              <div>Stroke width: {state.currentShape.style.strokeWidth}</div>
+            </>
+          )}
+          <div>Last cursor position: {handCursors[0] ? 
+            `x:${handCursors[0].x.toFixed(2)}, y:${handCursors[0].y.toFixed(2)}` : 
+            'none'
+          }</div>
+          <div>Last transformed point: {prevPointsRef.current[0] ? 
+            `x:${prevPointsRef.current[0].x.toFixed(2)}, y:${prevPointsRef.current[0].y.toFixed(2)}` : 
+            'none'
+          }</div>
+          <div>View transform: scale:{state.viewTransform.scale.toFixed(2)}, 
+            offset:({state.viewTransform.offsetX.toFixed(0)},{state.viewTransform.offsetY.toFixed(0)})</div>
         </div>
       )}
     </div>
