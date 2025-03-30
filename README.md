@@ -33,6 +33,7 @@ import json
 # URL will be provided by Modal when you deploy the app
 ENDPOINT_URL = "https://your-username--trellis-generate.modal.run"
 
+<<<<<<< HEAD
 # Prepare your image
 with open("your_image.png", "rb") as f:
     # Use multipart/form-data format
@@ -73,6 +74,11 @@ with open("your_image.png", "rb") as f:
 ```
 
 ### Using the test client
+=======
+Creativity is often constrained by technical skills, complex software, and letting powerful AI models take the creative freedom from us. CoCo makes the composition of art – both in 2D and 3D – accessible to anyone regardless of artistic or technical abilities. Using computer vision, CoCo acts as an interactive assistant that improves and gives you feedbacks on your drawing – all done without a trackpad or pen!
+
+Our goal is to empower people to freely express their imagination and bring their ideas effortlessly into the real world.
+>>>>>>> 7f0b7eec293ab1f9baa8df84157a898b85f2ad80
 
 We provide a test client script that simplifies the API usage:
 
