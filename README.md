@@ -1,3 +1,101 @@
+# CoCo - Collaborative Canvas
+
+A creative drawing application with hand gesture recognition and AI enhancement capabilities.
+
+## Features
+
+- Interactive canvas for drawing and sketching
+- Hand gesture recognition for intuitive control
+- Various drawing tools: pencil, rectangle, ellipse, text, etc.
+- Clear all functionality with button or hand gesture
+- Save drawings directly to the `img` folder on the server
+- AI drawing enhancement powered by Google's Gemini model
+- Interactive enhanced images that can be moved, resized, and positioned on the canvas
+
+## Using Hand Gestures
+
+The application supports several hand gestures for intuitive control:
+- Index finger extended: Draw on the canvas
+- Closed fist: Click buttons and UI elements
+- Two fingers (index and middle) extended: Clear the canvas
+
+## Saving and Enhancing Images
+
+### Save to Folder
+When you click the "Save to Folder" button, your drawing will be:
+1. Cropped to only include the area with content
+2. Saved as a PNG file to the `img` folder on the server
+3. Named with a timestamp for easy identification
+
+### Enhance with Gemini
+The "Enhance with Gemini" feature lets you transform your sketches using AI:
+1. First save your drawing or click the Enhance button directly
+2. Enter a prompt describing how you want your drawing enhanced
+3. Google's Gemini model will generate an enhanced version
+4. The enhanced image appears on your canvas as an interactive object
+5. All enhanced images are saved to the `enhanced_drawings` folder
+
+### Interactive Enhanced Images
+After enhancing your drawing:
+1. The enhanced image appears on your canvas as a movable, resizable element
+2. Drag the image to reposition it anywhere on your canvas
+3. Use the resize handles (small circles) to resize the image from any edge or corner
+4. Click the "X" button to remove the enhanced image from the canvas
+5. You can have multiple enhanced images on your canvas at once
+
+## Technical Architecture
+
+### Frontend (React)
+- React application with TypeScript
+- Canvas API for drawing
+- MediaPipe for hand gesture recognition (when used in standalone mode)
+
+### Backend (Flask)
+- Flask server to handle image saving and enhancement (running on port 5001)
+- Integration with Google Gemini API for AI image generation
+- Image processing with OpenCV
+
+## How Gemini Enhancement Works
+
+1. The drawing is sent to the Flask server
+2. The server processes the image and sends it to Google's Gemini model
+3. A custom prompt guides Gemini to enhance the drawing
+4. The enhanced image is saved and returned to the frontend
+5. The frontend displays the enhanced image as an interactive element on the canvas
+
+## Requirements
+
+- Node.js 16+ for the frontend
+- Python 3.8+ for the Flask backend
+- Google Gemini API key for AI enhancement
+- Webcam access (for hand tracking in standalone mode)
+
+## Development
+
+This project is built using Vite with React and TypeScript for the frontend and Flask for the backend.
+# CoCo - Collaborative Whiteboard
+
+CoCo is a real-time collaborative drawing application that allows multiple users to draw simultaneously on a shared canvas. It features real-time cursor tracking, various drawing tools, and collaborative features.
+
+## Features
+
+- Real-time collaboration with multiple users
+- Live cursor tracking for all participants
+- Drawing tools: pen, shapes, and more
+- WebSocket-based communication
+- Support for webcam sharing
+- History tracking and undo/redo
+- Export drawings as PNG
+
+## Tech Stack
+
+- **Frontend**: React, TypeScript, TailwindCSS, Vite
+- **Backend**: Node.js, Express, WebSockets
+- **Collaboration**: Custom WebSocket implementation
+
+
+
+
 # TRELLIS on Modal
 
 This repository contains code to run Microsoft's TRELLIS 3D generation model on [Modal](https://modal.com).
@@ -96,19 +194,6 @@ python test_client.py --url https://your-username--trellis-generate.modal.run --
 - The generated 3D model is returned in the requested format (GLB or PLY) along with preview videos
 - All parameters are sent as form data (strings) rather than query parameters
 
-# CoCo - Collaborative Canvas
-
-A creative drawing application with hand gesture recognition and AI enhancement capabilities.
-
-## Features
-
-- Interactive canvas for drawing and sketching
-- Hand gesture recognition for intuitive control
-- Various drawing tools: pencil, rectangle, ellipse, text, etc.
-- Clear all functionality with button or hand gesture
-- Save drawings directly to the `img` folder on the server
-- AI drawing enhancement powered by Google's Gemini model
-- Interactive enhanced images that can be moved, resized, and positioned on the canvas
 
 ## Setup
 
@@ -140,86 +225,7 @@ python app.py
 npm run dev
 ```
 
-## Using Hand Gestures
 
-The application supports several hand gestures for intuitive control:
-- Index finger extended: Draw on the canvas
-- Closed fist: Click buttons and UI elements
-- Two fingers (index and middle) extended: Clear the canvas
-
-## Saving and Enhancing Images
-
-### Save to Folder
-When you click the "Save to Folder" button, your drawing will be:
-1. Cropped to only include the area with content
-2. Saved as a PNG file to the `img` folder on the server
-3. Named with a timestamp for easy identification
-
-### Enhance with Gemini
-The "Enhance with Gemini" feature lets you transform your sketches using AI:
-1. First save your drawing or click the Enhance button directly
-2. Enter a prompt describing how you want your drawing enhanced
-3. Google's Gemini model will generate an enhanced version
-4. The enhanced image appears on your canvas as an interactive object
-5. All enhanced images are saved to the `enhanced_drawings` folder
-
-### Interactive Enhanced Images
-After enhancing your drawing:
-1. The enhanced image appears on your canvas as a movable, resizable element
-2. Drag the image to reposition it anywhere on your canvas
-3. Use the resize handles (small circles) to resize the image from any edge or corner
-4. Click the "X" button to remove the enhanced image from the canvas
-5. You can have multiple enhanced images on your canvas at once
-
-## Technical Architecture
-
-### Frontend (React)
-- React application with TypeScript
-- Canvas API for drawing
-- MediaPipe for hand gesture recognition (when used in standalone mode)
-
-### Backend (Flask)
-- Flask server to handle image saving and enhancement (running on port 5001)
-- Integration with Google Gemini API for AI image generation
-- Image processing with OpenCV
-
-## How Gemini Enhancement Works
-
-1. The drawing is sent to the Flask server
-2. The server processes the image and sends it to Google's Gemini model
-3. A custom prompt guides Gemini to enhance the drawing
-4. The enhanced image is saved and returned to the frontend
-5. The frontend displays the enhanced image as an interactive element on the canvas
-
-## Requirements
-
-- Node.js 16+ for the frontend
-- Python 3.8+ for the Flask backend
-- Google Gemini API key for AI enhancement
-- Webcam access (for hand tracking in standalone mode)
-
-## Development
-
-This project is built using Vite with React and TypeScript for the frontend and Flask for the backend.
-# CoCo - Collaborative Whiteboard
-
-CoCo is a real-time collaborative drawing application that allows multiple users to draw simultaneously on a shared canvas. It features real-time cursor tracking, various drawing tools, and collaborative features.
-
-## Features
-
-- Real-time collaboration with multiple users
-- Live cursor tracking for all participants
-- Drawing tools: pen, shapes, and more
-- WebSocket-based communication
-- Support for webcam sharing
-- History tracking and undo/redo
-- Export drawings as PNG
-
-## Tech Stack
-
-- **Frontend**: React, TypeScript, TailwindCSS, Vite
-- **Backend**: Node.js, Express, WebSockets
-- **Collaboration**: Custom WebSocket implementation
 
 ## Quick Start
 
@@ -303,6 +309,8 @@ This guide will help you set up CoCo for collaboration across different devices 
    http://YOUR_IP_ADDRESS:5173
    ```
 
+
+
 ### For Collaborators
 
 1. **Connect to the Host**:
@@ -311,6 +319,8 @@ This guide will help you set up CoCo for collaboration across different devices 
    http://HOST_IP_ADDRESS:5173
    ```
    Replace `HOST_IP_ADDRESS` with the IP address shared by the host.
+
+
 
 ### Troubleshooting
 
@@ -334,6 +344,8 @@ If connections fail:
 
 4. **Check the Frontend Environment**:
    Make sure the `.env` file has the correct IP address
+
+
 
 ## Project Structure
 
