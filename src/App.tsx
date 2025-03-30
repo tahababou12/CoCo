@@ -16,6 +16,11 @@ import { WebSocketProvider } from './context/WebSocketContext'
 import { useDrawing } from './context/DrawingContext'
 import { useWebSocket } from './context/WebSocketContext'
 
+import { useAuth0 } from '@auth0/auth0-react';
+import { withAuthenticationRequired } from '@auth0/auth0-react';
+import LoginButton from './components/LoginButton';
+import PostLoginAuth from './components/PostLoginAuth';
+
 // Wrapper component for webcam displays
 const WebcamDisplays: React.FC = () => {
   const { state } = useDrawing();
@@ -64,7 +69,7 @@ const CollaboratorCursors: React.FC = () => {
   );
 };
 
-function App() {
+function ProtectedApp() {
   const [showCocoify, setShowCocoify] = useState(false);
   const [showStoryboard, setShowStoryboard] = useState(false);
   const webSocket = useWebSocket();
@@ -106,15 +111,16 @@ function App() {
               <WebcamDisplays />
               <CollaboratorCursors />
               
-              {/* Video generation button */}
+              {/* Video generation button - positioned in the middle-right */}
               <button
-                className="absolute right-4 top-20 z-50 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg shadow flex items-center"
+                className="fixed right-4 top-1/2 transform -translate-y-1/2 z-50 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg shadow-lg flex items-center transition-transform hover:scale-105"
                 onClick={toggleStoryboard}
+                style={{ boxShadow: '0 4px 12px rgba(147, 51, 234, 0.3)' }}
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                Storyboard &amp; Video
+                Storyboard
               </button>
               
               {showCocoify && (
@@ -143,7 +149,62 @@ function App() {
         </HandGestureProvider>
       </WebSocketProvider>
     </DrawingProvider>
-  )
+  );
+};
+
+// Wrap the protected component with authentication
+const ProtectedAppWithAuth = withAuthenticationRequired(ProtectedApp);
+
+function App() {
+  const { isAuthenticated } = useAuth0();
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="text-center space-y-8">
+          {/* Logo and Title */}
+          <div className="space-y-4">
+            <div className="w-20 h-20 rounded-full bg-purple-600 flex items-center justify-center mx-auto">
+              <span className="text-3xl font-bold text-white">C</span>
+            </div>
+            <h1 className="text-4xl font-bold text-neutral-800">CoCo</h1>
+            <p className="text-lg text-neutral-500">Create, collaborate, and share your drawings</p>
+          </div>
+
+          {/* Login Button */}
+          <div className="pt-4">
+            <LoginButton />
+          </div>
+
+          {/* Feature Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-2xl mx-auto pt-8">
+            <div className="p-4">
+              <div className="text-purple-600 mb-2">🎨</div>
+              <h3 className="font-medium text-neutral-800">Draw Freely</h3>
+              <p className="text-sm text-neutral-500">Express your creativity with our intuitive drawing tools</p>
+            </div>
+            <div className="p-4">
+              <div className="text-purple-600 mb-2">🤝</div>
+              <h3 className="font-medium text-neutral-800">Collaborate</h3>
+              <p className="text-sm text-neutral-500">Work together in real-time with others</p>
+            </div>
+            <div className="p-4">
+              <div className="text-purple-600 mb-2">✨</div>
+              <h3 className="font-medium text-neutral-800">Hand Gestures</h3>
+              <p className="text-sm text-neutral-500">Draw naturally with hand tracking support</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PostLoginAuth />
+      <ProtectedAppWithAuth />
+    </>
+  );
 }
 
-export default App
+export default App;

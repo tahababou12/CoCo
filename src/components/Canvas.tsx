@@ -488,6 +488,73 @@ const Canvas: React.FC = () => {
       console.log('Drawing in progress...', state.tool, point, 'pointerType:', e.pointerType);
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
     }
+
+    // Add this to the section handling image resizing
+    const draggedImage = interactiveEnhancedImages.find(img => img.isDragging || img.isResizing);
+    
+    if (draggedImage && initialImageState && dragStartPos) {
+      const dx = e.clientX - dragStartPos.x;
+      const dy = e.clientY - dragStartPos.y;
+      
+      const draggedIndex = interactiveEnhancedImages.findIndex(img => 
+        img.isDragging || img.isResizing
+      );
+      
+      if (draggedIndex !== -1) {
+        const updatedImages = [...interactiveEnhancedImages];
+        const image = { ...updatedImages[draggedIndex] };
+        
+        if (draggedImage.isResizing && draggedImage.resizeHandle) {
+          // Handle resizing based on which handle was grabbed
+          switch (draggedImage.resizeHandle) {
+            case 'bottom-right':
+              image.width = Math.max(50, initialImageState.width + dx);
+              image.height = Math.max(50, initialImageState.height + dy);
+              break;
+            case 'bottom-left':
+              image.width = Math.max(50, initialImageState.width - dx);
+              image.x = initialImageState.x + dx;
+              image.height = Math.max(50, initialImageState.height + dy);
+              break;
+            case 'top-right':
+              image.width = Math.max(50, initialImageState.width + dx);
+              image.height = Math.max(50, initialImageState.height - dy);
+              image.y = initialImageState.y + dy;
+              break;
+            case 'top-left':
+              image.width = Math.max(50, initialImageState.width - dx);
+              image.x = initialImageState.x + dx;
+              image.height = Math.max(50, initialImageState.height - dy);
+              image.y = initialImageState.y + dy;
+              break;
+            case 'right':
+              image.width = Math.max(50, initialImageState.width + dx);
+              break;
+            case 'left':
+              image.width = Math.max(50, initialImageState.width - dx);
+              image.x = initialImageState.x + dx;
+              break;
+            case 'bottom':
+              image.height = Math.max(50, initialImageState.height + dy);
+              break;
+            case 'top':
+              image.height = Math.max(50, initialImageState.height - dy);
+              image.y = initialImageState.y + dy;
+              break;
+          }
+        } else if (draggedImage.isDragging) {
+          // Handle dragging
+          image.x = initialImageState.x + dx;
+          image.y = initialImageState.y + dy;
+        }
+        
+        updatedImages[draggedIndex] = image;
+        setInteractiveEnhancedImages(updatedImages);
+        
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -729,97 +796,91 @@ const Canvas: React.FC = () => {
     setEnhancedImage(null);
     
     try {
-      // If no image has been saved yet, silently save it first
-      if (!lastSavedFilename) {
-        // Create a temporary canvas for rendering just the drawings
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        if (!tempCtx) {
-          throw new Error('Failed to create temporary canvas context');
-        }
-        
-        // Find the bounding box of all shapes
-        let minX = Infinity;
-        let minY = Infinity;
-        let maxX = -Infinity;
-        let maxY = -Infinity;
-        
-        // Calculate the bounds for all shapes
-        state.shapes.forEach(shape => {
-          shape.points.forEach(point => {
-            minX = Math.min(minX, point.x);
-            minY = Math.min(minY, point.y);
-            maxX = Math.max(maxX, point.x);
-            maxY = Math.max(maxY, point.y);
-          });
-          
-          // For text, estimate the bounds based on the text and font size
-          if (shape.type === 'text' && shape.text) {
-            const fontSize = shape.style.fontSize || 16;
-            const textWidth = shape.text.length * fontSize * 0.6; // Rough estimate
-            const textHeight = fontSize * 1.2; // Rough estimate
-            
-            minX = Math.min(minX, shape.points[0].x);
-            minY = Math.min(minY, shape.points[0].y);
-            maxX = Math.max(maxX, shape.points[0].x + textWidth);
-            maxY = Math.max(maxY, shape.points[0].y + textHeight);
-          }
-        });
-        
-        // Add padding
-        const padding = 20;
-        minX -= padding;
-        minY -= padding;
-        maxX += padding;
-        maxY += padding;
-        
-        // Set canvas size to fit the bounding box
-        const width = Math.max(maxX - minX, 1);
-        const height = Math.max(maxY - minY, 1);
-        tempCanvas.width = width;
-        tempCanvas.height = height;
-        
-        // Fill with a white background
-        tempCtx.fillStyle = '#FFFFFF';
-        tempCtx.fillRect(0, 0, width, height);
-        
-        // Apply transform to center the drawings
-        tempCtx.translate(-minX, -minY);
-        
-        // Draw all shapes
-        state.shapes.forEach(shape => {
-          renderShape(tempCtx, shape);
-        });
-        
-        // Convert to image
-        const dataUrl = tempCanvas.toDataURL('image/png');
-        
-        // Send image data to server
-        const saveResponse = await fetch('http://localhost:5001/api/save-image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ imageData: dataUrl }),
-        });
-        
-        if (!saveResponse.ok) {
-          const errorData = await saveResponse.json();
-          throw new Error(`Server error while saving: ${errorData.error || 'Unknown error'}`);
-        }
-        
-        const saveResult = await saveResponse.json();
-        console.log(`Image silently saved for enhancement: ${saveResult.absolutePath}`);
-        
-        // Save the filename for enhancement
-        setLastSavedFilename(saveResult.filename);
+      // Always save the drawing first before enhancing
+      // Create a temporary canvas for rendering just the drawings
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) {
+        throw new Error('Failed to create temporary canvas context');
       }
       
-      // If we still don't have a filename, something went wrong
-      if (!lastSavedFilename) {
-        throw new Error('Failed to save the drawing before enhancement');
+      // Find the bounding box of all shapes
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      
+      // Calculate the bounds for all shapes
+      state.shapes.forEach(shape => {
+        shape.points.forEach(point => {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        });
+        
+        // For text, estimate the bounds based on the text and font size
+        if (shape.type === 'text' && shape.text) {
+          const fontSize = shape.style.fontSize || 16;
+          const textWidth = shape.text.length * fontSize * 0.6; // Rough estimate
+          const textHeight = fontSize * 1.2; // Rough estimate
+          
+          minX = Math.min(minX, shape.points[0].x);
+          minY = Math.min(minY, shape.points[0].y);
+          maxX = Math.max(maxX, shape.points[0].x + textWidth);
+          maxY = Math.max(maxY, shape.points[0].y + textHeight);
+        }
+      });
+      
+      // Add padding
+      const padding = 20;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+      
+      // Set canvas size to fit the bounding box
+      const width = Math.max(maxX - minX, 1);
+      const height = Math.max(maxY - minY, 1);
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      
+      // Fill with a white background
+      tempCtx.fillStyle = '#FFFFFF';
+      tempCtx.fillRect(0, 0, width, height);
+      
+      // Apply transform to center the drawings
+      tempCtx.translate(-minX, -minY);
+      
+      // Draw all shapes
+      state.shapes.forEach(shape => {
+        renderShape(tempCtx, shape);
+      });
+      
+      // Convert to image
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      
+      // Send image data to server
+      const saveResponse = await fetch('http://localhost:5001/api/save-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageData: dataUrl }),
+      });
+      
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json();
+        throw new Error(`Server error while saving: ${errorData.error || 'Unknown error'}`);
       }
-
+      
+      const saveResult = await saveResponse.json();
+      console.log(`Image saved for enhancement: ${saveResult.absolutePath}`);
+      
+      // Save the filename for enhancement
+      const filename = saveResult.filename;
+      setLastSavedFilename(filename);
+      
       // Use a default enhancement prompt
       const defaultPrompt = 'Enhance this sketch into an image with more detail';
 
@@ -830,7 +891,7 @@ const Canvas: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          filename: lastSavedFilename,
+          filename: filename,
           prompt: defaultPrompt
         }),
       });
@@ -1041,7 +1102,7 @@ const Canvas: React.FC = () => {
           }}
         />
         
-        {/* Close and action buttons */}
+        {/* Close button */}
         <div className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 shadow-md"
           style={{ cursor: 'pointer', zIndex: 30 }}
           onClick={(e) => {
@@ -1053,25 +1114,70 @@ const Canvas: React.FC = () => {
           ✕
         </div>
         
-        {/* Add EnhancedImageActions component */}
+        {/* Add EnhancedImageActions component without onClose prop */}
         <EnhancedImageActions 
           imageData={{
             path: image.url,
             filename: image.id,
             base64Data: image.base64Data || ''
           }}
-          onClose={() => {
-            const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
-            setInteractiveEnhancedImages(updatedImages);
-          }}
         />
 
-        {/* Resize handles */}
-        <div className="absolute bottom-0 right-0 w-6 h-6 bg-purple-500 rounded-tl-md cursor-nwse-resize"
+        {/* Resize handles - all 8 directions */}
+        <div className="absolute top-0 left-0 w-4 h-4 bg-purple-500 rounded-br-md cursor-nwse-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'top-left');
+          }}
+        />
+        <div className="absolute top-0 right-0 w-4 h-4 bg-purple-500 rounded-bl-md cursor-nesw-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'top-right');
+          }}
+        />
+        <div className="absolute bottom-0 left-0 w-4 h-4 bg-purple-500 rounded-tr-md cursor-nesw-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'bottom-left');
+          }}
+        />
+        <div className="absolute bottom-0 right-0 w-4 h-4 bg-purple-500 rounded-tl-md cursor-nwse-resize"
           style={{ zIndex: 30 }}
           onPointerDown={(e) => {
             e.stopPropagation();
             handlePointerDownOnEnhancedImage(e, index, true, 'bottom-right');
+          }}
+        />
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-purple-500 rounded-b-md cursor-ns-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'top');
+          }}
+        />
+        <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-purple-500 rounded-t-md cursor-ns-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'bottom');
+          }}
+        />
+        <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-purple-500 rounded-r-md cursor-ew-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'left');
+          }}
+        />
+        <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-purple-500 rounded-l-md cursor-ew-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'right');
           }}
         />
       </div>

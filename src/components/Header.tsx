@@ -1,8 +1,11 @@
 import React, { useState, useRef } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { Download, Share2, Clock, User, ChevronDown, Sparkles, Film, History, ImageIcon } from 'lucide-react'
+import { Clock, User, History, ImageIcon } from 'lucide-react'
 import { renderShape } from '../utils/renderShape'
 import { Shape } from '../types'
+import LoginButton from './LoginButton'
+import LogoutButton from './LogoutButton'  
+import { useAuth0 } from "@auth0/auth0-react"
 
 interface HeaderProps {
   onToggleAI?: () => void;
@@ -19,19 +22,13 @@ interface StoryboardFrame {
   timestamp: number;
 }
 
-const Header: React.FC<HeaderProps> = ({ 
-  onToggleAI, 
-  showAIAssistant,
-  onToggleCollaboration,
-  showShareButton,
-  canvasRef
-}) => {
+const Header: React.FC<HeaderProps> = () => {
   const { state, dispatch } = useDrawing()
+  const { isAuthenticated } = useAuth0()
   const [documentName, setDocumentName] = useState('Untitled')
   const [showStoryboard, setShowStoryboard] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [frames, setFrames] = useState<StoryboardFrame[]>([])
-  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const handleExport = () => {
     const canvas = document.createElement('canvas')
@@ -284,7 +281,7 @@ const Header: React.FC<HeaderProps> = ({
             onChange={handleNameChange}
             className="text-sm font-medium text-neutral-800 bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-1 py-0.5 rounded hover:bg-neutral-100 focus:bg-neutral-100 transition-colors"
           />
-          <span className="text-xs text-neutral-400 ml-1 font-normal">Free</span>
+          {/* <span className="text-xs text-neutral-400 ml-1 font-normal">Free</span> */}
         </div>
         
         <button className="ml-1 p-1 rounded hover:bg-neutral-100">
@@ -311,6 +308,11 @@ const Header: React.FC<HeaderProps> = ({
             <StoryboardIcon />
           </button>
 
+          {isAuthenticated ? (
+            <LogoutButton />
+          ) : (
+            <LoginButton />
+          )}
           <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
             <User size={16} />
           </button>

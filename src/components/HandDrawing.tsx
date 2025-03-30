@@ -686,8 +686,8 @@ const HandDrawing: React.FC = () => {
             <span>Closed Fist: Click Buttons</span>
           </div>
           <div className="flex items-center">
-            <div className="w-4 h-4 bg-red-200 border-2 border-red-500 transform rotate-45 mr-2"></div>
-            <span>Two Fingers (Index & Middle): Clear All</span>
+            <div className="w-4 h-4 bg-red-200 mr-2"></div>
+            <span>Pinky Finger Only: Clear All</span>
           </div>
         </div>
       )}
