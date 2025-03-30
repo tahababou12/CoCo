@@ -8,3 +8,5 @@ google-generativeai
 mediapipe
 google
 google.genai
+elevenlabs
+moviepy

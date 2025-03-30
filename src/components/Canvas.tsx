@@ -3,6 +3,7 @@ import { useDrawing } from '../context/DrawingContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
+import EnhancedImageActions from './EnhancedImageActions'
 
 // Define a type for the enhanced image
 interface EnhancedImage {
@@ -960,112 +961,122 @@ const Canvas: React.FC = () => {
 
   // Add a function to convert an enhanced image result to an interactive image
   const addEnhancedImageToCanvas = (result: EnhancedImageResult) => {
-    const newImage: EnhancedImage = {
-      id: `enhanced-${new Date().getTime()}`,
-      url: `http://localhost:5001${result.path}`,
-      x: state.viewTransform.offsetX + 100, // Position in the visible area
-      y: state.viewTransform.offsetY + 100,
-      width: result.width / 2, // Display at half size initially
-      height: result.height / 2,
-      prompt: result.prompt,
-      base64Data: result.base64Data,
-      isDragging: false,
-      isResizing: false,
-      resizeHandle: null
-    };
-
-    setInteractiveEnhancedImages(prev => [...prev, newImage]);
+    // Calculate the centered position for the image
+    const viewWidth = window.innerWidth;
+    const viewHeight = window.innerHeight;
     
-    // Hide the static enhanced image display
-    setEnhancedImage(null);
+    // Use a reasonable size for the image on the canvas
+    const maxWidth = 300;
+    const maxHeight = 300;
+    
+    // Determine the displayed size while maintaining aspect ratio
+    const aspectRatio = result.width / result.height;
+    let displayWidth = maxWidth;
+    let displayHeight = displayWidth / aspectRatio;
+    
+    if (displayHeight > maxHeight) {
+      displayHeight = maxHeight;
+      displayWidth = displayHeight * aspectRatio;
+    }
+    
+    // Position centered in the viewport
+    const x = (viewWidth - displayWidth) / 2;
+    const y = (viewHeight - displayHeight) / 2;
+    
+    // Create a unique ID for this image
+    const id = `enhanced-${Date.now()}`;
+    
+    // Add the image to the state
+    setInteractiveEnhancedImages(prev => [
+      ...prev,
+      {
+        id,
+        url: `http://localhost:5001${result.path}`,
+        x,
+        y,
+        width: displayWidth,
+        height: displayHeight,
+        prompt: result.prompt,
+        base64Data: result.base64Data,
+        isDragging: false,
+        isResizing: false,
+        resizeHandle: null
+      }
+    ]);
+    
+    // Show the preview image
+    setEnhancedImage(`http://localhost:5001${result.path}`);
   };
 
   // Add a function to render enhanced images on the canvas
   const renderEnhancedImages = () => {
-    return interactiveEnhancedImages.map((img, index) => (
+    return interactiveEnhancedImages.map((image, index) => (
       <div 
-        key={img.id}
+        key={image.id}
         className="absolute"
         style={{
-          left: img.x,
-          top: img.y,
-          width: img.width,
-          height: img.height,
-          cursor: img.isResizing ? 'nwse-resize' : 'move',
-          zIndex: 10,
-          pointerEvents: 'all' // Ensure this div captures pointer events
+          left: `${image.x}px`,
+          top: `${image.y}px`,
+          width: `${image.width}px`,
+          height: `${image.height}px`,
+          border: '2px solid #9333ea',
+          borderRadius: '4px',
+          overflow: 'hidden',
+          pointerEvents: 'auto',
+          touchAction: 'none',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          zIndex: 20,
+          cursor: image.isDragging ? 'grabbing' : 'grab'
         }}
         onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index)}
       >
-        <img 
-          src={img.url}
-          alt={`Enhanced: ${img.prompt}`}
-          className="w-full h-full object-contain"
-          style={{ 
-            pointerEvents: 'none',
-            border: '2px solid #9333ea',
-            borderRadius: '4px',
-            backgroundColor: 'rgba(255, 255, 255, 0.8)'
+        <img
+          src={image.url}
+          alt={`Enhanced image generated from prompt: ${image.prompt}`}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            pointerEvents: 'none'
           }}
         />
         
-        {/* Resize handles */}
-        <div className="absolute top-0 left-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nwse-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'nw')}
-        />
-        <div className="absolute top-0 right-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nesw-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'ne')}
-        />
-        <div className="absolute bottom-0 left-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nesw-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'sw')}
-        />
-        <div className="absolute bottom-0 right-0 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-nwse-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'se')}
-        />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ns-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'n')}
-        />
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ns-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 's')}
-        />
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ew-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'w')}
-        />
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white border border-purple-600 rounded-full cursor-ew-resize"
-          onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'e')}
-        />
-        
-        {/* Delete button with improved event handling */}
-        <div
-          className="absolute -top-3 -right-3 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 border-2 border-red-500 shadow-lg"
-          style={{ zIndex: 100, pointerEvents: 'auto', cursor: 'pointer' }}
-          onClick={() => {
-            // Create a completely new array without the clicked image
-            const newImages = interactiveEnhancedImages.filter((_, i) => i !== index);
-            setInteractiveEnhancedImages(newImages);
-            
-            // Clear any drag state
-            setDragStartPos(null);
-            setInitialImageState(null);
-            
-            window.showToast('Image removed from canvas', 'success', 2000);
-          }}
-          onMouseDown={(e) => {
-            // Stop propagation at all levels
+        {/* Close and action buttons */}
+        <div className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 shadow-md"
+          style={{ cursor: 'pointer', zIndex: 30 }}
+          onClick={(e) => {
             e.stopPropagation();
-            e.nativeEvent.stopImmediatePropagation();
-          }}
-          onPointerDown={(e) => {
-            // Stop propagation at all levels
-            e.stopPropagation();
-            e.nativeEvent.stopImmediatePropagation();
+            const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
+            setInteractiveEnhancedImages(updatedImages);
           }}
         >
           ✕
         </div>
+        
+        {/* Add EnhancedImageActions component */}
+        <EnhancedImageActions 
+          imageData={{
+            path: image.url,
+            filename: image.id,
+            base64Data: image.base64Data || ''
+          }}
+          onClose={() => {
+            const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
+            setInteractiveEnhancedImages(updatedImages);
+          }}
+        />
+
+        {/* Resize handles */}
+        <div className="absolute bottom-0 right-0 w-6 h-6 bg-purple-500 rounded-tl-md cursor-nwse-resize"
+          style={{ zIndex: 30 }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            handlePointerDownOnEnhancedImage(e, index, true, 'bottom-right');
+          }}
+        />
       </div>
     ));
-  }
+  };
 
   return (
     <div 
