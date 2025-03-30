@@ -117,21 +117,27 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         return state
       }
 
-      console.log(`Ending drawing with points:`, state.currentShape.points);
+      console.log(`Ending drawing with ${state.currentShape.points.length} points:`, state.currentShape.points);
 
       // Only add shapes with at least 2 points (or 1 for text)
       if (
         state.currentShape.points.length < 2 &&
         state.currentShape.type !== 'text'
       ) {
-        console.log('Not enough points to create shape');
+        console.log('Not enough points to create shape, discarding');
         return {
           ...state,
           currentShape: null,
         }
       }
 
-      const newShapes = [...state.shapes, state.currentShape]
+      // Create a deep copy of the shape to avoid reference issues
+      const shapeToSave = {
+        ...state.currentShape,
+        points: [...state.currentShape.points]
+      };
+      
+      const newShapes = [...state.shapes, shapeToSave];
       console.log(`Finished drawing ${state.currentShape.type}, total shapes:`, newShapes.length);
 
       return {
