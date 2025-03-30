@@ -88,3 +88,5 @@ enhanced_drawings/
 
 # Coverage
 /coverage
+
+.next/
