@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer } from 'react'
-import { DrawingState, Shape, Tool, Point, ShapeStyle } from '../types'
+import { DrawingState, Shape, Tool, Point, ShapeStyle, User } from '../types'
 import { v4 as uuidv4 } from '../utils/uuid'
 
 type DrawingAction =
@@ -20,6 +20,17 @@ type DrawingAction =
   | { type: 'PAN'; payload: { x: number; y: number } }
   | { type: 'RESET_VIEW' }
   | { type: 'SET_FILL_COLOR'; payload: string }
+  | { type: 'SET_CURRENT_USER'; payload: User }
+  | { type: 'ADD_COLLABORATOR'; payload: User }
+  | { type: 'REMOVE_COLLABORATOR'; payload: string }
+  | { type: 'UPDATE_COLLABORATOR'; payload: { userId: string; updates: Partial<User> } }
+  | { type: 'SET_CONNECTION_STATUS'; payload: boolean }
+  | { type: 'SYNC_ALL_SHAPES'; payload: Shape[] }
+  | { type: 'ADD_PEER_CONNECTION'; payload: { userId: string; peerConnection: RTCPeerConnection } }
+  | { type: 'REMOVE_PEER_CONNECTION'; payload: { userId: string } }
+  | { type: 'ADD_REMOTE_STREAM'; payload: { userId: string; stream: MediaStream } }
+  | { type: 'REMOVE_REMOTE_STREAM'; payload: { userId: string } }
+  | { type: 'UPDATE_HAND_TRACKING_STATUS'; payload: { userId: string; isEnabled: boolean } }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -43,6 +54,11 @@ const initialState: DrawingState = {
     opacity: 1,
     fontSize: 16,
   },
+  // Collaboration properties
+  collaborators: [],
+  isConnected: false,
+  peerConnections: {},
+  remoteStreams: {}
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
@@ -173,22 +189,21 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
     }
 
     case 'DELETE_SHAPES': {
-      // Don't do anything if no shapes to delete
-      if (action.payload.length === 0) return state;
+      // Track the deleted shape IDs to broadcast to collaborators
+      const deletedShapeIds = action.payload;
       
-      const updatedShapes = state.shapes.filter(
-        (shape) => !action.payload.includes(shape.id)
-      )
-
+      // Update the state by filtering out the deleted shapes
+      const newShapes = state.shapes.filter(shape => !deletedShapeIds.includes(shape.id));
+      
       return {
         ...state,
-        shapes: updatedShapes,
-        selectedShapeIds: [],
+        shapes: newShapes,
+        selectedShapeIds: state.selectedShapeIds.filter(id => !deletedShapeIds.includes(id)),
         history: {
           past: [...state.history.past, state.shapes],
           future: [],
         },
-      }
+      };
     }
 
     case 'SELECT_SHAPES': {
@@ -316,6 +331,120 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
           offsetY: 0,
         },
       }
+
+    case 'SET_CURRENT_USER':
+      return {
+        ...state,
+        currentUser: action.payload,
+      }
+
+    case 'ADD_COLLABORATOR': {
+      // Don't add if user already exists
+      if (state.collaborators.some(user => user.id === action.payload.id)) {
+        return state;
+      }
+      return {
+        ...state,
+        collaborators: [...state.collaborators, action.payload],
+      }
+    }
+
+    case 'REMOVE_COLLABORATOR':
+      return {
+        ...state,
+        collaborators: state.collaborators.filter(user => user.id !== action.payload),
+      }
+
+    case 'UPDATE_COLLABORATOR': {
+      return {
+        ...state,
+        collaborators: state.collaborators.map(user => 
+          user.id === action.payload.userId
+            ? { ...user, ...action.payload.updates }
+            : user
+        ),
+      }
+    }
+
+    case 'SET_CONNECTION_STATUS':
+      return {
+        ...state,
+        isConnected: action.payload,
+      }
+
+    case 'SYNC_ALL_SHAPES':
+      return {
+        ...state,
+        shapes: action.payload,
+        // Don't record this in history since it's just syncing
+      }
+
+    case 'ADD_PEER_CONNECTION': {
+      const { userId, peerConnection } = action.payload;
+      return {
+        ...state,
+        peerConnections: {
+          ...state.peerConnections,
+          [userId]: peerConnection
+        }
+      };
+    }
+
+    case 'REMOVE_PEER_CONNECTION': {
+      const { userId } = action.payload;
+      const newPeerConnections = { ...state.peerConnections };
+      delete newPeerConnections[userId];
+      return {
+        ...state,
+        peerConnections: newPeerConnections
+      };
+    }
+
+    case 'ADD_REMOTE_STREAM': {
+      const { userId, stream } = action.payload;
+      return {
+        ...state,
+        remoteStreams: {
+          ...state.remoteStreams,
+          [userId]: stream
+        }
+      };
+    }
+
+    case 'REMOVE_REMOTE_STREAM': {
+      const { userId } = action.payload;
+      const newRemoteStreams = { ...state.remoteStreams };
+      delete newRemoteStreams[userId];
+      return {
+        ...state,
+        remoteStreams: newRemoteStreams
+      };
+    }
+
+    case 'UPDATE_HAND_TRACKING_STATUS': {
+      const { userId, isEnabled } = action.payload;
+      
+      if (state.currentUser && userId === state.currentUser.id) {
+        // Update current user
+        return {
+          ...state,
+          currentUser: {
+            ...state.currentUser,
+            isHandTrackingEnabled: isEnabled
+          }
+        };
+      }
+      
+      // Update collaborator
+      return {
+        ...state,
+        collaborators: state.collaborators.map(user => 
+          user.id === userId
+            ? { ...user, isHandTrackingEnabled: isEnabled }
+            : user
+        )
+      };
+    }
 
     default:
       return state

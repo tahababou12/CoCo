@@ -1,8 +1,14 @@
 import React, { useState } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { Download, Share2, Clock, User, ChevronDown } from 'lucide-react'
+import { Download, Share2, Clock, User, ChevronDown, Sparkles } from 'lucide-react'
+import { renderShape } from '../utils/renderShape'
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onToggleAI: () => void;
+  showAIAssistant: boolean;
+}
+
+const Header: React.FC<HeaderProps> = ({ onToggleAI, showAIAssistant }) => {
   const { state } = useDrawing()
   const [documentName, setDocumentName] = useState('Untitled')
   
@@ -43,7 +49,6 @@ const Header: React.FC = () => {
     ctx.translate(-minX, -minY)
     
     state.shapes.forEach(shape => {
-      const { renderShape } = require('../utils/renderShape')
       renderShape(ctx, shape)
     })
     
@@ -92,6 +97,18 @@ const Header: React.FC = () => {
       
       <div className="flex items-center space-x-1">
         <div className="flex items-center bg-neutral-100 rounded-md p-0.5">
+          <button 
+            className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+              showAIAssistant 
+                ? 'bg-purple-100 text-purple-600' 
+                : 'text-neutral-500 hover:bg-white hover:text-neutral-700'
+            }`}
+            onClick={onToggleAI}
+            title="AI Assistant"
+          >
+            <Sparkles size={16} />
+          </button>
+
           <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
             <User size={16} />
           </button>

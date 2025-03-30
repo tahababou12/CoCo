@@ -1,11 +1,14 @@
 import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
 import { useDrawing } from '../context/DrawingContext'
+import { useWebSocket } from '../context/WebSocketContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
+import UserCursor from './UserCursor'
 
 const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
+  const webSocketContext = useWebSocket()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -21,6 +24,10 @@ const Canvas: React.FC = () => {
     position: { x: 0, y: 0 },
     value: '',
   })
+  
+  // Cursor tracking - how often to send updates (ms)
+  const cursorThrottleRef = useRef<number>(0)
+  const CURSOR_THROTTLE_MS = 50
 
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -221,75 +228,78 @@ const Canvas: React.FC = () => {
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    console.log('React handlePointerDown triggered', e.type, e.clientX, e.clientY);
+    e.preventDefault();
     
     if (!canvasRef.current) {
-      console.error('Canvas ref not available in handlePointerDown');
+      console.error('Canvas reference not available on pointer down');
       return;
     }
     
-    // Prevent default behavior to ensure drawing works
-    e.preventDefault();
-    e.stopPropagation();
-    
+    // Capture pointer for drag operations outside the canvas
     try {
-      // Capture pointer to ensure all events go to this element
       canvasRef.current.setPointerCapture(e.pointerId);
-      console.log('Pointer captured successfully', e.pointerId);
     } catch (err) {
       console.error('Failed to capture pointer', err);
     }
     
     const point = getCanvasPoint(e.clientX, e.clientY);
-    console.log('Pointer down at', point, 'with tool', state.tool);
     
-    // Variables for switch cases
-    let clickedShape: Shape | undefined;
-    let shapeToErase: Shape | undefined;
-
     // Handle different tools
     switch (state.tool) {
+      case 'select':
+        console.log('Starting select operation');
+        const shapeUnderCursor = findShapeAtPoint(point);
+        
+        if (shapeUnderCursor) {
+          console.log('Selected shape:', shapeUnderCursor.id);
+          dispatch({ type: 'SELECT_SHAPES', payload: [shapeUnderCursor.id] });
+        } else {
+          console.log('No shape found, clearing selection');
+          dispatch({ type: 'CLEAR_SELECTION' });
+        }
+        setIsDrawing(true);
+        break;
+        
       case 'pan':
+        console.log('Starting pan');
         setIsPanning(true);
         setLastPanPoint({ x: e.clientX, y: e.clientY });
         break;
 
-      case 'select':
-        clickedShape = findShapeAtPoint(point);
-        
-        if (clickedShape) {
-          dispatch({ type: 'SELECT_SHAPES', payload: [clickedShape.id] });
-        } else {
-          dispatch({ type: 'CLEAR_SELECTION' });
-        }
-        break;
-
-      case 'eraser':
-        // Object eraser - erase entire shapes
-        shapeToErase = findShapeAtPoint(point);
-        if (shapeToErase) {
-          dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
-        }
-        break;
-        
-      case 'pixel_eraser':
-        // Pixel eraser - start drawing an eraser stroke
-        setIsDrawing(true);
-        dispatch({
-          type: 'START_DRAWING',
-          payload: { point, type: 'pencil' },
-        });
-        break;
-
       case 'text':
+        console.log('Starting text input');
         setTextInput({
           visible: true,
           position: point,
           value: '',
         });
         break;
-
-      // Drawing tools
+        
+      case 'eraser':
+        console.log('Starting eraser operation');
+        setIsDrawing(true);
+        // Check for shape at initial click point and erase it
+        const shapeToErase = findShapeAtPoint(point);
+        if (shapeToErase) {
+          console.log('Erasing shape:', shapeToErase.id);
+          // Delete the shape
+          dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
+          
+          // Manually broadcast the deletion to collaborators
+          if (webSocketContext?.isConnected && 
+              typeof webSocketContext.sendMessage === 'function' && 
+              state.currentUser) {
+            webSocketContext.sendMessage({
+              type: 'SHAPES_DELETED',
+              payload: {
+                shapeIds: [shapeToErase.id],
+                userId: state.currentUser.id
+              }
+            });
+          }
+        }
+        break;
+        
       case 'rectangle':
       case 'ellipse':
       case 'line':
@@ -309,40 +319,60 @@ const Canvas: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!canvasRef.current) {
-      console.warn('Canvas ref not available in handlePointerMove');
-      return;
+    e.preventDefault()
+    if (!canvasRef.current) return
+    
+    const point = getCanvasPoint(e.clientX, e.clientY)
+    
+    // Send cursor position to other users - throttle updates
+    if (webSocketContext?.isConnected && typeof webSocketContext.sendCursorMove === 'function') {
+      const now = Date.now()
+      if (now - cursorThrottleRef.current > CURSOR_THROTTLE_MS) {
+        cursorThrottleRef.current = now
+        // Send raw screen coordinates, not canvas-transformed coordinates
+        webSocketContext.sendCursorMove({ x: e.clientX, y: e.clientY })
+      }
     }
-    
-    // Prevent default behavior
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const point = getCanvasPoint(e.clientX, e.clientY);
 
-    // Check if primary button is pressed (button 0)
-    const isPrimaryButtonPressed = e.buttons === 1;
-    
-    if (isPanning) {
+    // Handle tool-specific behavior
+    if (state.tool === 'pan' || isPanning) {
       const dx = e.clientX - (lastPanPoint?.x || 0);
       const dy = e.clientY - (lastPanPoint?.y || 0);
       dispatch({ type: 'PAN', payload: { x: dx, y: dy } });
       setLastPanPoint({ x: e.clientX, y: e.clientY });
-      return;
-    }
-
-    if (state.tool === 'eraser' && isPrimaryButtonPressed) {
-      // Object eraser - continuously erase whole shapes
+    } else if (state.tool === 'select' && isDrawing) {
+      // Find shape under cursor
+      const shapeUnderCursor = findShapeAtPoint(point);
+      
+      if (shapeUnderCursor) {
+        dispatch({ type: 'SELECT_SHAPES', payload: [shapeUnderCursor.id] });
+      } else {
+        dispatch({ type: 'CLEAR_SELECTION' });
+      }
+    } else if (state.tool === 'eraser' && isDrawing) {
+      // Object eraser - erase shapes only when actively drawing (mouse down)
       const shapeToErase = findShapeAtPoint(point);
       if (shapeToErase) {
+        console.log('Erasing shape during drag:', shapeToErase.id);
+        // Delete the shape
         dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
+        
+        // Manually broadcast the deletion to collaborators
+        if (webSocketContext?.isConnected && 
+            typeof webSocketContext.sendMessage === 'function' && 
+            state.currentUser) {
+          webSocketContext.sendMessage({
+            type: 'SHAPES_DELETED',
+            payload: {
+              shapeIds: [shapeToErase.id],
+              userId: state.currentUser.id
+            }
+          });
+        }
       }
-      return;
-    }
-
-    if (isDrawing && state.currentShape && isPrimaryButtonPressed) {
-      console.log('Drawing in progress...', state.tool, point);
-      dispatch({ type: 'CONTINUE_DRAWING', payload: point });
+    } else if (isDrawing && state.currentShape) {
+      // Update the current shape as we draw
+      dispatch({ type: 'CONTINUE_DRAWING', payload: point })
     }
   };
 
@@ -513,6 +543,11 @@ const Canvas: React.FC = () => {
           />
         </div>
       )}
+      
+      {/* Render other user cursors */}
+      {webSocketContext?.isConnected &&
+        state.collaborators.map((user) => <UserCursor key={user.id} user={user} />)
+      }
     </div>
   )
 }

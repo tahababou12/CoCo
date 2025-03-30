@@ -1,0 +1,13 @@
+fastapi==0.103.1
+uvicorn==0.23.2
+websockets==11.0.3
+ws==0.0.2
+uuid==1.30
+aiohttp==3.8.5
+pydantic==2.3.0
+python-dotenv==1.0.0
+redis==4.6.0
+celery==5.3.4
+Pillow==10.0.1
+numpy==1.25.2
+requests==2.31.0 

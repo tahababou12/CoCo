@@ -1,0 +1,22 @@
+{
+  "name": "coco-backend",
+  "version": "1.0.0",
+  "description": "Backend services for CoCo collaborative drawing application",
+  "scripts": {
+    "start": "node websocket-server.js",
+    "dev": "nodemon websocket-server.js",
+    "api": "uvicorn app.main:app --reload"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "uuid": "^9.0.1",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "private": true
+} 
