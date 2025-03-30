@@ -105,6 +105,32 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         points: [...state.currentShape.points, action.payload],
       }
 
+      // For pencil drawings, update the current shape in both places:
+      // 1. As the current shape for continued editing
+      // 2. In the shapes array for persistence
+      if (state.currentShape.type === 'pencil') {
+        // Find if we have this shape already in our shapes array
+        const shapeIndex = state.shapes.findIndex(shape => shape.id === state.currentShape!.id);
+        
+        let newShapes;
+        if (shapeIndex >= 0) {
+          // Update the existing shape in the array
+          newShapes = state.shapes.map((shape, index) => 
+            index === shapeIndex ? { ...updatedShape } : shape
+          );
+        } else {
+          // Add the shape to the array for the first time
+          newShapes = [...state.shapes, { ...updatedShape }];
+        }
+        
+        return {
+          ...state,
+          currentShape: updatedShape,
+          shapes: newShapes
+        }
+      }
+
+      // For other shapes, just update the current shape without persisting yet
       return {
         ...state,
         currentShape: updatedShape,
@@ -119,25 +145,28 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
 
       console.log(`Ending drawing with ${state.currentShape.points.length} points:`, state.currentShape.points);
 
-      // Only add shapes with at least 2 points (or 1 for text)
-      if (
-        state.currentShape.points.length < 2 &&
-        state.currentShape.type !== 'text'
-      ) {
-        console.log('Not enough points to create shape, discarding');
-        return {
-          ...state,
-          currentShape: null,
-        }
-      }
-
       // Create a deep copy of the shape to avoid reference issues
       const shapeToSave = {
         ...state.currentShape,
         points: [...state.currentShape.points]
       };
       
-      const newShapes = [...state.shapes, shapeToSave];
+      // Check if this shape already exists in the shapes array
+      // (which would be the case for pencil drawings that are continuously persisted)
+      const shapeIndex = state.shapes.findIndex(shape => shape.id === state.currentShape!.id);
+      
+      // Only add to shapes array if not already there
+      let newShapes;
+      if (shapeIndex >= 0) {
+        // Update the existing shape with the final version
+        newShapes = state.shapes.map((shape, index) => 
+          index === shapeIndex ? shapeToSave : shape
+        );
+      } else {
+        // Add as a new shape
+        newShapes = [...state.shapes, shapeToSave];
+      }
+      
       console.log(`Finished drawing ${state.currentShape.type}, total shapes:`, newShapes.length);
 
       return {

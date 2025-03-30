@@ -354,8 +354,9 @@ const Canvas: React.FC = () => {
     
     const point = getCanvasPoint(e.clientX, e.clientY);
 
-    // Check if primary button is pressed (button 0)
-    const isPrimaryButtonPressed = e.buttons === 1;
+    // For touch input, always treat it as if the primary button is pressed
+    // For mouse input, check if button is actually pressed
+    const isPrimaryButtonPressed = e.pointerType === 'touch' || e.buttons === 1;
     
     if (isPanning) {
       const dx = e.clientX - (lastPanPoint?.x || 0);
@@ -374,8 +375,9 @@ const Canvas: React.FC = () => {
       return;
     }
 
-    if (isDrawing && state.currentShape && isPrimaryButtonPressed) {
-      console.log('Drawing in progress...', state.tool, point);
+    // For drawing, check if we're in drawing mode rather than relying only on button state
+    if (isDrawing && state.currentShape) {
+      console.log('Drawing in progress...', state.tool, point, 'pointerType:', e.pointerType);
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
     }
   };

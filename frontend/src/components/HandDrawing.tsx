@@ -350,27 +350,35 @@ const HandDrawing: React.FC = () => {
         }
         
         // Only start drawing if we're not already drawing
-        // if (!state.currentShape) {
-        //   if (DEBUG_FINGER_DRAWING) console.log('Starting new drawing at', transformedPoint);
-        //   dispatch({
-        //     type: 'START_DRAWING',
-        //     payload: { 
-        //       point: transformedPoint, 
-        //       type: 'pencil' 
-        //     }
-        //   });
+        if (!state.currentShape) {
+          if (DEBUG_FINGER_DRAWING) console.log('Starting new drawing at', transformedPoint);
+          dispatch({
+            type: 'START_DRAWING',
+            payload: { 
+              point: transformedPoint, 
+              type: 'pencil' 
+            }
+          });
           
-        //   // Set stroke color
-        //   dispatch({
-        //     type: 'SET_STYLE',
-        //     payload: { 
-        //       strokeColor: drawingColorsRef.current[handIndex],
-        //       strokeWidth: drawingThickness
-        //     }
-        //   });
-        // }
+          // Set stroke color
+          dispatch({
+            type: 'SET_STYLE',
+            payload: { 
+              strokeColor: drawingColorsRef.current[handIndex],
+              strokeWidth: drawingThickness
+            }
+          });
+        }
         
-        // Update local drawing state
+        // Set stroke style again
+        dispatch({
+          type: 'SET_STYLE',
+          payload: { 
+            strokeColor: drawingColorsRef.current[handIndex],
+            strokeWidth: drawingThickness
+          }
+        });
+        
         setIsDrawing(true);
         
         // Update drawing timestamp
@@ -379,20 +387,8 @@ const HandDrawing: React.FC = () => {
         return;
       }
       
-      // Check if we've moved enough to draw (prevent jitter)
-      const dx = transformedPoint.x - prevPoint.x;
-      const dy = transformedPoint.y - prevPoint.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Reduce the threshold for movement detection - allow smaller movements
-      const MOVEMENT_THRESHOLD = 0.25; // Much smaller threshold for smoother drawing
-      
-      // Only draw if we have a significant movement, but still update timestamp
-      if (distance < MOVEMENT_THRESHOLD && state.currentShape) {
-        if (DEBUG_FINGER_DRAWING) console.log('Movement too small, skipping point but updating timestamp');
-        lastDrawingUpdateRef.current = Date.now();
-        return;
-      }
+      // Always update timestamp regardless of movement size
+      lastDrawingUpdateRef.current = Date.now();
       
       // Start drawing if not already doing so
       if (!state.currentShape) {
@@ -434,16 +430,13 @@ const HandDrawing: React.FC = () => {
         payload: transformedPoint
       });
       
-      // Update drawing timestamp
-      lastDrawingUpdateRef.current = Date.now();
-      
       // Store the current point for next frame
       prevPointsRef.current[handIndex] = transformedPoint;
       
       // Periodically save drawing even while in drawing mode
       // This ensures strokes persist even if hand tracking is lost
       const now = Date.now();
-      if (now - lastDrawingUpdateRef.current > 500 && state.currentShape && state.currentShape.points.length > 10) {
+      if (now - lastDrawingUpdateRef.current > 200 && state.currentShape && state.currentShape.points.length > 5) {
         if (DEBUG_FINGER_DRAWING) console.log('Periodic save of drawing with', state.currentShape.points.length, 'points');
         saveDrawing();
         
@@ -453,15 +446,6 @@ const HandDrawing: React.FC = () => {
           payload: { 
             point: transformedPoint, 
             type: 'pencil' 
-          }
-        });
-        
-        // Set stroke style again
-        dispatch({
-          type: 'SET_STYLE',
-          payload: { 
-            strokeColor: drawingColorsRef.current[handIndex],
-            strokeWidth: drawingThickness
           }
         });
         
