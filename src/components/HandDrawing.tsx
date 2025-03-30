@@ -639,7 +639,7 @@ const HandDrawing: React.FC = () => {
       >
         {isLoading ? 'Loading...' : 
          !isWebcamSupported ? 'Not Supported' :
-         isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable MediaPipe Hand Tracking'}
+         isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable Hand Tracking'}
       </button>
       
       {/* Video with overlay canvas for visualization */}

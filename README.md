@@ -201,3 +201,170 @@ After enhancing your drawing:
 ## Development
 
 This project is built using Vite with React and TypeScript for the frontend and Flask for the backend.
+# CoCo - Collaborative Whiteboard
+
+CoCo is a real-time collaborative drawing application that allows multiple users to draw simultaneously on a shared canvas. It features real-time cursor tracking, various drawing tools, and collaborative features.
+
+## Features
+
+- Real-time collaboration with multiple users
+- Live cursor tracking for all participants
+- Drawing tools: pen, shapes, and more
+- WebSocket-based communication
+- Support for webcam sharing
+- History tracking and undo/redo
+- Export drawings as PNG
+
+## Tech Stack
+
+- **Frontend**: React, TypeScript, TailwindCSS, Vite
+- **Backend**: Node.js, Express, WebSockets
+- **Collaboration**: Custom WebSocket implementation
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- Git
+
+### Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/CoCo.git
+   cd CoCo
+   ```
+
+2. **Install backend dependencies**:
+   ```bash
+   cd backend
+   npm install
+   ```
+
+3. **Install frontend dependencies**:
+   ```bash
+   cd ../frontend-main
+   npm install
+   ```
+
+### Running Locally
+
+1. **Start the backend server**:
+   ```bash
+   cd backend
+   node websocket-server.js
+   ```
+   Or use our convenient script:
+   ```bash
+   ./start-server.sh
+   ```
+
+2. **Start the frontend development server**:
+   ```bash
+   cd frontend-main
+   npm run dev
+   ```
+
+3. **Access the application** at:
+   ```
+   http://localhost:5173
+   ```
+
+## Network Collaboration Setup
+
+This guide will help you set up CoCo for collaboration across different devices on the same network.
+
+### For the Host (Server)
+
+1. **Start the Backend Server**:
+   ```bash
+   cd backend
+   ./start-server.sh
+   ```
+   This script will show your IP address and start the server.
+
+2. **Create or Update Frontend Environment Variables**:
+   Create a file at `frontend-main/.env` with:
+   ```
+   VITE_WS_URL=ws://YOUR_IP_ADDRESS:8080
+   ```
+   Replace `YOUR_IP_ADDRESS` with your actual IP address (e.g., 10.28.30.186).
+
+3. **Start the Frontend**:
+   ```bash
+   cd frontend-main
+   npm run dev
+   ```
+
+4. **Share Your IP Address**:
+   Share your IP address with collaborators. They will connect to:
+   ```
+   http://YOUR_IP_ADDRESS:5173
+   ```
+
+### For Collaborators
+
+1. **Connect to the Host**:
+   Open your browser and go to:
+   ```
+   http://HOST_IP_ADDRESS:5173
+   ```
+   Replace `HOST_IP_ADDRESS` with the IP address shared by the host.
+
+### Troubleshooting
+
+If connections fail:
+
+1. **Check Firewall Settings**:
+   - On Mac: System Preferences > Security & Privacy > Firewall
+   - Make sure Node.js is allowed incoming connections
+
+2. **Network Restrictions**:
+   Some networks (especially institutional ones) might block direct connections between computers.
+   Solutions:
+   - Try using a personal hotspot
+   - Connect to a less restricted network
+
+3. **Verify Server is Running**:
+   The host can check with:
+   ```
+   curl http://localhost:8080/api/ping
+   ```
+
+4. **Check the Frontend Environment**:
+   Make sure the `.env` file has the correct IP address
+
+## Project Structure
+
+- `backend/` - Node.js server with WebSocket implementation
+  - `websocket-server.js` - Main server file
+  - `start-server.sh` - Convenience script for starting the server
+  - `images/` - Storage for exported images
+
+- `frontend-main/` - React frontend application
+  - `src/` - Source code
+    - `components/` - React components
+    - `context/` - React context providers for state management
+    - `utils/` - Utility functions
+
+## Development
+
+### Adding New Features
+
+1. Frontend changes should be made in the `frontend-main/src` directory
+2. Backend changes should be made in the `backend` directory
+3. Restart both servers after making changes
+
+### Building for Production
+
+```bash
+cd frontend-main
+npm run build
+```
+
+The built files will be in the `frontend-main/dist` directory.
+
+## License
+
+[MIT License](LICENSE)

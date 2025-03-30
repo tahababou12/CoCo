@@ -1,37 +1,66 @@
 import { Shape } from '../types'
 
-export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape) => {
-  const { points, style, type, isSelected } = shape
+export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape): void => {
+  // Save current context state
+  ctx.save()
 
-  // Set common styles
-  ctx.strokeStyle = style.strokeColor
-  ctx.fillStyle = style.fillColor
-  ctx.lineWidth = style.strokeWidth
-  ctx.globalAlpha = style.opacity
+  // Set line style
+  ctx.strokeStyle = shape.style.strokeColor || 'black'
+  ctx.lineWidth = shape.style.strokeWidth || 1
+  
+  // Set fill style
+  ctx.fillStyle = shape.style.fillColor || 'transparent'
+  
+  // Set opacity if available
+  if (shape.style.opacity !== undefined) {
+    ctx.globalAlpha = shape.style.opacity
+  }
 
   // Draw based on shape type
-  switch (type) {
+  switch (shape.type) {
     case 'rectangle':
-      drawRectangle(ctx, points, style.fillColor, isSelected)
+      drawRectangle(ctx, shape.points, shape.style.fillColor, shape.isSelected)
       break
     case 'ellipse':
-      drawEllipse(ctx, points, style.fillColor, isSelected)
+      drawEllipse(ctx, shape.points, shape.style.fillColor, shape.isSelected)
       break
     case 'line':
-      drawLine(ctx, points, isSelected)
+      drawLine(ctx, shape.points, shape.isSelected)
       break
     case 'pencil':
-      drawPencil(ctx, points, isSelected)
+      drawPencil(ctx, shape.points, shape.isSelected)
       break
     case 'text':
-      drawText(ctx, points[0], shape.text || '', style.fontSize || 16, isSelected)
+      drawText(ctx, shape.points[0], shape.text || '', shape.style.fontSize || 16, shape.isSelected)
       break
+    case 'image': {
+      if (shape.image && shape.points.length >= 2) {
+        const [startPoint, endPoint] = shape.points;
+        const width = endPoint.x - startPoint.x;
+        const height = endPoint.y - startPoint.y;
+        
+        // Load image
+        const img = new Image();
+        img.src = shape.image;
+        
+        // If the image is already loaded, draw it immediately
+        if (img.complete) {
+          ctx.drawImage(img, startPoint.x, startPoint.y, width, height);
+        } else {
+          // Otherwise, draw when loaded
+          img.onload = () => {
+            ctx.drawImage(img, startPoint.x, startPoint.y, width, height);
+          };
+        }
+      }
+      break;
+    }
     default:
       break
   }
 
-  // Reset opacity
-  ctx.globalAlpha = 1
+  // Restore context state
+  ctx.restore()
 }
 
 const drawRectangle = (

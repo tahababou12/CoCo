@@ -1,6 +1,30 @@
 import React, { createContext, useContext, useReducer } from 'react'
-import { DrawingState, Shape, Tool, Point, ShapeStyle } from '../types'
+import { Shape, Tool, Point, ShapeStyle, User } from '../types'
 import { v4 as uuidv4 } from '../utils/uuid'
+
+// Define DrawingState interface locally
+interface DrawingState {
+  tool: string
+  currentShape: Shape | null
+  shapes: Shape[]
+  selectedShapeIds: string[]
+  defaultStyle: ShapeStyle
+  collaborators: User[]
+  isConnected: boolean
+  peerConnections: Record<string, RTCPeerConnection>
+  remoteStreams: Record<string, MediaStream>
+  selectionBox: { start: Point; end: Point } | null
+  currentUser: User | null
+  viewTransform: {
+    scale: number
+    offsetX: number
+    offsetY: number
+  }
+  history: {
+    past: DrawingState[]
+    future: DrawingState[]
+  }
+}
 
 type DrawingAction =
   | { type: 'SET_TOOL'; payload: Tool }
@@ -20,6 +44,21 @@ type DrawingAction =
   | { type: 'PAN'; payload: { x: number; y: number } }
   | { type: 'RESET_VIEW' }
   | { type: 'SET_FILL_COLOR'; payload: string }
+  | { type: 'SET_CURRENT_USER'; payload: User }
+  | { type: 'ADD_COLLABORATOR'; payload: User }
+  | { type: 'REMOVE_COLLABORATOR'; payload: string }
+  | { type: 'UPDATE_COLLABORATOR'; payload: { userId: string; updates: Partial<User> } }
+  | { type: 'SET_CONNECTION_STATUS'; payload: boolean }
+  | { type: 'SYNC_ALL_SHAPES'; payload: Shape[] }
+  | { type: 'ADD_PEER_CONNECTION'; payload: { userId: string; peerConnection: RTCPeerConnection } }
+  | { type: 'REMOVE_PEER_CONNECTION'; payload: { userId: string } }
+  | { type: 'ADD_REMOTE_STREAM'; payload: { userId: string; stream: MediaStream } }
+  | { type: 'REMOVE_REMOTE_STREAM'; payload: { userId: string } }
+  | { type: 'UPDATE_HAND_TRACKING_STATUS'; payload: { userId: string; isEnabled: boolean } }
+  | { type: 'SET_SELECTED_SHAPE'; payload: string[] }
+  | { type: 'START_SELECTION_BOX'; payload: Point }
+  | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
+  | { type: 'END_SELECTION_BOX' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -43,6 +82,13 @@ const initialState: DrawingState = {
     opacity: 1,
     fontSize: 16,
   },
+  // Collaboration properties
+  collaborators: [],
+  isConnected: false,
+  peerConnections: {},
+  remoteStreams: {},
+  selectionBox: null,
+  currentUser: null
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
@@ -208,22 +254,21 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
     }
 
     case 'DELETE_SHAPES': {
-      // Don't do anything if no shapes to delete
-      if (action.payload.length === 0) return state;
+      // Track the deleted shape IDs to broadcast to collaborators
+      const deletedShapeIds = action.payload;
       
-      const updatedShapes = state.shapes.filter(
-        (shape) => !action.payload.includes(shape.id)
-      )
-
+      // Update the state by filtering out the deleted shapes
+      const newShapes = state.shapes.filter(shape => !deletedShapeIds.includes(shape.id));
+      
       return {
         ...state,
-        shapes: updatedShapes,
-        selectedShapeIds: [],
+        shapes: newShapes,
+        selectedShapeIds: state.selectedShapeIds.filter(id => !deletedShapeIds.includes(id)),
         history: {
           past: [...state.history.past, state.shapes],
           future: [],
         },
-      }
+      };
     }
 
     case 'SELECT_SHAPES': {
@@ -350,6 +395,211 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
           offsetX: 0,
           offsetY: 0,
         },
+      }
+
+    case 'SET_CURRENT_USER':
+      return {
+        ...state,
+        currentUser: action.payload,
+      }
+
+    case 'ADD_COLLABORATOR': {
+      // Don't add if user already exists
+      if (state.collaborators.some(user => user.id === action.payload.id)) {
+        return state;
+      }
+      return {
+        ...state,
+        collaborators: [...state.collaborators, action.payload],
+      }
+    }
+
+    case 'REMOVE_COLLABORATOR':
+      return {
+        ...state,
+        collaborators: state.collaborators.filter(user => user.id !== action.payload),
+      }
+
+    case 'UPDATE_COLLABORATOR': {
+      return {
+        ...state,
+        collaborators: state.collaborators.map(user => 
+          user.id === action.payload.userId
+            ? { ...user, ...action.payload.updates }
+            : user
+        ),
+      }
+    }
+
+    case 'SET_CONNECTION_STATUS':
+      return {
+        ...state,
+        isConnected: action.payload,
+      }
+
+    case 'SYNC_ALL_SHAPES':
+      return {
+        ...state,
+        shapes: action.payload,
+        // Don't record this in history since it's just syncing
+      }
+
+    case 'ADD_PEER_CONNECTION': {
+      const { userId, peerConnection } = action.payload;
+      return {
+        ...state,
+        peerConnections: {
+          ...state.peerConnections,
+          [userId]: peerConnection
+        }
+      };
+    }
+
+    case 'REMOVE_PEER_CONNECTION': {
+      const { userId } = action.payload;
+      const newPeerConnections = { ...state.peerConnections };
+      delete newPeerConnections[userId];
+      return {
+        ...state,
+        peerConnections: newPeerConnections
+      };
+    }
+
+    case 'ADD_REMOTE_STREAM': {
+      const { userId, stream } = action.payload;
+      return {
+        ...state,
+        remoteStreams: {
+          ...state.remoteStreams,
+          [userId]: stream
+        }
+      };
+    }
+
+    case 'REMOVE_REMOTE_STREAM': {
+      const { userId } = action.payload;
+      const newRemoteStreams = { ...state.remoteStreams };
+      delete newRemoteStreams[userId];
+      return {
+        ...state,
+        remoteStreams: newRemoteStreams
+      };
+    }
+
+    case 'UPDATE_HAND_TRACKING_STATUS': {
+      const { userId, isEnabled } = action.payload;
+      
+      if (state.currentUser && userId === state.currentUser.id) {
+        // Update current user
+        return {
+          ...state,
+          currentUser: {
+            ...state.currentUser,
+            isHandTrackingEnabled: isEnabled
+          }
+        };
+      }
+      
+      // Update collaborator
+      return {
+        ...state,
+        collaborators: state.collaborators.map(user => 
+          user.id === userId
+            ? { ...user, isHandTrackingEnabled: isEnabled }
+            : user
+        )
+      };
+    }
+
+    case 'SET_SELECTED_SHAPE':
+      return {
+        ...state,
+        selectedShapeIds: action.payload
+      }
+
+    case 'START_SELECTION_BOX':
+      return {
+        ...state,
+        selectionBox: {
+          start: action.payload,
+          end: action.payload
+        },
+        selectedShapeIds: []
+      }
+      
+    case 'UPDATE_SELECTION_BOX':
+      if (!state.selectionBox) return state
+      
+      return {
+        ...state,
+        selectionBox: {
+          ...state.selectionBox,
+          end: action.payload
+        }
+      }
+      
+    case 'END_SELECTION_BOX':
+      if (!state.selectionBox || !state.selectionBox.start || !state.selectionBox.end) {
+        return {
+          ...state,
+          selectionBox: null
+        }
+      }
+      
+      // Calculate selection box bounds
+      const startX = Math.min(state.selectionBox.start.x, state.selectionBox.end.x)
+      const startY = Math.min(state.selectionBox.start.y, state.selectionBox.end.y)
+      const endX = Math.max(state.selectionBox.start.x, state.selectionBox.end.x)
+      const endY = Math.max(state.selectionBox.start.y, state.selectionBox.end.y)
+      
+      // Find shapes inside the selection box
+      const selectedShapeIds = state.shapes
+        .filter(shape => {
+          // Check if shape is inside the selection box
+          switch (shape.type) {
+            case 'rectangle':
+            case 'ellipse':
+            case 'image':
+              // Check if any corner of the shape is inside the selection box
+              const [start, end] = shape.points
+              const shapeMinX = Math.min(start.x, end.x)
+              const shapeMinY = Math.min(start.y, end.y)
+              const shapeMaxX = Math.max(start.x, end.x)
+              const shapeMaxY = Math.max(start.y, end.y)
+              
+              // Check if the shape overlaps with selection box
+              return !(
+                shapeMaxX < startX ||
+                shapeMinX > endX ||
+                shapeMaxY < startY ||
+                shapeMinY > endY
+              )
+              
+            case 'line':
+            case 'pencil':
+              // Check if any point of the shape is inside the selection box
+              return shape.points.some(point => 
+                point.x >= startX && point.x <= endX &&
+                point.y >= startY && point.y <= endY
+              )
+              
+            case 'text':
+              // Check if the text position is inside the selection box
+              return (
+                shape.points[0].x >= startX && shape.points[0].x <= endX &&
+                shape.points[0].y >= startY && shape.points[0].y <= endY
+              )
+              
+            default:
+              return false
+          }
+        })
+        .map(shape => shape.id)
+      
+      return {
+        ...state,
+        selectionBox: null,
+        selectedShapeIds
       }
 
     default:
