@@ -11,6 +11,7 @@ import { DrawingProvider } from './context/DrawingContext'
 import { WebSocketProvider } from './context/WebSocketContext'
 import { useDrawing } from './context/DrawingContext'
 import { useWebSocket } from './context/WebSocketContext'
+import { ShapesProvider } from './ShapesContext'
 
 // Wrapper component for webcam displays
 const WebcamDisplays: React.FC = () => {
@@ -47,13 +48,22 @@ const WebcamDisplays: React.FC = () => {
   );
 };
 
-function App() {
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
+const App: React.FC = () => {
+  const [showCocoify, setShowCocoify] = useState(false);
+
+  const toggleCocoify = () => {
+    setShowCocoify(!showCocoify);
+  };
 
   return (
     <DrawingProvider>
       <WebSocketProvider>
-        <AppContent showAIAssistant={showAIAssistant} setShowAIAssistant={setShowAIAssistant} />
+        <ShapesProvider>
+          <AppContent 
+            showCocoify={showCocoify} 
+            toggleCocoify={toggleCocoify}
+          />
+        </ShapesProvider>
       </WebSocketProvider>
     </DrawingProvider>
   )
@@ -61,9 +71,9 @@ function App() {
 
 // Inner component with access to contexts
 const AppContent: React.FC<{
-  showAIAssistant: boolean;
-  setShowAIAssistant: (show: boolean) => void;
-}> = ({ showAIAssistant, setShowAIAssistant }) => {
+  showCocoify: boolean;
+  toggleCocoify: () => void;
+}> = ({ showCocoify, toggleCocoify }) => {
   const webSocket = useWebSocket();
   
   // Simple direct cursor movement handler for reliable tracking
@@ -81,8 +91,8 @@ const AppContent: React.FC<{
       onMouseMove={handleMouseMove}
     >
       <Header 
-        onToggleAI={() => setShowAIAssistant(!showAIAssistant)}
-        showAIAssistant={showAIAssistant}
+        onToggleAI={toggleCocoify}
+        showAIAssistant={showCocoify}
       />
       <div className="flex-1 overflow-hidden relative">
         <Canvas />
@@ -91,7 +101,7 @@ const AppContent: React.FC<{
         <CollaborationPanel />
         <WebcamDisplays />
         <CollaboratorCursors />
-        {showAIAssistant && <AIAssistant onClose={() => setShowAIAssistant(false)} />}
+        {showCocoify && <AIAssistant isOpen={showCocoify} onClose={toggleCocoify} />}
       </div>
     </div>
   );

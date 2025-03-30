@@ -1,10 +1,33 @@
 const WebSocket = require('ws');
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const path = require('path');
 
-// Create HTTP server
-const server = http.createServer();
-const port = process.env.PORT || 8080;
+// Initialize Express
+const app = express();
+
+// Middleware
+app.use(cors({
+  origin: '*', // For development - restrict in production
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve static files (for generated images)
+app.use('/images', express.static(path.join(__dirname, 'images')));
+
+// Basic test route
+app.get('/api/ping', (req, res) => {
+  res.json({ message: 'Server is running' });
+});
+
+// Create HTTP server with Express app
+const server = http.createServer(app);
 
 // Create WebSocket server
 const wss = new WebSocket.Server({ server });
@@ -364,6 +387,7 @@ function getRandomColor() {
 }
 
 // Start server
-server.listen(port, () => {
-  console.log(`WebSocket server is running on port ${port}`);
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, () => {
+  console.log(`WebSocket server and Express API are running on port ${PORT}`);
 }); 

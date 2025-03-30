@@ -1,11 +1,15 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { Download, Share2, Clock, User, ChevronDown, Sparkles, Film } from 'lucide-react'
+import { Download, Share2, Clock, User, ChevronDown, Sparkles, Film, History, ImageIcon } from 'lucide-react'
 import { renderShape } from '../utils/renderShape'
+import { Shape } from '../types'
 
 interface HeaderProps {
-  onToggleAI: () => void;
-  showAIAssistant: boolean;
+  onToggleAI?: () => void;
+  showAIAssistant?: boolean;
+  onToggleCollaboration?: () => void;
+  showShareButton?: boolean;
+  canvasRef?: React.RefObject<HTMLCanvasElement>;
 }
 
 // Add Frame interface
@@ -15,11 +19,19 @@ interface StoryboardFrame {
   timestamp: number;
 }
 
-const Header: React.FC<HeaderProps> = ({ onToggleAI, showAIAssistant }) => {
-  const { state } = useDrawing()
+const Header: React.FC<HeaderProps> = ({ 
+  onToggleAI, 
+  showAIAssistant,
+  onToggleCollaboration,
+  showShareButton,
+  canvasRef
+}) => {
+  const { state, dispatch } = useDrawing()
   const [documentName, setDocumentName] = useState('Untitled')
   const [showStoryboard, setShowStoryboard] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [frames, setFrames] = useState<StoryboardFrame[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   const handleExport = () => {
     const canvas = document.createElement('canvas')
@@ -166,6 +178,90 @@ const Header: React.FC<HeaderProps> = ({ onToggleAI, showAIAssistant }) => {
     </div>
   );
 
+  // Create a simple import button that directly opens the file dialog
+  const ImportButton = () => {
+    const { state, dispatch } = useDrawing();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      
+      const file = e.target.files[0];
+      if (!file.type.match('image.*')) {
+        alert('Please select an image file (PNG, JPEG, etc)');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (!event.target || typeof event.target.result !== 'string') return;
+        
+        const imageDataUrl = event.target.result;
+        const img = new Image();
+        img.onload = () => {
+          const centerX = 200;
+          const centerY = 200;
+          const maxDimension = 400;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height && width > maxDimension) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else if (height > maxDimension) {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
+          }
+          
+          const imageShape: Shape = {
+            id: Date.now().toString(),
+            type: 'image',
+            points: [
+              { x: centerX - width/2, y: centerY - height/2 },
+              { x: centerX + width/2, y: centerY + height/2 }
+            ],
+            image: imageDataUrl,
+            width,
+            height,
+            style: { ...state.defaultStyle },
+            isSelected: false
+          };
+          
+          dispatch({ type: 'ADD_SHAPE', payload: imageShape });
+          console.log('Added image to canvas');
+        };
+        
+        img.src = imageDataUrl;
+      };
+      
+      reader.readAsDataURL(file);
+      
+      // Reset input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+
+    return (
+      <>
+        <button 
+          className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors"
+          onClick={() => fileInputRef.current?.click()}
+          title="Import Image"
+        >
+          <ImageIcon size={16} />
+        </button>
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileImport}
+          accept="image/*"
+          style={{ display: 'none' }}
+        />
+      </>
+    );
+  };
+
   return (
     <header className="bg-white border-b border-neutral-100 px-2 py-1.5 flex items-center justify-between shadow-sm">
       <div className="flex items-center">
@@ -200,19 +296,9 @@ const Header: React.FC<HeaderProps> = ({ onToggleAI, showAIAssistant }) => {
       
       <div className="flex items-center space-x-1">
         <div className="flex items-center bg-neutral-100 rounded-md p-0.5">
-          <button 
-            className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
-              showAIAssistant 
-                ? 'bg-purple-100 text-purple-600' 
-                : 'text-neutral-500 hover:bg-white hover:text-neutral-700'
-            }`}
-            onClick={onToggleAI}
-            title="AI Assistant"
-          >
-            <Sparkles size={16} />
-          </button>
-
-          {/* Add Storyboard button right after the AI assistant button */}
+          {/* Coco-ify button - Removing the star icon */}
+          
+          {/* Add Storyboard button */}
           <button 
             className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
               showStoryboard 
@@ -228,28 +314,28 @@ const Header: React.FC<HeaderProps> = ({ onToggleAI, showAIAssistant }) => {
           <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
             <User size={16} />
           </button>
-          <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
+          <button 
+            className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+              showHistory 
+                ? 'bg-amber-100 text-amber-600' 
+                : 'text-neutral-500 hover:bg-white hover:text-neutral-700'
+            }`}
+            onClick={() => setShowHistory(!showHistory)}
+            title="Drawing History"
+          >
             <Clock size={16} />
           </button>
-          <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          <ImportButton />
         </div>
         
         <div className="flex items-center bg-neutral-100 rounded-md p-0.5">
           <button 
             className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors"
             onClick={handleExport}
+            title="Export Drawing"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 7H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         </div>
@@ -259,6 +345,142 @@ const Header: React.FC<HeaderProps> = ({ onToggleAI, showAIAssistant }) => {
         </button>
       </div>
       
+      {/* History Panel */}
+      {showHistory && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '20px',
+            top: '60px',
+            width: '240px',
+            height: '400px',
+            background: '#ffffff',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ fontWeight: 'bold', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
+            Drawing History
+          </div>
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {state.history.past.length === 0 ? (
+              <div style={{ 
+                height: '120px', 
+                background: '#f3f4f6', 
+                borderRadius: '4px',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                color: '#9ca3af',
+                flexDirection: 'column'
+              }}>
+                <div>No history yet</div>
+                <div style={{ fontSize: '0.8em', marginTop: '4px' }}>Start drawing to create history</div>
+              </div>
+            ) : (
+              <>
+                {state.history.past.map((_, index) => (
+                  <div key={index} style={{ 
+                    position: 'relative',
+                    padding: '8px',
+                    background: '#f3f4f6', 
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <div style={{
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      background: '#e5e7eb',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <History size={14} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.9em' }}>
+                        Step {state.history.past.length - index}
+                      </div>
+                      <div style={{ fontSize: '0.7em', color: '#6b7280' }}>
+                        {new Date().toLocaleTimeString()}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        // Undo to this point in history
+                        for (let i = 0; i < state.history.past.length - index; i++) {
+                          dispatch({ type: 'UNDO' });
+                        }
+                      }}
+                      style={{
+                        marginLeft: 'auto',
+                        background: '#e5e7eb',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '4px 8px',
+                        fontSize: '0.8em',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            borderTop: '1px solid #eee',
+            paddingTop: '8px'
+          }}>
+            <button 
+              onClick={() => dispatch({ type: 'UNDO' })}
+              disabled={state.history.past.length === 0}
+              style={{
+                background: state.history.past.length === 0 ? '#9ca3af' : '#4b5563',
+                color: 'white',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                cursor: state.history.past.length === 0 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Undo
+            </button>
+            <button 
+              onClick={() => dispatch({ type: 'REDO' })}
+              disabled={state.history.future.length === 0}
+              style={{
+                background: state.history.future.length === 0 ? '#9ca3af' : '#4b5563',
+                color: 'white',
+                border: 'none',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                cursor: state.history.future.length === 0 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Redo
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Storyboard Panel */}
       {showStoryboard && (
         <div

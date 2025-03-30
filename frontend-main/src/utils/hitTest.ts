@@ -12,6 +12,8 @@ export const hitTest = (shape: Shape, point: Point): boolean => {
       return hitTestPencil(shape.points, point)
     case 'text':
       return hitTestText(shape.points[0], point, shape.text || '', shape.style.fontSize || 16)
+    case 'image':
+      return hitTestRectangle(shape.points, point) // Image uses the same hit test as rectangle
     default:
       return false
   }

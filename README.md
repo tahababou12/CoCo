@@ -96,116 +96,169 @@ python test_client.py --url https://your-username--trellis-generate.modal.run --
 - The generated 3D model is returned in the requested format (GLB or PLY) along with preview videos
 - All parameters are sent as form data (strings) rather than query parameters
 
-# CoCo - Collaborative Drawing Application
+# CoCo - Collaborative Whiteboard
 
-CoCo is a real-time collaborative drawing application that allows multiple users to draw simultaneously on a shared canvas. It features a modern UI, various drawing tools, and AI-powered assistance using Claude.
+CoCo is a real-time collaborative drawing application that allows multiple users to draw simultaneously on a shared canvas. It features real-time cursor tracking, various drawing tools, and collaborative features.
 
 ## Features
 
 - Real-time collaboration with multiple users
-- Drawing tools: pen, shapes (rectangle, circle), text, and eraser
-- User cursor visualization for all collaborators
-- Draggable collaboration panel that shows connected users
-- AI drawing assistance powered by Claude (feedback and improvement suggestions)
+- Live cursor tracking for all participants
+- Drawing tools: pen, shapes, and more
+- WebSocket-based communication
+- Support for webcam sharing
+- History tracking and undo/redo
 - Export drawings as PNG
-- Pan and zoom canvas support
 
 ## Tech Stack
 
-- **Frontend**: React, TypeScript, TailwindCSS
-- **Backend**: FastAPI (Python), WebSockets for real-time communication
-- **AI**: Claude API integration for drawing assistance
+- **Frontend**: React, TypeScript, TailwindCSS, Vite
+- **Backend**: Node.js, Express, WebSockets
+- **Collaboration**: Custom WebSocket implementation
 
-## Setup and Installation
+## Quick Start
 
 ### Prerequisites
 
-- Node.js and npm
-- Python 3.8+
-- Anthropic API key for Claude integration
+- Node.js 18+ and npm
+- Git
 
-### Backend Setup
+### Installation
 
-1. Navigate to the backend directory:
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/CoCo.git
+   cd CoCo
    ```
+
+2. **Install backend dependencies**:
+   ```bash
    cd backend
-   ```
-
-2. Create a virtual environment and activate it:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Create a `.env` file from the example:
-   ```
-   cp .env.example .env
-   ```
-
-5. Edit the `.env` file and add your Anthropic API key:
-   ```
-   ANTHROPIC_API_KEY=your_api_key_here
-   ```
-
-6. Start the backend server:
-   ```
-   uvicorn app.main:app --reload
-   ```
-
-### Frontend Setup
-
-1. Navigate to the frontend-main directory:
-   ```
-   cd frontend-main
-   ```
-
-2. Install dependencies:
-   ```
    npm install
    ```
 
-3. Create a `.env` file:
-   ```
-   echo "VITE_API_URL=http://localhost:8000" > .env
+3. **Install frontend dependencies**:
+   ```bash
+   cd ../frontend-main
+   npm install
    ```
 
-4. Start the development server:
+### Running Locally
+
+1. **Start the backend server**:
+   ```bash
+   cd backend
+   node websocket-server.js
    ```
+   Or use our convenient script:
+   ```bash
+   ./start-server.sh
+   ```
+
+2. **Start the frontend development server**:
+   ```bash
+   cd frontend-main
    npm run dev
    ```
 
-5. Access the application at [http://localhost:5173](http://localhost:5173)
+3. **Access the application** at:
+   ```
+   http://localhost:5173
+   ```
 
-## Using the Claude AI Assistant
+## Network Collaboration Setup
 
-CoCo integrates with Claude AI to provide drawing assistance and feedback:
+This guide will help you set up CoCo for collaboration across different devices on the same network.
 
-1. Click the sparkle icon in the top toolbar to open the Claude AI panel.
+### For the Host (Server)
 
-2. Two options are available:
-   - **Quick Feedback**: Receive a quick analysis of your current drawing.
-   - **Detailed Improvement**: Get detailed suggestions to improve your drawing with optional specific instructions.
+1. **Start the Backend Server**:
+   ```bash
+   cd backend
+   ./start-server.sh
+   ```
+   This script will show your IP address and start the server.
 
-3. Type specific instructions in the text area if you have particular requirements (e.g., "Make my drawing more realistic" or "Add more details to the background").
+2. **Create or Update Frontend Environment Variables**:
+   Create a file at `frontend-main/.env` with:
+   ```
+   VITE_WS_URL=ws://YOUR_IP_ADDRESS:8080
+   ```
+   Replace `YOUR_IP_ADDRESS` with your actual IP address (e.g., 10.28.30.186).
 
-4. Click one of the buttons and wait for Claude to process your drawing.
+3. **Start the Frontend**:
+   ```bash
+   cd frontend-main
+   npm run dev
+   ```
 
-5. Review the AI suggestions and apply them to your drawing as needed.
+4. **Share Your IP Address**:
+   Share your IP address with collaborators. They will connect to:
+   ```
+   http://YOUR_IP_ADDRESS:5173
+   ```
 
-6. Close the panel by clicking the X button when you're done.
+### For Collaborators
 
-## WebSocket Server
+1. **Connect to the Host**:
+   Open your browser and go to:
+   ```
+   http://HOST_IP_ADDRESS:5173
+   ```
+   Replace `HOST_IP_ADDRESS` with the IP address shared by the host.
 
-The application also includes a WebSocket server for real-time collaboration:
+### Troubleshooting
 
+If connections fail:
+
+1. **Check Firewall Settings**:
+   - On Mac: System Preferences > Security & Privacy > Firewall
+   - Make sure Node.js is allowed incoming connections
+
+2. **Network Restrictions**:
+   Some networks (especially institutional ones) might block direct connections between computers.
+   Solutions:
+   - Try using a personal hotspot
+   - Connect to a less restricted network
+
+3. **Verify Server is Running**:
+   The host can check with:
+   ```
+   curl http://localhost:8080/api/ping
+   ```
+
+4. **Check the Frontend Environment**:
+   Make sure the `.env` file has the correct IP address
+
+## Project Structure
+
+- `backend/` - Node.js server with WebSocket implementation
+  - `websocket-server.js` - Main server file
+  - `start-server.sh` - Convenience script for starting the server
+  - `images/` - Storage for exported images
+
+- `frontend-main/` - React frontend application
+  - `src/` - Source code
+    - `components/` - React components
+    - `context/` - React context providers for state management
+    - `utils/` - Utility functions
+
+## Development
+
+### Adding New Features
+
+1. Frontend changes should be made in the `frontend-main/src` directory
+2. Backend changes should be made in the `backend` directory
+3. Restart both servers after making changes
+
+### Building for Production
+
+```bash
+cd frontend-main
+npm run build
 ```
-node backend/websocket-server.js
-```
+
+The built files will be in the `frontend-main/dist` directory.
 
 ## License
 

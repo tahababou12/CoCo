@@ -1,6 +1,30 @@
 import React, { createContext, useContext, useReducer } from 'react'
-import { DrawingState, Shape, Tool, Point, ShapeStyle, User } from '../types'
+import { Shape, Tool, Point, ShapeStyle, User } from '../types'
 import { v4 as uuidv4 } from '../utils/uuid'
+
+// Define DrawingState interface locally
+interface DrawingState {
+  tool: string
+  currentShape: Shape | null
+  shapes: Shape[]
+  selectedShapeIds: string[]
+  defaultStyle: ShapeStyle
+  collaborators: User[]
+  isConnected: boolean
+  peerConnections: Record<string, RTCPeerConnection>
+  remoteStreams: Record<string, MediaStream>
+  selectionBox: { start: Point; end: Point } | null
+  currentUser: User | null
+  viewTransform: {
+    scale: number
+    offsetX: number
+    offsetY: number
+  }
+  history: {
+    past: DrawingState[]
+    future: DrawingState[]
+  }
+}
 
 type DrawingAction =
   | { type: 'SET_TOOL'; payload: Tool }
@@ -31,6 +55,10 @@ type DrawingAction =
   | { type: 'ADD_REMOTE_STREAM'; payload: { userId: string; stream: MediaStream } }
   | { type: 'REMOVE_REMOTE_STREAM'; payload: { userId: string } }
   | { type: 'UPDATE_HAND_TRACKING_STATUS'; payload: { userId: string; isEnabled: boolean } }
+  | { type: 'SET_SELECTED_SHAPE'; payload: string[] }
+  | { type: 'START_SELECTION_BOX'; payload: Point }
+  | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
+  | { type: 'END_SELECTION_BOX' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -58,7 +86,9 @@ const initialState: DrawingState = {
   collaborators: [],
   isConnected: false,
   peerConnections: {},
-  remoteStreams: {}
+  remoteStreams: {},
+  selectionBox: null,
+  currentUser: null
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
@@ -445,6 +475,97 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         )
       };
     }
+
+    case 'SET_SELECTED_SHAPE':
+      return {
+        ...state,
+        selectedShapeIds: action.payload
+      }
+
+    case 'START_SELECTION_BOX':
+      return {
+        ...state,
+        selectionBox: {
+          start: action.payload,
+          end: action.payload
+        },
+        selectedShapeIds: []
+      }
+      
+    case 'UPDATE_SELECTION_BOX':
+      if (!state.selectionBox) return state
+      
+      return {
+        ...state,
+        selectionBox: {
+          ...state.selectionBox,
+          end: action.payload
+        }
+      }
+      
+    case 'END_SELECTION_BOX':
+      if (!state.selectionBox || !state.selectionBox.start || !state.selectionBox.end) {
+        return {
+          ...state,
+          selectionBox: null
+        }
+      }
+      
+      // Calculate selection box bounds
+      const startX = Math.min(state.selectionBox.start.x, state.selectionBox.end.x)
+      const startY = Math.min(state.selectionBox.start.y, state.selectionBox.end.y)
+      const endX = Math.max(state.selectionBox.start.x, state.selectionBox.end.x)
+      const endY = Math.max(state.selectionBox.start.y, state.selectionBox.end.y)
+      
+      // Find shapes inside the selection box
+      const selectedShapeIds = state.shapes
+        .filter(shape => {
+          // Check if shape is inside the selection box
+          switch (shape.type) {
+            case 'rectangle':
+            case 'ellipse':
+            case 'image':
+              // Check if any corner of the shape is inside the selection box
+              const [start, end] = shape.points
+              const shapeMinX = Math.min(start.x, end.x)
+              const shapeMinY = Math.min(start.y, end.y)
+              const shapeMaxX = Math.max(start.x, end.x)
+              const shapeMaxY = Math.max(start.y, end.y)
+              
+              // Check if the shape overlaps with selection box
+              return !(
+                shapeMaxX < startX ||
+                shapeMinX > endX ||
+                shapeMaxY < startY ||
+                shapeMinY > endY
+              )
+              
+            case 'line':
+            case 'pencil':
+              // Check if any point of the shape is inside the selection box
+              return shape.points.some(point => 
+                point.x >= startX && point.x <= endX &&
+                point.y >= startY && point.y <= endY
+              )
+              
+            case 'text':
+              // Check if the text position is inside the selection box
+              return (
+                shape.points[0].x >= startX && shape.points[0].x <= endX &&
+                shape.points[0].y >= startY && shape.points[0].y <= endY
+              )
+              
+            default:
+              return false
+          }
+        })
+        .map(shape => shape.id)
+      
+      return {
+        ...state,
+        selectionBox: null,
+        selectedShapeIds
+      }
 
     default:
       return state

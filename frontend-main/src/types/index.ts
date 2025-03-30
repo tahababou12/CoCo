@@ -13,9 +13,12 @@ export type ShapeStyle = {
 
 export type Shape = {
   id: string
-  type: 'rectangle' | 'ellipse' | 'line' | 'pencil' | 'text'
+  type: 'rectangle' | 'ellipse' | 'line' | 'pencil' | 'text' | 'image'
   points: Point[]
   text?: string
+  image?: string
+  width?: number
+  height?: number
   style: ShapeStyle
   isSelected: boolean
   createdBy?: string // User ID who created the shape

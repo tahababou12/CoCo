@@ -1,6 +1,7 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
+import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { useDrawing } from '../context/DrawingContext'
 import { useWebSocket } from '../context/WebSocketContext'
+import { useShapes } from '../ShapesContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
@@ -94,6 +95,7 @@ const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
   const webSocketContext = useWebSocket()
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const { setCanvas } = useShapes()
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isPanning, setIsPanning] = useState(false)
@@ -114,6 +116,17 @@ const Canvas: React.FC = () => {
   const cursorThrottleRef = useRef<number>(0)
   const CURSOR_THROTTLE_MS = 50
 
+  // Add this with the other useRef declarations at the top of the component
+  const isErasing = useRef(false)
+  const isSelecting = useRef(false)
+
+  // Update the ShapesContext with our canvas element
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvas(canvasRef.current);
+    }
+  }, [canvasRef.current, setCanvas]);
+
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const gridSize = 20 * state.viewTransform.scale
@@ -131,69 +144,150 @@ const Canvas: React.FC = () => {
     }
   }
 
-  const renderCanvas = () => {
-    console.log('renderCanvas called');
-    const canvas = canvasRef.current;
-    let ctx = ctxRef.current;
-    
-    if (!canvas) {
-      console.error('Cannot render: canvas not available');
-      return;
-    }
-    
-    if (!ctx) {
-      console.error('Cannot render: context not available');
-      
-      // Try to reinitialize the context
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (context) {
-        console.log('Successfully reinitialized context');
-        ctxRef.current = context;
-        ctx = context;
-      } else {
-        console.error('Failed to reinitialize context');
-        return;
-      }
+  const renderCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Set canvas size to match container
+    const container = containerRef.current
+    if (container) {
+      canvas.width = container.clientWidth
+      canvas.height = container.clientHeight
     }
 
-    // At this point, we know ctx is not null
-    const context = ctx;
-
-    // Make sure canvas has dimensions
-    if (canvas.width === 0 || canvas.height === 0) {
-      console.warn('Canvas has zero dimensions, setting defaults');
-      canvas.width = 800;
-      canvas.height = 600;
-    }
-
-    console.log(`Rendering canvas ${canvas.width}x${canvas.height} with ${state.shapes.length} shapes`);
-    
-    // Clear canvas with background color
-    // context.fillStyle = '#fafaf9'; // Dim white
-    context.fillStyle = '#fffbeb'; // Light yellow for night shift mode
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw grid
-    drawGrid(context, canvas.width, canvas.height);
+    // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     // Apply view transform
-    context.save();
-    context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
-    context.scale(state.viewTransform.scale, state.viewTransform.scale);
+    ctx.save()
+    ctx.translate(state.viewTransform.offsetX, state.viewTransform.offsetY)
+    ctx.scale(state.viewTransform.scale, state.viewTransform.scale)
 
     // Draw all shapes
-    state.shapes.forEach((shape, index) => {
-      console.log(`Rendering shape ${index}: ${shape.type}`);
-      renderShape(context, shape);
-    });
+    state.shapes.forEach(shape => {
+      renderShape(ctx, shape)
+      
+      // Draw selection indicator for selected shapes
+      if (state.selectedShapeIds.includes(shape.id)) {
+        drawSelectionIndicator(ctx, shape);
+      }
+    })
 
-    // Draw current shape being created
+    // Draw current shape if drawing
     if (state.currentShape) {
-      console.log('Drawing current shape:', state.currentShape.type);
-      renderShape(context, state.currentShape);
+      renderShape(ctx, state.currentShape)
     }
 
-    context.restore();
+    // Draw selection box if active
+    if (state.selectionBox && state.selectionBox.start && state.selectionBox.end) {
+      drawSelectionBox(ctx, state.selectionBox.start, state.selectionBox.end);
+    }
+
+    ctx.restore()
+  }, [state.shapes, state.currentShape, state.viewTransform, state.selectedShapeIds, state.selectionBox])
+
+  // Add helper functions for drawing selection box and indicators
+  const drawSelectionBox = (ctx: CanvasRenderingContext2D, start: Point, end: Point) => {
+    const width = end.x - start.x;
+    const height = end.y - start.y;
+    
+    ctx.save();
+    ctx.strokeStyle = '#1e90ff'; // Dodger blue
+    ctx.lineWidth = 1 / state.viewTransform.scale;
+    ctx.setLineDash([5 / state.viewTransform.scale, 5 / state.viewTransform.scale]);
+    ctx.strokeRect(start.x, start.y, width, height);
+    ctx.restore();
+  };
+  
+  const drawSelectionIndicator = (ctx: CanvasRenderingContext2D, shape: Shape) => {
+    ctx.save();
+    
+    let bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    
+    switch (shape.type) {
+      case 'rectangle':
+      case 'ellipse':
+      case 'image':
+        // These shapes have two points defining opposite corners
+        const [start, end] = shape.points;
+        bounds = {
+          minX: Math.min(start.x, end.x),
+          minY: Math.min(start.y, end.y),
+          maxX: Math.max(start.x, end.x),
+          maxY: Math.max(start.y, end.y)
+        };
+        break;
+        
+      case 'line':
+      case 'pencil':
+        // Find bounding box of all points
+        bounds = shape.points.reduce(
+          (acc, point) => ({
+            minX: Math.min(acc.minX, point.x),
+            minY: Math.min(acc.minY, point.y),
+            maxX: Math.max(acc.maxX, point.x),
+            maxY: Math.max(acc.maxY, point.y)
+          }),
+          { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+        );
+        break;
+        
+      case 'text':
+        // For text, create a bounding box based on the position and estimated size
+        const fontSize = shape.style.fontSize || 16;
+        const textWidth = (shape.text?.length || 0) * (fontSize * 0.6);
+        bounds = {
+          minX: shape.points[0].x,
+          minY: shape.points[0].y,
+          maxX: shape.points[0].x + textWidth,
+          maxY: shape.points[0].y + fontSize * 1.2
+        };
+        break;
+        
+      default:
+        ctx.restore();
+        return;
+    }
+    
+    // Draw selection rectangle
+    ctx.strokeStyle = '#4285f4'; // Google blue
+    ctx.lineWidth = 2 / state.viewTransform.scale;
+    ctx.strokeRect(
+      bounds.minX - 5 / state.viewTransform.scale,
+      bounds.minY - 5 / state.viewTransform.scale,
+      (bounds.maxX - bounds.minX) + 10 / state.viewTransform.scale,
+      (bounds.maxY - bounds.minY) + 10 / state.viewTransform.scale
+    );
+    
+    // Draw control handles at corners
+    const handleSize = 8 / state.viewTransform.scale;
+    const handlePoints = [
+      { x: bounds.minX, y: bounds.minY }, // Top-left
+      { x: bounds.maxX, y: bounds.minY }, // Top-right
+      { x: bounds.maxX, y: bounds.maxY }, // Bottom-right
+      { x: bounds.minX, y: bounds.maxY }  // Bottom-left
+    ];
+    
+    ctx.fillStyle = 'white';
+    handlePoints.forEach(point => {
+      ctx.fillRect(
+        point.x - handleSize / 2,
+        point.y - handleSize / 2,
+        handleSize,
+        handleSize
+      );
+      ctx.strokeRect(
+        point.x - handleSize / 2,
+        point.y - handleSize / 2,
+        handleSize,
+        handleSize
+      );
+    });
+    
+    ctx.restore();
   };
 
   // Initialize canvas and context
@@ -337,10 +431,21 @@ const Canvas: React.FC = () => {
         
         if (shapeUnderCursor) {
           console.log('Selected shape:', shapeUnderCursor.id);
-          dispatch({ type: 'SELECT_SHAPES', payload: [shapeUnderCursor.id] });
+          // Check if holding shift to add to selection
+          if (e.shiftKey) {
+            const updatedSelection = state.selectedShapeIds.includes(shapeUnderCursor.id)
+              ? state.selectedShapeIds.filter(id => id !== shapeUnderCursor.id)
+              : [...state.selectedShapeIds, shapeUnderCursor.id];
+            
+            dispatch({ type: 'SELECT_SHAPES', payload: updatedSelection });
+          } else if (!state.selectedShapeIds.includes(shapeUnderCursor.id)) {
+            dispatch({ type: 'SELECT_SHAPES', payload: [shapeUnderCursor.id] });
+          }
         } else {
-          console.log('No shape found, clearing selection');
-          dispatch({ type: 'CLEAR_SELECTION' });
+          // No shape under cursor, start selection box
+          console.log('Starting selection box at', point);
+          isSelecting.current = true;
+          dispatch({ type: 'START_SELECTION_BOX', payload: point });
         }
         setIsDrawing(true);
         break;
@@ -363,6 +468,9 @@ const Canvas: React.FC = () => {
       case 'eraser':
         console.log('Starting eraser operation');
         setIsDrawing(true);
+        // Store that we're erasing
+        isErasing.current = true;
+        
         // Check for shape at initial click point and erase it
         const shapeToErase = findShapeAtPoint(point);
         if (shapeToErase) {
@@ -420,21 +528,20 @@ const Canvas: React.FC = () => {
     }
 
     // Handle tool-specific behavior
-    if (state.tool === 'pan' || isPanning) {
-      const dx = e.clientX - (lastPanPoint?.x || 0);
-      const dy = e.clientY - (lastPanPoint?.y || 0);
+    if (isPanning && lastPanPoint) {
+      // Only pan when isPanning is true AND we have a valid lastPanPoint
+      const dx = e.clientX - lastPanPoint.x;
+      const dy = e.clientY - lastPanPoint.y;
       dispatch({ type: 'PAN', payload: { x: dx, y: dy } });
       setLastPanPoint({ x: e.clientX, y: e.clientY });
     } else if (state.tool === 'select' && isDrawing) {
-      // Find shape under cursor
-      const shapeUnderCursor = findShapeAtPoint(point);
-      
-      if (shapeUnderCursor) {
-        dispatch({ type: 'SELECT_SHAPES', payload: [shapeUnderCursor.id] });
+      if (isSelecting.current) {
+        // Update selection box
+        dispatch({ type: 'UPDATE_SELECTION_BOX', payload: point });
       } else {
-        dispatch({ type: 'CLEAR_SELECTION' });
+        // Handle moving selected shapes (future implementation)
       }
-    } else if (state.tool === 'eraser' && isDrawing) {
+    } else if (state.tool === 'eraser' && isDrawing && isErasing.current) {
       // Object eraser - erase shapes only when actively drawing (mouse down)
       const shapeToErase = findShapeAtPoint(point);
       if (shapeToErase) {
@@ -476,15 +583,44 @@ const Canvas: React.FC = () => {
     }
     
     if (isPanning) {
+      console.log('Ending pan operation');
       setIsPanning(false);
       setLastPanPoint(null);
       return;
     }
 
-    if (isDrawing && state.currentShape) {
-      console.log('Ending drawing', state.currentShape.type);
+    if (isDrawing) {
+      console.log('Ending drawing operation');
+      
+      // End selection box if we were selecting
+      if (isSelecting.current && state.selectionBox) {
+        isSelecting.current = false;
+        
+        // Find shapes that are within the selection box and select them
+        const shapesInSelection = findShapesInSelectionBox(state.selectionBox.start, state.selectionBox.end);
+        const selectedIds = shapesInSelection.map(shape => shape.id);
+        
+        console.log('Selected shapes:', selectedIds);
+        
+        // If holding shift, add to existing selection
+        if (e.shiftKey) {
+          const updatedSelection = [...new Set([...state.selectedShapeIds, ...selectedIds])];
+          dispatch({ type: 'SELECT_SHAPES', payload: updatedSelection });
+        } else {
+          dispatch({ type: 'SELECT_SHAPES', payload: selectedIds });
+        }
+        
+        dispatch({ type: 'END_SELECTION_BOX' });
+      }
+      
       setIsDrawing(false);
-      dispatch({ type: 'END_DRAWING' });
+      
+      // Reset erasing state
+      isErasing.current = false;
+      
+      if (state.currentShape) {
+        dispatch({ type: 'END_DRAWING' });
+      }
     }
   };
 
@@ -492,11 +628,8 @@ const Canvas: React.FC = () => {
     // Don't end drawing on leave since we've captured the pointer
     e.preventDefault();
     
-    // Only handle panning case
-    if (isPanning) {
-      setIsPanning(false);
-      setLastPanPoint(null);
-    }
+    // We don't need to end panning here since we're using pointer capture
+    // Panning will end when the pointer is released (handlePointerUp)
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -581,6 +714,118 @@ const Canvas: React.FC = () => {
     // You would implement the actual storyboard functionality here
   };
 
+  // Find all shapes within the selection box
+  const findShapesInSelectionBox = (start: Point, end: Point): Shape[] => {
+    // Normalize the selection box coordinates
+    const selectionBounds = {
+      minX: Math.min(start.x, end.x),
+      minY: Math.min(start.y, end.y),
+      maxX: Math.max(start.x, end.x),
+      maxY: Math.max(start.y, end.y)
+    };
+    
+    // Group shapes by their createdBy ID to identify whole drawings
+    // This will let us select entire drawings rather than individual lines
+    const shapeGroups: Record<string, Shape[]> = {};
+    
+    // First, find all shapes that intersect with the selection box
+    const intersectingShapes = state.shapes.filter(shape => {
+      // Calculate shape bounds based on shape type
+      let shapeBounds: { minX: number; minY: number; maxX: number; maxY: number };
+      
+      switch (shape.type) {
+        case 'rectangle':
+        case 'ellipse':
+        case 'image':
+          // These shapes have two points defining opposite corners
+          const [p1, p2] = shape.points;
+          shapeBounds = {
+            minX: Math.min(p1.x, p2.x),
+            minY: Math.min(p1.y, p2.y),
+            maxX: Math.max(p1.x, p2.x),
+            maxY: Math.max(p1.y, p2.y)
+          };
+          break;
+          
+        case 'line':
+        case 'pencil':
+          // Find bounding box of all points
+          shapeBounds = shape.points.reduce(
+            (acc, point) => ({
+              minX: Math.min(acc.minX, point.x),
+              minY: Math.min(acc.minY, point.y),
+              maxX: Math.max(acc.maxX, point.x),
+              maxY: Math.max(acc.maxY, point.y)
+            }),
+            { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+          );
+          break;
+          
+        case 'text':
+          // For text, create a bounding box based on the position and estimated size
+          const point = shape.points[0];
+          const fontSize = shape.style.fontSize || 16;
+          const textWidth = (shape.text?.length || 0) * (fontSize * 0.6);
+          shapeBounds = {
+            minX: point.x,
+            minY: point.y,
+            maxX: point.x + textWidth,
+            maxY: point.y + fontSize * 1.2
+          };
+          break;
+          
+        default:
+          return false;
+      }
+      
+      // Check if shape overlaps with selection box (consider it selected if any part is inside)
+      const isOverlapping = !(
+        shapeBounds.maxX < selectionBounds.minX || 
+        shapeBounds.minX > selectionBounds.maxX ||
+        shapeBounds.maxY < selectionBounds.minY ||
+        shapeBounds.minY > selectionBounds.maxY
+      );
+      
+      return isOverlapping;
+    });
+    
+    // Group shapes by createdBy ID or creation timestamp
+    intersectingShapes.forEach(shape => {
+      const groupKey = shape.createdBy || 
+                      (shape.id.split('-')[0] || 'ungrouped'); // Use first part of ID as fallback
+      
+      if (!shapeGroups[groupKey]) {
+        shapeGroups[groupKey] = [];
+      }
+      shapeGroups[groupKey].push(shape);
+    });
+    
+    // For any group that has at least one shape intersecting, include all shapes in that group
+    const result: Shape[] = [];
+    
+    // First add all directly intersecting shapes
+    result.push(...intersectingShapes);
+    
+    // Then for groups with multiple shapes, find all related shapes that might be outside the selection
+    Object.keys(shapeGroups).forEach(groupKey => {
+      if (shapeGroups[groupKey].length > 0) {
+        // Find all shapes with the same group key that weren't already intersecting
+        const relatedShapes = state.shapes.filter(shape => {
+          const shapeGroupKey = shape.createdBy || 
+                               (shape.id.split('-')[0] || 'ungrouped');
+          return shapeGroupKey === groupKey && 
+                 !intersectingShapes.some(s => s.id === shape.id);
+        });
+        
+        // Add these related shapes to the result
+        result.push(...relatedShapes);
+      }
+    });
+    
+    // Remove duplicates
+    return [...new Map(result.map(shape => [shape.id, shape])).values()];
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -597,15 +842,17 @@ const Canvas: React.FC = () => {
     >
       <canvas
         ref={canvasRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerLeave}
+        className="canvas-main"
         style={{ 
           display: 'block',
           touchAction: 'none',
           cursor: getCursorForTool(state.tool),
         }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+        onWheel={handleWheel}
       />
       
       {/* Add the StoryboardIcon component */}
@@ -616,22 +863,27 @@ const Canvas: React.FC = () => {
         <div 
           style={{
             position: 'absolute',
-            left: `${textInput.position.x}px`,
-            top: `${textInput.position.y}px`,
-            zIndex: 100,
+            left: `${textInput.position.x + state.viewTransform.offsetX}px`, 
+            top: `${textInput.position.y + state.viewTransform.offsetY}px`,
+            padding: '4px',
+            transform: `scale(${state.viewTransform.scale})`,
+            transformOrigin: 'top left',
           }}
         >
           <input
             type="text"
+            autoFocus
             value={textInput.value}
             onChange={handleTextInputChange}
             onKeyDown={handleTextInputKeyDown}
-            autoFocus
+            onBlur={submitTextInput}
             style={{
               background: 'transparent',
-              border: '1px dashed #000',
-              padding: '4px',
-              fontSize: `${state.defaultStyle.fontSize || 16}px`,
+              border: '1px dashed #666',
+              fontSize: '16px',
+              minWidth: '100px',
+              fontFamily: 'sans-serif',
+              padding: '2px',
             }}
           />
         </div>
