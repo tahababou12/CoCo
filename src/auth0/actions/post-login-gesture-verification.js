@@ -7,13 +7,25 @@ exports.onExecutePostLogin = async (event, api) => {
   const contentRestrictions = event.user.app_metadata?.content_restrictions || {
     safe_search: true,
     inappropriate_content_filter: true,
-    sharing_enabled: false
+    sharing_enabled: false,
+    chat_enabled: false,
+    collaboration_enabled: false
   };
   const drawingHistory = event.user.app_metadata?.drawing_history || [];
   const totalDrawings = event.user.app_metadata?.total_drawings || 0;
   const lastDrawingDate = event.user.app_metadata?.last_drawing_date;
   const achievements = event.user.app_metadata?.achievements || [];
   const drawingStreak = event.user.app_metadata?.drawing_streak || 0;
+  const learningProgress = event.user.app_metadata?.learning_progress || {
+    tutorials_completed: 0,
+    skills_learned: [],
+    difficulty_level: 'beginner'
+  };
+  const rewards = event.user.app_metadata?.rewards || {
+    points: 0,
+    badges: [],
+    unlocked_features: []
+  };
   const currentTime = new Date().toISOString();
 
   const isUnderAge = userAge && userAge < 13;
@@ -24,6 +36,15 @@ exports.onExecutePostLogin = async (event, api) => {
   const isStreakActive = lastDrawingDate && 
     new Date().toDateString() === new Date(new Date(lastDrawingDate).getTime() + 86400000).toDateString();
   const updatedStreak = isStreakActive ? drawingStreak : 0;
+
+  // Calculate learning progress
+  const shouldIncreaseDifficulty = learningProgress.tutorials_completed >= 5 && 
+    learningProgress.difficulty_level === 'beginner';
+  const updatedDifficulty = shouldIncreaseDifficulty ? 'intermediate' : learningProgress.difficulty_level;
+
+  // Calculate rewards
+  const newPoints = isNewDay ? rewards.points + 10 : rewards.points;
+  const shouldUnlockFeature = newPoints >= 100 && !rewards.unlocked_features.includes('special_brushes');
 
   api.accessToken.setCustomClaim('requires_parental_consent', requiresParentalConsent);
   api.accessToken.setCustomClaim('is_parent_account', isParentAccount);
@@ -40,6 +61,18 @@ exports.onExecutePostLogin = async (event, api) => {
     total: achievements.length,
     streak: updatedStreak,
     unlocked: achievements
+  });
+  api.accessToken.setCustomClaim('learning_status', {
+    level: updatedDifficulty,
+    tutorials_completed: learningProgress.tutorials_completed,
+    skills: learningProgress.skills_learned
+  });
+  api.accessToken.setCustomClaim('rewards_status', {
+    points: newPoints,
+    badges: rewards.badges,
+    unlocked_features: shouldUnlockFeature ? 
+      [...rewards.unlocked_features, 'special_brushes'] : 
+      rewards.unlocked_features
   });
 
   api.user.setAppMetadata('parental_controls', {
@@ -66,5 +99,18 @@ exports.onExecutePostLogin = async (event, api) => {
     achievements: achievements,
     streak: updatedStreak,
     last_update: currentTime
+  });
+  api.user.setAppMetadata('learning_progress', {
+    ...learningProgress,
+    difficulty_level: updatedDifficulty,
+    last_updated: currentTime
+  });
+  api.user.setAppMetadata('rewards', {
+    points: newPoints,
+    badges: rewards.badges,
+    unlocked_features: shouldUnlockFeature ? 
+      [...rewards.unlocked_features, 'special_brushes'] : 
+      rewards.unlocked_features,
+    last_updated: currentTime
   });
 }; 
