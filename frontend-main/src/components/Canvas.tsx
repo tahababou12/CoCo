@@ -6,6 +6,90 @@ import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
 import UserCursor from './UserCursor'
 
+// Add StoryboardIcon component
+const StoryboardIcon: React.FC<{ onClick: () => void }> = ({ onClick }) => {
+  return (
+    <div 
+      className="storyboard-icon" 
+      onClick={onClick}
+      style={{
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        width: '40px',
+        height: '40px',
+        background: '#ffffff',
+        borderRadius: '8px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        cursor: 'pointer',
+        zIndex: 1000,
+        transition: 'transform 0.2s ease',
+      }}
+      onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.1)')}
+      onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+    >
+      <div style={{
+        position: 'relative',
+        width: '24px',
+        height: '24px',
+      }}>
+        {/* First frame - back */}
+        <div style={{
+          position: 'absolute',
+          left: '-2px',
+          top: '-2px',
+          width: '18px',
+          height: '18px',
+          border: '2px solid #6b7280',
+          borderRadius: '2px',
+          background: '#f3f4f6',
+          transform: 'rotate(-5deg)',
+        }} />
+        
+        {/* Second frame - middle */}
+        <div style={{
+          position: 'absolute',
+          left: '0',
+          top: '0',
+          width: '18px',
+          height: '18px',
+          border: '2px solid #4b5563',
+          borderRadius: '2px',
+          background: '#e5e7eb',
+        }} />
+        
+        {/* Third frame - front */}
+        <div style={{
+          position: 'absolute',
+          left: '4px',
+          top: '4px',
+          width: '18px',
+          height: '18px',
+          border: '2px solid #374151',
+          borderRadius: '2px',
+          background: '#d1d5db',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}>
+          {/* Play icon */}
+          <div style={{
+            width: '0',
+            height: '0',
+            borderTop: '4px solid transparent',
+            borderBottom: '4px solid transparent',
+            borderLeft: '6px solid #111827',
+            marginLeft: '2px',
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
   const webSocketContext = useWebSocket()
@@ -15,6 +99,7 @@ const Canvas: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false)
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
+  const [showStoryboard, setShowStoryboard] = useState(false)
   const [textInput, setTextInput] = useState<{
     visible: boolean;
     position: Point;
@@ -489,65 +574,171 @@ const Canvas: React.FC = () => {
     }
   }
 
+  // Add handler function for storyboard icon click
+  const handleStoryboardClick = () => {
+    setShowStoryboard(!showStoryboard);
+    console.log('Storyboard icon clicked, toggling storyboard view:', !showStoryboard);
+    // You would implement the actual storyboard functionality here
+  };
+
   return (
     <div 
       ref={containerRef}
-      className="flex-1 overflow-hidden bg-stone-50 relative select-none"
+      className="canvas-container" 
       style={{ 
-        touchAction: 'none',
-        minHeight: '600px',
+        position: 'relative', 
+        width: '100%', 
         height: '100%',
-        width: '100%'
+        overflow: 'hidden',
+        backgroundColor: '#fafafa',
+        userSelect: 'none',
       }}
+      onWheel={handleWheel}
     >
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
-        className="absolute top-0 left-0 w-full h-full touch-none"
-        style={{ 
-          cursor: getCursorForTool(state.tool),
-          pointerEvents: 'auto',
-          touchAction: 'none',
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTapHighlightColor: 'rgba(0,0,0,0)',
-          zIndex: 1
-        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        onWheel={handleWheel}
+        style={{ 
+          display: 'block',
+          touchAction: 'none',
+          cursor: getCursorForTool(state.tool),
+        }}
       />
+      
+      {/* Add the StoryboardIcon component */}
+      <StoryboardIcon onClick={handleStoryboardClick} />
+      
+      {/* Text input dialog */}
       {textInput.visible && (
-        <div
-          className="absolute"
+        <div 
           style={{
-            left: textInput.position.x * state.viewTransform.scale + state.viewTransform.offsetX,
-            top: textInput.position.y * state.viewTransform.scale + state.viewTransform.offsetY,
+            position: 'absolute',
+            left: `${textInput.position.x}px`,
+            top: `${textInput.position.y}px`,
+            zIndex: 100,
           }}
         >
           <input
             type="text"
-            autoFocus
             value={textInput.value}
             onChange={handleTextInputChange}
             onKeyDown={handleTextInputKeyDown}
-            onBlur={submitTextInput}
-            className="border border-blue-400 px-2 py-1 outline-none rounded shadow-sm"
+            autoFocus
             style={{
-              fontSize: `${state.defaultStyle.fontSize! * state.viewTransform.scale}px`,
-              color: state.defaultStyle.strokeColor,
+              background: 'transparent',
+              border: '1px dashed #000',
+              padding: '4px',
+              fontSize: `${state.defaultStyle.fontSize || 16}px`,
             }}
           />
         </div>
       )}
       
-      {/* Render other user cursors */}
-      {webSocketContext?.isConnected &&
-        state.collaborators.map((user) => <UserCursor key={user.id} user={user} />)
-      }
+      {/* Render other users' cursors */}
+      {webSocketContext?.isConnected && state.collaborators.map(user => (
+        user.cursor && user.id !== state.currentUser?.id && (
+          <UserCursor 
+            key={user.id}
+            user={user}
+          />
+        )
+      ))}
+      
+      {/* Optional Storyboard UI that appears when storyboard icon is clicked */}
+      {showStoryboard && (
+        <div
+          style={{
+            position: 'absolute',
+            right: '20px',
+            top: '70px',
+            width: '240px',
+            height: '400px',
+            background: '#ffffff',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            zIndex: 1000,
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ fontWeight: 'bold', borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
+            Storyboard
+          </div>
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {/* Here you could map through storyboard frames */}
+            <div style={{ 
+              height: '120px', 
+              background: '#f3f4f6', 
+              borderRadius: '4px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              color: '#9ca3af'
+            }}>
+              Frame 1
+            </div>
+            <div style={{ 
+              height: '120px', 
+              background: '#f3f4f6', 
+              borderRadius: '4px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              color: '#9ca3af'
+            }}>
+              Frame 2
+            </div>
+            <div style={{ 
+              height: '120px', 
+              background: '#f3f4f6', 
+              borderRadius: '4px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              color: '#9ca3af'
+            }}>
+              Frame 3
+            </div>
+          </div>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            borderTop: '1px solid #eee',
+            paddingTop: '8px'
+          }}>
+            <button style={{
+              background: '#f3f4f6',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}>
+              Add Frame
+            </button>
+            <button style={{
+              background: '#4b5563',
+              color: 'white',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}>
+              Play
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
