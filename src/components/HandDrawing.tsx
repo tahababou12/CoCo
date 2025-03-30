@@ -12,7 +12,7 @@ import { useHandGesture } from '../context/HandGestureContext';
 
 // Debug configuration
 const DEBUG = false;
-const DEBUG_FINGER_DRAWING = true;
+const DEBUG_FINGER_DRAWING = false;
 
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
