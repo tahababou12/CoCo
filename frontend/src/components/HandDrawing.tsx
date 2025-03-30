@@ -1,6 +1,9 @@
 import React, { useRef, useEffect, useState, createContext, useContext } from 'react';
 import { useDrawing } from '../context/DrawingContext';
 import { Point } from '../types';
+import { Camera } from '@mediapipe/camera_utils';
+import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
+import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
 
 // Create a context for hand gesture information
 interface HandGestureContextType {
@@ -18,38 +21,6 @@ export const useHandGesture = () => useContext(HandGestureContext);
 // Define hand mode type for better type safety
 type HandMode = 'Drawing' | 'Erasing' | 'Clear All' | 'None';
 
-// Define types for handtrack.js
-interface HandPrediction {
-  bbox: [number, number, number, number]; // [x, y, width, height]
-  class: string;
-  label: string;
-  score: number;
-}
-
-interface HandTrackModel {
-  detect: (input: HTMLVideoElement) => Promise<HandPrediction[]>;
-  dispose: () => void;
-}
-
-// Add the missing type for window handtrack object
-declare global {
-  interface Window {
-    handTrack: {
-      load: (params: HandTrackParams) => Promise<HandTrackModel>;
-      startVideo: (video: HTMLVideoElement) => Promise<boolean>;
-      stopVideo: (video: HTMLVideoElement) => void;
-    }
-  }
-}
-
-// Parameters for handtrack.js model
-interface HandTrackParams {
-  flipHorizontal: boolean;
-  maxNumBoxes: number;
-  iouThreshold: number;
-  scoreThreshold: number;
-}
-
 // Hand position smoothing - for stabilizing detection
 interface SmoothingBuffer {
   points: Point[];
@@ -57,10 +28,19 @@ interface SmoothingBuffer {
   modeHistory: HandMode[];
 }
 
+// Define an interface for MediaPipe hand landmarks
+interface HandLandmark {
+  x: number;
+  y: number;
+  z: number;
+}
+
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mediapipeRef = useRef<Hands | null>(null);
+  const cameraRef = useRef<Camera | null>(null);
   const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
   const [currentHandCount, setCurrentHandCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -222,21 +202,20 @@ const HandDrawing: React.FC = () => {
   const videoToCanvasCoords = (point: Point): Point => {
     if (!point) return { x: 0, y: 0 };
     
-    // First, normalize the point relative to the video dimensions
-    const normalizedPoint = {
-      x: point.x / (videoRef.current?.videoWidth || 640),
-      y: point.y / (videoRef.current?.videoHeight || 480)
-    };
+    // MediaPipe provides normalized coordinates (0-1)
+    // We need to:
+    // 1. Flip the x-coordinate for the mirrored view
+    // 2. Scale to window dimensions
     
-    // Then, scale to the window dimensions
     return {
-      x: normalizedPoint.x * window.innerWidth,
-      y: normalizedPoint.y * window.innerHeight
+      x: (1 - point.x) * window.innerWidth,  // Flip x due to mirrored video
+      y: point.y * window.innerHeight
     };
   };
   
   // Convert canvas coordinates to drawing coordinates (with transform)
   const canvasToDrawingCoords = (point: Point): Point => {
+    // Most important calculation - adjust according to canvas scaling
     return {
       x: (point.x - state.viewTransform.offsetX) / state.viewTransform.scale,
       y: (point.y - state.viewTransform.offsetY) / state.viewTransform.scale
@@ -268,58 +247,22 @@ const HandDrawing: React.FC = () => {
       // Style based on hand mode
       const mode = activeHandModesRef.current[index];
       cursorDiv.className = `hand-cursor hand-cursor-${index} ${mode.toLowerCase()}-mode`;
+      
+      // Debug cursor visibility
+      console.log(`Updating cursor position: [${canvasPoint.x}, ${canvasPoint.y}], mode: ${mode}, display: ${cursorDiv.style.display}`);
     });
   }, [handCursors, isHandTrackingActive]);
   
-  // Check browser compatibility
+  // Initialize MediaPipe Hands and add cursor styles
   useEffect(() => {
-    // Check if the browser supports getUserMedia
+    // Check browser compatibility
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setIsWebcamSupported(false);
       setErrorMessage('Your browser does not support webcam access');
+      return;
     }
     
-    // Check if WebGL is supported (required for handtrack.js)
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      if (!gl) {
-        setErrorMessage('WebGL is not supported or enabled in your browser');
-      }
-    } catch (error) {
-      setErrorMessage(`Error initializing WebGL: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-    
-    // Check if handtrack.js is loaded
-    if (!window.handTrack) {
-      setErrorMessage('HandTrack.js failed to load');
-    }
-    
-    // Add cursor elements to the document
-    const createCursorElement = (index: number) => {
-      // Check if cursor already exists
-      let cursor = document.getElementById(`hand-cursor-${index}`);
-      if (cursor) return;
-      
-      cursor = document.createElement('div');
-      cursor.id = `hand-cursor-${index}`;
-      cursor.className = `hand-cursor hand-cursor-${index}`;
-      cursor.style.position = 'absolute';
-      cursor.style.width = '20px';
-      cursor.style.height = '20px';
-      cursor.style.borderRadius = '50%';
-      cursor.style.backgroundColor = drawingColorsRef.current[index];
-      cursor.style.opacity = '0.7';
-      cursor.style.pointerEvents = 'none'; // Don't interfere with normal pointer events
-      cursor.style.zIndex = '1000';
-      cursor.style.display = 'none';
-      cursor.style.transform = 'translate(-50%, -50%)'; // Center the cursor
-      
-      document.body.appendChild(cursor);
-    };
-    
-    // Create cursors for both hands
-    createCursorElement(0);
+    console.log('Creating cursor elements and adding styles...');
     
     // Add cursor styles
     const style = document.createElement('style');
@@ -327,6 +270,9 @@ const HandDrawing: React.FC = () => {
       .hand-cursor {
         transition: all 0.05s ease-out;
         box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        position: fixed !important;
+        z-index: 9999 !important;
+        pointer-events: none !important;
       }
       .hand-cursor-0 {
         border: 2px solid #FF0000;
@@ -335,6 +281,7 @@ const HandDrawing: React.FC = () => {
         background-color: rgba(255,255,255,0.8) !important;
         width: 15px !important;
         height: 15px !important;
+        border: 3px solid #FF0000 !important;
       }
       .erasing-mode {
         background-color: rgba(255,255,255,0.5) !important;
@@ -348,8 +295,14 @@ const HandDrawing: React.FC = () => {
         height: 40px !important;
         border-radius: 0 !important;
       }
+      .none-mode {
+        background-color: rgba(200,200,200,0.5) !important;
+      }
     `;
     document.head.appendChild(style);
+    
+    // Create initial cursor
+    ensureCursorExists(0);
     
     // Clean up on unmount
     return () => {
@@ -368,23 +321,13 @@ const HandDrawing: React.FC = () => {
     };
   }, []);
 
-  // Initialize hand tracking
+  // Initialize MediaPipe Hands
   useEffect(() => {
-    if (!window.handTrack) {
-      setErrorMessage('HandTrack.js not loaded');
-      console.error('HandTrack.js not loaded');
+    if (!isWebcamSupported || !isHandTrackingActive) {
       return;
     }
     
-    if (!isWebcamSupported) {
-      setErrorMessage('Webcam access not supported in your browser');
-      return;
-    }
-
-    let handTracker: HandTrackModel | null = null;
-    let requestId = 0;
     let videoStream: MediaStream | null = null;
-    let isDetectionRunning = false;
     
     const initializeHandTracking = async () => {
       try {
@@ -396,34 +339,26 @@ const HandDrawing: React.FC = () => {
           0: { points: [], maxSize: 5, modeHistory: [] }
         };
         
-        // Initialize the model with parameters
-        const modelParams: HandTrackParams = {
-          flipHorizontal: true,  // flip horizontal for webcam
-          maxNumBoxes: 1,        // maximum number of hands to detect
-          iouThreshold: 0.5,     // intersection over union threshold
-          scoreThreshold: 0.7    // confidence threshold
-        };
+        // Make sure cursor element exists
+        ensureCursorExists(0);
         
-        try {
-          // Load the model with timeout
-          const modelPromise = window.handTrack.load(modelParams);
-          
-          // Add timeout for model loading
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('Model loading timed out')), 15000);
-          });
-          
-          handTracker = await Promise.race([modelPromise, timeoutPromise]) as HandTrackModel;
-          console.log('HandTrack model loaded successfully');
-        } catch (modelError) {
-          setErrorMessage(`Failed to load hand tracking model: ${modelError instanceof Error ? modelError.message : String(modelError)}`);
-          setIsLoading(false);
-          return;
-        }
+        // Initialize MediaPipe Hands
+        const hands = new Hands({
+          locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+          }
+        });
         
-        // Request camera access
-        if (isHandTrackingActive && videoRef.current) {
-          try {
+        // Configure MediaPipe Hands
+        hands.setOptions({
+          maxNumHands: 1,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.5,  // Lower for better sensitivity
+          minTrackingConfidence: 0.5    // Lower for better continuity
+        });
+        
+        // Set up the camera
+        if (videoRef.current) {
             // Get user's camera
             videoStream = await navigator.mediaDevices.getUserMedia({ 
               video: { 
@@ -435,67 +370,29 @@ const HandDrawing: React.FC = () => {
             
             // Set video source
             videoRef.current.srcObject = videoStream;
-            videoRef.current.width = 640;
-            videoRef.current.height = 480;
-            
-            // Wait for video to start playing
-            await new Promise<void>((resolve) => {
-              if (videoRef.current) {
-                // Only start detection after video is playing
-                videoRef.current.onloadedmetadata = () => {
-                  if (videoRef.current) {
-                    videoRef.current.play().then(() => {
-                      // Add a small delay to ensure video dimensions are available
-                      setTimeout(() => {
-                        console.log(`Video dimensions: ${videoRef.current?.videoWidth}x${videoRef.current?.videoHeight}`);
-                        
-                        // Ensure canvas dimensions match video
-                        if (canvasRef.current && videoRef.current) {
-                          canvasRef.current.width = videoRef.current.videoWidth || 640;
-                          canvasRef.current.height = videoRef.current.videoHeight || 480;
-                        }
-                        
-                        resolve();
-                      }, 1000); // Longer delay to ensure video is fully loaded
-                    }).catch(err => {
-                      setErrorMessage(`Error playing video: ${err.message}`);
-                      console.error('Error playing video:', err);
-                      resolve();
-                    });
-                  } else {
-                    resolve();
-                  }
-                };
-                
-                // Handle video errors
-                videoRef.current.onerror = (e) => {
-                  setErrorMessage(`Video error: ${e}`);
-                  console.error('Video error:', e);
-                  resolve();
-                };
-              } else {
-                resolve();
+          
+          // Set up MediaPipe camera utility
+          const camera = new Camera(videoRef.current, {
+            onFrame: async () => {
+              if (videoRef.current && hands) {
+                await hands.send({ image: videoRef.current });
               }
-            });
-            
-            // Start detection loop only if video has dimensions
-            if (videoRef.current && 
-                videoRef.current.videoWidth > 0 && 
-                videoRef.current.videoHeight > 0) {
-              // Reset starting points
-              prevPointsRef.current = { 0: null };
-              activeHandModesRef.current = { 0: 'None' };
-              setHandCursors({ 0: null });
-              isDetectionRunning = true;
-              detectHands();
-            } else {
-              setErrorMessage('Video dimensions not available');
-              console.error('Video dimensions not available');
-            }
-          } catch (err) {
-            setErrorMessage(`Error accessing webcam: ${err instanceof Error ? err.message : String(err)}`);
-            console.error('Error accessing webcam:', err);
-          }
+            },
+            width: 640,
+            height: 480
+          });
+          
+          // Set up the results handler
+          hands.onResults(onHandResults);
+          
+          // Store references
+          mediapipeRef.current = hands;
+          cameraRef.current = camera;
+          
+          // Start the camera
+          camera.start();
+          
+          console.log('MediaPipe Hands initialized successfully');
         }
         
         setIsLoading(false);
@@ -506,219 +403,85 @@ const HandDrawing: React.FC = () => {
       }
     };
     
-    // Function to detect hands and process results
-    const detectHands = () => {
-      if (!videoRef.current || !canvasRef.current || !handTracker || !isDetectionRunning) {
-        return;
-      }
+    // Handle results from MediaPipe Hands
+    const onHandResults = (results: Results) => {
+      if (!canvasRef.current) return;
       
-      // Verify video has dimensions and is playing
-      if (videoRef.current.videoWidth === 0 || 
-          videoRef.current.videoHeight === 0 ||
-          videoRef.current.paused || 
-          videoRef.current.ended) {
-        console.warn('Video is not ready, skipping detection');
-        requestId = requestAnimationFrame(detectHands);
-        return;
-      }
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) return;
       
-      // Clear canvas before detection
-      if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-        }
-      }
+      // Clear the canvas
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       
-      // Use try/catch to prevent unhandled errors in detection
-      try {
-        handTracker.detect(videoRef.current)
-          .then((predictions: HandPrediction[]) => {
-            // Process predictions
-            if (predictions.length > 0) {
-              setCurrentHandCount(predictions.length);
-              
-              // Keep track of which hand indices were processed this frame
-              const processedHandIndices = new Set<number>();
-              const newHandCursors: { [key: number]: Point | null } = { ...handCursors };
-              
-              // Update the currentGestures state for context provider
-              // Use a more direct approach to update gestures
-              const updatedGestures = { ...currentGestures };
-              
-              // Process each detected hand
-              predictions.forEach((prediction, index) => {
-                if (index > 0) return; // Only process first hand
-                
-                // Ensure the prediction object has all required properties
-                if (!prediction || !prediction.bbox) {
-                  console.warn('Invalid prediction object:', prediction);
-                  return;
-                }
-                
-                // Ensure we have a valid score, with fallback to 0.5 if undefined
-                prediction.score = prediction.score || 0.5;
-                // Make sure we have class and label, even if they're empty strings
-                prediction.class = prediction.class || '';
-                prediction.label = prediction.label || '';
-                
-                processedHandIndices.add(index);
-                const { bbox } = prediction;
-                
-                // Extract hand coordinates
-                const handX = bbox[0] + bbox[2] / 2;
-                const handY = bbox[1] + bbox[3] / 2;
-                
-                // Calculate finger positions based on bounding box
-                // In a real implementation, you'd use actual finger landmarks
-                // For handtrack.js we're using the center of the bounding box
-                const rawFingerTip = { x: handX, y: handY };
-                
-                // Apply smoothing to stabilize the finger position
-                const smoothedPoint = getSmoothPoint(index, rawFingerTip);
-                
-                // Update cursor position
-                newHandCursors[index] = smoothedPoint;
-                
-                // Determine hand mode
-                const detectedMode = determineHandMode(prediction);
-                
-                // Apply stability to the hand mode
-                const stableMode = getStableHandMode(index, detectedMode);
-                activeHandModesRef.current[index] = stableMode;
-                
-                // Set the gesture in our local object
-                updatedGestures[index] = stableMode;
-                
-                // Handle the stable hand mode
-                handleHandMode(stableMode, index, smoothedPoint);
-                
-                // Draw visualization if canvas is available
-                if (canvasRef.current) {
-                  const ctx = canvasRef.current.getContext('2d');
-                  if (ctx) {
-                    // Draw bounding box
-                    ctx.strokeStyle = drawingColorsRef.current[index] || '#FF0000';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(bbox[0], bbox[1], bbox[2], bbox[3]);
-                    
-                    // Draw raw finger position
-                    ctx.beginPath();
-                    ctx.arc(rawFingerTip.x, rawFingerTip.y, 3, 0, 2 * Math.PI);
-                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-                    ctx.fill();
-                    
-                    // Draw smoothed finger position
-                    ctx.beginPath();
-                    ctx.arc(smoothedPoint.x, smoothedPoint.y, 5, 0, 2 * Math.PI);
-                    ctx.fillStyle = drawingColorsRef.current[index] || '#FF0000';
-                    ctx.fill();
-                    
-                    // Show hand mode label
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px Arial';
-                    ctx.fillText(stableMode, bbox[0], bbox[1] > 20 ? bbox[1] - 5 : bbox[1] + 15);
-                    
-                    // If in drawing mode, show a thicker point
-                    if (stableMode === 'Drawing') {
-                      ctx.beginPath();
-                      ctx.arc(smoothedPoint.x, smoothedPoint.y, 8, 0, 2 * Math.PI);
-                      ctx.strokeStyle = drawingColorsRef.current[index];
-                      ctx.lineWidth = 2;
-                      ctx.stroke();
-                    }
-                  }
-                }
-              });
-              
-              // For any hands that were previously detected but not in this frame,
-              // trigger "None" mode to end any ongoing drawing
-              [0].forEach(handIndex => {
-                if (!processedHandIndices.has(handIndex) && 
-                    prevPointsRef.current[handIndex] !== null) {
-                  console.log(`Hand ${handIndex} disappeared, ending any active drawing`);
-                  // Explicitly check if we need to end drawing for this hand
-                  if (activeHandModesRef.current[handIndex] === 'Drawing' && state.currentShape) {
-                    dispatch({ type: 'END_DRAWING' });
-                    setIsDrawing(false);
-                  }
-                  // Then set to "None" mode
-                  handleHandMode('None', handIndex, { x: 0, y: 0 });
-                  newHandCursors[handIndex] = null;
-                  updatedGestures[handIndex] = 'None';
-                }
-              });
-              
-              // Update cursor visibility
-              setHandCursors(newHandCursors);
-              
-              // Update the currentGestures state with all changes
-              setCurrentGestures(updatedGestures);
-            } else {
-              // No hands detected
-              setCurrentHandCount(0);
-              
-              // End any ongoing drawing for both hands
-              [0].forEach(handIndex => {
-                if (prevPointsRef.current[handIndex] !== null) {
-                  console.log(`No hands detected, ending any active drawing for hand ${handIndex}`);
-                  // Explicitly check if we need to end drawing
-                  if (activeHandModesRef.current[handIndex] === 'Drawing' && state.currentShape) {
-                    dispatch({ type: 'END_DRAWING' });
-                    setIsDrawing(false);
-                  }
-                  handleHandMode('None', handIndex, { x: 0, y: 0 });
-                }
-              });
-              
-              // Reset gestures to None when no hands are detected
-              setCurrentGestures({
-                0: 'None'
-              });
-              
-              // Hide cursors
-              setHandCursors({ 0: null });
-            }
-            
-            // Continue detection loop
-            if (isDetectionRunning) {
-              requestId = requestAnimationFrame(detectHands);
-            }
-          })
-          .catch((error: unknown) => {
-            console.error('Error detecting hands:', error);
-            setErrorMessage(`Error detecting hands: ${error instanceof Error ? error.message : String(error)}`);
-            
-            // Still continue the detection loop - might be a temporary error
-            if (isDetectionRunning) {
-              requestId = requestAnimationFrame(detectHands);
-            }
-          });
-      } catch (error) {
-        console.error('Error in detection process:', error);
+      // If we have hands
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        console.log('MediaPipe detected hand landmarks:', results.multiHandLandmarks.length);
+        setCurrentHandCount(results.multiHandLandmarks.length);
         
-        // Continue the loop despite errors
-        if (isDetectionRunning) {
-          requestId = requestAnimationFrame(detectHands);
+        // Process the first hand only (as we've configured)
+        const handIndex = 0;
+        const landmarks = results.multiHandLandmarks[0];
+        
+        // Draw hand landmarks on canvas for debugging
+        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+        drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
+        
+        // Get index finger tip position
+        const indexFinger = landmarks[8];
+        const point = {
+          x: indexFinger.x, // normalized 0-1 coordinates
+          y: indexFinger.y  // normalized 0-1 coordinates
+        };
+        
+        console.log(`Raw index finger position: [${point.x.toFixed(3)}, ${point.y.toFixed(3)}]`);
+        
+        // Apply smoothing
+        const smoothedPoint = getSmoothPoint(handIndex, point);
+        
+        // Update cursor position
+        setHandCursors({ 0: smoothedPoint });
+        
+        // Determine hand mode based on finger positions
+        const mode = determineHandMode(landmarks);
+        
+        // Apply stability to the hand mode
+        const stableMode = getStableHandMode(handIndex, mode);
+        activeHandModesRef.current[handIndex] = stableMode;
+        
+        // Update current gestures
+        setCurrentGestures({ 0: stableMode });
+        
+        // Handle the hand mode
+        handleHandMode(stableMode, handIndex, smoothedPoint);
+        
+        // Debug current shape state
+        if (state.currentShape) {
+          console.log(`Current shape: id=${state.currentShape.id}, type=${state.currentShape.type}, points=${state.currentShape.points.length}`);
         }
+        
+        // Debug shapes array length
+        console.log(`Total shapes in drawing context: ${state.shapes.length}`);
+      } else {
+        // No hands detected
+        setCurrentHandCount(0);
+        
+        // End any ongoing drawing when hand disappears
+        if (state.currentShape) {
+          console.log('No hands detected, saving any active drawing');
+          saveDrawing();
+        }
+        
+        // Reset gestures and hide cursor
+        setCurrentGestures({ 0: 'None' });
+        setHandCursors({ 0: null });
+        
+        // Reset previous points
+        prevPointsRef.current = { 0: null };
       }
     };
     
-    // Initialize if hand tracking is active
-    if (isHandTrackingActive) {
+    // Start hand tracking
       initializeHandTracking();
-    } else {
-      // Hide cursors when not active
-      setHandCursors({ 0: null });
-      
-      // Remove cursor elements
-      [0].forEach(index => {
-        const cursor = document.getElementById(`hand-cursor-${index}`);
-        if (cursor) {
-          cursor.style.display = 'none';
-        }
-      });
-    }
     
     // Cleanup function
     return () => {
@@ -729,10 +492,14 @@ const HandDrawing: React.FC = () => {
         setIsDrawing(false);
       }
       
-      // Stop detection loop
-      isDetectionRunning = false;
-      if (requestId) {
-        cancelAnimationFrame(requestId);
+      // Stop camera
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+      }
+      
+      // Close MediaPipe Hands
+      if (mediapipeRef.current) {
+        mediapipeRef.current.close();
       }
       
       // Stop video stream
@@ -740,65 +507,67 @@ const HandDrawing: React.FC = () => {
         videoStream.getTracks().forEach(track => track.stop());
       }
       
-      // Dispose model
-      if (handTracker) {
-        handTracker.dispose();
-      }
-      
-      // Hide cursors
+      // Hide cursor
       setHandCursors({ 0: null });
     };
   }, [isHandTrackingActive, isWebcamSupported]);
 
-  // Simple hand mode determination using handtrack.js predictions
-  const determineHandMode = (prediction: HandPrediction): HandMode => {
-    // For handtrack.js, we'll use the label as a simple determiner
-    const { label, score, class: predictionClass } = prediction;
+  // Determine hand mode from MediaPipe hand landmarks
+  const determineHandMode = (landmarks: HandLandmark[]): HandMode => {
+    // Calculate finger states - are they extended or not?
+    const fingersExtended = [];
     
-    console.log('Full prediction object:', JSON.stringify(prediction));
-    console.log(`Hand prediction: label=${label}, class=${predictionClass}, score=${score.toFixed(2)}`);
+    // For thumb (using different method)
+    // Thumb is extended if the tip is to the left of the IP joint for right hand 
+    // or to the right for left hand (simplified)
+    const thumbTip = landmarks[4];
+    const thumbIP = landmarks[3];
+    const wrist = landmarks[0];
+    const middleMCP = landmarks[9]; // Use middle finger MCP as reference
     
-    // Handle undefined label case but use the class property instead
-    // handtrack.js sometimes puts the gesture in class instead of label
-    const gestureType = label || predictionClass || '';
+    // Detect if this is a left or right hand
+    const isRightHand = wrist.x < middleMCP.x;
     
-    // Lower confidence threshold for testing
-    if (score < 0.5) {
-      console.log('Prediction confidence too low, using None mode');
-      return 'None';
-    }
+    // Check if thumb is extended 
+    // For right hand: thumbTip.x < thumbIP.x
+    // For left hand: thumbTip.x > thumbIP.x
+    const thumbExtended = isRightHand ? thumbTip.x < thumbIP.x : thumbTip.x > thumbIP.x;
+    fingersExtended.push(thumbExtended);
     
-    // Basic mapping based on label/class
-    // Handtrack.js provides these basic gestures, but they might be in different properties:
-    // open, closed, point, face, pinch
-    let mode: HandMode = 'None';
+    // For index finger (8 is tip, 6 is PIP joint)
+    fingersExtended.push(landmarks[8].y < landmarks[6].y);
     
-    // If no useful label is provided but confidence is high, default to Drawing mode
-    if (!gestureType && score > 0.7) {
-      console.log('No gesture type detected but confidence is high, defaulting to Drawing mode');
+    // For middle finger (12 is tip, 10 is PIP joint)
+    fingersExtended.push(landmarks[12].y < landmarks[10].y);
+    
+    // For ring finger (16 is tip, 14 is PIP joint)
+    fingersExtended.push(landmarks[16].y < landmarks[14].y);
+    
+    // For pinky finger (20 is tip, 18 is PIP joint)
+    fingersExtended.push(landmarks[20].y < landmarks[18].y);
+    
+    console.log('Fingers extended:', fingersExtended);
+    
+    // FEATURE 1: DRAWING MODE - Only index finger is extended
+    if (!fingersExtended[0] && fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
+      console.log("DETECTED: Drawing mode (index finger only)");
       return 'Drawing';
     }
-    
-    if (gestureType.includes('open')) {
-      mode = 'Drawing';
-    } else if (gestureType.includes('closed')) {
-      mode = 'Erasing';
-    } else if (gestureType.includes('point')) {
-      mode = 'Clear All';
-    } else if (gestureType.includes('pinch')) {
-      // Can map pinch to a gesture too if desired
-      mode = 'Drawing'; // Use drawing for pinch as a fallback
-    } else {
-      // If we can't determine the gesture but confidence is high, default to drawing
-      if (score > 0.8) {
-        mode = 'Drawing';
-      } else {
-        mode = 'None';
-      }
+    // FEATURE 2: ERASING MODE - Closed fist (no fingers extended)
+    else if (!fingersExtended[0] && !fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
+      console.log("DETECTED: Erasing mode (closed fist)");
+      return 'Erasing';
     }
-    
-    console.log(`Determined hand mode: ${mode} from gesture type: ${gestureType}`);
-    return mode;
+    // FEATURE 3: CLEAR ALL - Only middle finger extended
+    else if (!fingersExtended[0] && !fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
+      console.log("DETECTED: Clear All mode (middle finger only)");
+      return 'Clear All';
+    }
+    else {
+      // Any other hand position
+      console.log("DETECTED: None mode (unrecognized gesture)");
+      return 'None';
+    }
   };
 
   // Handle different hand modes
@@ -809,18 +578,19 @@ const HandDrawing: React.FC = () => {
   ) => {
     if (!canvasRef.current) return;
     
-    // Get the canvas-space position (relative to video)
+    // Get the canvas-space position
     const canvasSpacePoint = videoToCanvasCoords(currentPoint);
     
-    // Then convert to drawing space (with transform)
+    // Convert to drawing space with transform
     const transformedPoint = canvasToDrawingCoords(canvasSpacePoint);
 
-    // If we have a new mode for this hand, end any previous drawing
+    // Track previous mode to detect changes
     const prevMode = activeHandModesRef.current[handIndex];
-    if (prevMode !== mode && prevMode === 'Drawing' && state.currentShape) {
-      console.log(`Hand ${handIndex} changed mode from ${prevMode} to ${mode}, ending drawing`);
-      dispatch({ type: 'END_DRAWING' });
-      setIsDrawing(false);
+    
+    // Handle mode change - always save drawing when switching from Drawing mode
+    if (prevMode === 'Drawing' && mode !== 'Drawing' && state.currentShape) {
+      console.log(`Hand ${handIndex} changed from Drawing to ${mode}, saving current drawing`);
+      saveDrawing();
     }
 
     // Handle different modes
@@ -831,35 +601,69 @@ const HandDrawing: React.FC = () => {
       if (prevPoint === null) {
         console.log(`Hand ${handIndex} first drawing point at`, transformedPoint);
         prevPointsRef.current[handIndex] = transformedPoint;
-        return;
-      }
-      
-      // Check if we've moved enough to draw
-      const dx = transformedPoint.x - prevPoint.x;
-      const dy = transformedPoint.y - prevPoint.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Only draw if we've moved enough (prevents tiny jitter)
-      if (distance < 2 && state.currentShape) {
-        return;
-      }
-      
-      console.log(`Hand ${handIndex} drawing from`, prevPoint, 'to', transformedPoint, `distance=${distance.toFixed(2)}`);
-      
-      // Start drawing if not already drawing
-      if (!state.currentShape) {
-        // Switch to pencil tool if not already
+        
+        // Start a new drawing immediately
+        console.log('Starting new drawing path');
+        
+        // Only set tool if not already pencil
         if (state.tool !== 'pencil') {
           dispatch({ type: 'SET_TOOL', payload: 'pencil' });
         }
         
-        // Make sure to fully finalize any previous shape first
-        dispatch({ type: 'END_DRAWING' });
+        // Only start drawing if we're not already drawing
+        if (!state.currentShape) {
+          dispatch({
+            type: 'START_DRAWING',
+            payload: { 
+              point: transformedPoint, 
+              type: 'pencil' 
+            }
+          });
+          
+          // Set stroke color
+          dispatch({
+            type: 'SET_STYLE',
+            payload: { 
+              strokeColor: drawingColorsRef.current[handIndex],
+              strokeWidth: drawingThickness
+            }
+          });
+        }
         
-        // Set local drawing state
+        // Update local drawing state
         setIsDrawing(true);
         
-        // Start drawing from the previous point
+        // Update drawing timestamp
+        lastDrawingUpdateRef.current = Date.now();
+        
+        return;
+      }
+      
+      // Check if we've moved enough to draw (prevent jitter)
+      const dx = transformedPoint.x - prevPoint.x;
+      const dy = transformedPoint.y - prevPoint.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      console.log(`Hand ${handIndex} drawing from [${prevPoint.x.toFixed(1)}, ${prevPoint.y.toFixed(1)}] to [${transformedPoint.x.toFixed(1)}, ${transformedPoint.y.toFixed(1)}], distance=${distance.toFixed(2)}`);
+      
+      // Only draw if we have a significant movement
+      if (distance < 1 && state.currentShape) {
+        return;
+      }
+      
+      // Start drawing if not already doing so
+      if (!state.currentShape) {
+        console.log('Starting new drawing after mode change');
+        
+        // Switch to pencil tool
+        if (state.tool !== 'pencil') {
+          dispatch({ type: 'SET_TOOL', payload: 'pencil' });
+        }
+        
+        // Update local drawing state
+        setIsDrawing(true);
+        
+        // Start drawing from the previous point for continuity
         dispatch({
           type: 'START_DRAWING',
           payload: { 
@@ -868,10 +672,44 @@ const HandDrawing: React.FC = () => {
           }
         });
         
-        // Update the drawing timestamp to prevent timeout
-        lastDrawingUpdateRef.current = Date.now();
+        // Set stroke style
+        dispatch({
+          type: 'SET_STYLE',
+          payload: { 
+            strokeColor: drawingColorsRef.current[handIndex],
+            strokeWidth: drawingThickness
+          }
+        });
+      } 
+      
+      // Continue drawing - always update with new point
+      dispatch({
+        type: 'CONTINUE_DRAWING', 
+        payload: transformedPoint
+      });
+      
+      // Update drawing timestamp
+      lastDrawingUpdateRef.current = Date.now();
+      
+      // Store the current point for next frame
+      prevPointsRef.current[handIndex] = transformedPoint;
+      
+      // Periodically save drawing even while in drawing mode
+      // This ensures strokes persist even if hand tracking is lost
+      const now = Date.now();
+      if (now - lastDrawingUpdateRef.current > 500 && state.currentShape && state.currentShape.points.length > 10) {
+        saveDrawing();
         
-        // Set stroke color based on hand
+        // Immediately start a new drawing from the current point
+        dispatch({
+          type: 'START_DRAWING',
+          payload: { 
+            point: transformedPoint, 
+            type: 'pencil' 
+          }
+        });
+        
+        // Set stroke style again
         dispatch({
           type: 'SET_STYLE',
           payload: { 
@@ -880,36 +718,14 @@ const HandDrawing: React.FC = () => {
           }
         });
         
-        // Continue to the current point
-        dispatch({
-          type: 'CONTINUE_DRAWING', 
-          payload: transformedPoint
-        });
-        
-        // Update the drawing timestamp again
-        lastDrawingUpdateRef.current = Date.now();
-      } 
-      // Continue drawing
-      else {
-        dispatch({
-          type: 'CONTINUE_DRAWING', 
-          payload: transformedPoint
-        });
-        
-        // Update the drawing timestamp to prevent timeout
-        lastDrawingUpdateRef.current = Date.now();
+        setIsDrawing(true);
       }
-      
-      // Store the current point for next frame
-      prevPointsRef.current[handIndex] = transformedPoint;
     }
     // Eraser mode
     else if (mode === "Erasing") {
-      // End any active drawing first to ensure it's saved
+      // Save any current drawing
       if (state.currentShape) {
-        console.log(`Hand ${handIndex} ending current drawing before switching to eraser`);
-        dispatch({ type: 'END_DRAWING' });
-        setIsDrawing(false);
+        saveDrawing();
       }
       
       // Switch to eraser tool
@@ -922,11 +738,9 @@ const HandDrawing: React.FC = () => {
     }
     // Clear all mode
     else if (mode === "Clear All") {
-      // End any active drawing first to ensure it's saved
+      // Save any current drawing
       if (state.currentShape) {
-        console.log(`Hand ${handIndex} ending current drawing before clearing all`);
-        dispatch({ type: 'END_DRAWING' });
-        setIsDrawing(false);
+        saveDrawing();
       }
       
       // Delete all shapes
@@ -940,15 +754,78 @@ const HandDrawing: React.FC = () => {
       prevPointsRef.current = { 0: null };
     }
     else {
-      // Any other hand position - stop drawing and ensure it's saved
+      // Any other hand position - stop drawing
       if (state.currentShape) {
         console.log(`Hand ${handIndex} ending drawing due to unrecognized mode`);
-        dispatch({ type: 'END_DRAWING' });
-        setIsDrawing(false);
+        saveDrawing();
       }
       
       // Reset this hand's previous point
       prevPointsRef.current[handIndex] = null;
+    }
+  };
+
+  // Initialize HandMode
+  useEffect(() => {
+    // Only monitor drawing data changes when hand tracking is active
+    if (!isHandTrackingActive) return;
+
+    // Debug info about rendering and state
+    console.log(`Current drawing state update: isDrawing=${isDrawing}, currentShape=${state.currentShape ? state.currentShape.id : 'none'}, shapes=${state.shapes.length}`);
+
+    // Automatically save drawing after some inactivity (acts as a safety net)
+    const checkAndSaveTimeout = setTimeout(() => {
+      const now = Date.now();
+      if (state.currentShape && now - lastDrawingUpdateRef.current > 500) {
+        console.log('Auto-saving drawing due to inactivity');
+        saveDrawing();
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(checkAndSaveTimeout);
+    };
+  }, [isHandTrackingActive, state.currentShape, state.shapes.length]);
+
+  // Add an additional cleanup effect for drawing actions
+  useEffect(() => {
+    // This effect handles cleanup when the component unmounts or hand tracking is disabled
+    return () => {
+      // Make sure we end any active drawing
+      if (state.currentShape) {
+        console.log('HandDrawing cleanup: ending any active drawing');
+        dispatch({ type: 'END_DRAWING' });
+      }
+    };
+  }, []);
+
+  // Function to ensure cursor element exists
+  const ensureCursorExists = (index: number) => {
+    let cursor = document.getElementById(`hand-cursor-${index}`);
+    
+    // If cursor doesn't exist, create it
+    if (!cursor) {
+      console.log(`Creating cursor element ${index}`);
+      cursor = document.createElement('div');
+      cursor.id = `hand-cursor-${index}`;
+      cursor.className = `hand-cursor hand-cursor-${index}`;
+      cursor.style.position = 'fixed';
+      cursor.style.width = '20px';
+      cursor.style.height = '20px';
+      cursor.style.borderRadius = '50%';
+      cursor.style.backgroundColor = drawingColorsRef.current[index];
+      cursor.style.opacity = '0.7';
+      cursor.style.pointerEvents = 'none';
+      cursor.style.zIndex = '9999';
+      cursor.style.display = 'none';
+      cursor.style.transform = 'translate(-50%, -50%)';
+      
+      document.body.appendChild(cursor);
+      console.log(`Created new cursor ${index}`);
+    } else {
+      console.log(`Cursor ${index} already exists`);
+      // Make sure it's visible
+      cursor.style.display = 'none'; // Initially hidden until hand is detected
     }
   };
 
@@ -961,7 +838,20 @@ const HandDrawing: React.FC = () => {
       setIsDrawing(false);
     }
     
-    setIsHandTrackingActive(!isHandTrackingActive);
+    const newActiveState = !isHandTrackingActive;
+    
+    // If turning on, make sure cursor exists
+    if (newActiveState) {
+      ensureCursorExists(0);
+    } else {
+      // Hide cursor when turning off
+      const cursor = document.getElementById('hand-cursor-0');
+      if (cursor) {
+        cursor.style.display = 'none';
+      }
+    }
+    
+    setIsHandTrackingActive(newActiveState);
     setErrorMessage(null);
   };
 
@@ -975,21 +865,6 @@ const HandDrawing: React.FC = () => {
       setIsDrawing(false);
     }
   }, [state.currentShape, isDrawing]);
-
-  // Add debugging for context values
-  useEffect(() => {
-    // Set up an interval to log context values every second
-    const debugInterval = setInterval(() => {
-      console.log('HandDrawing - Context values updated:');
-      console.log('isHandTrackingActive:', isHandTrackingActive);
-      console.log('currentGestures:', currentGestures);
-    }, 1000);
-    
-    // Clean up interval on unmount
-    return () => {
-      clearInterval(debugInterval);
-    };
-  }, [isHandTrackingActive, currentGestures]);
 
   // Function to check for stale drawings and end them
   const checkStaleDrawings = () => {
@@ -1014,6 +889,34 @@ const HandDrawing: React.FC = () => {
     };
   }, []);
 
+  // Function to ensure current drawing is saved and persisted
+  const saveDrawing = () => {
+    // If there's no current shape, nothing to save
+    if (!state.currentShape) {
+      console.log('No current shape to save');
+      return;
+    }
+    
+    // Check if shape has enough points to be valid
+    if (state.currentShape.points.length < 2) {
+      console.log('Current shape has too few points to save, has', state.currentShape.points.length);
+      dispatch({ type: 'END_DRAWING' });
+      setIsDrawing(false);
+      return;
+    }
+    
+    console.log(`Saving drawing with ${state.currentShape.points.length} points`);
+    
+    // End the current drawing to save it to shapes array
+    dispatch({ type: 'END_DRAWING' });
+    setIsDrawing(false);
+    
+    // Debug output after saving
+    setTimeout(() => {
+      console.log(`Drawing saved. Total shapes now: ${state.shapes.length}`);
+    }, 0);
+  };
+
   return (
     <HandGestureContext.Provider value={{ currentGestures, isHandTrackingActive }}>
       <div className="hand-tracking-container">
@@ -1025,11 +928,11 @@ const HandDrawing: React.FC = () => {
         >
           {isLoading ? 'Loading...' : 
            !isWebcamSupported ? 'Not Supported' :
-           isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable Hand Tracking'}
+           isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable MediaPipe Hand Tracking'}
         </button>
         
         {/* Video with overlay canvas for visualization */}
-        <div className={`absolute top-0 right-0 ${isHandTrackingActive ? 'block' : 'hidden'} z-10`}>
+        <div className={`absolute top-4 right-4 ${isHandTrackingActive ? 'block' : 'hidden'} z-10`}>
           <div className="relative">
             <video 
               ref={videoRef}
@@ -1039,6 +942,7 @@ const HandDrawing: React.FC = () => {
               muted
               width="640"
               height="480"
+              style={{ display: 'block' }} // Make sure it's visible
             ></video>
             <canvas 
               ref={canvasRef}
@@ -1051,7 +955,7 @@ const HandDrawing: React.FC = () => {
             {errorMessage ? (
               <span className="text-red-500">{errorMessage}</span>
             ) : currentHandCount > 0 ? (
-              `${currentHandCount} hand${currentHandCount > 1 ? 's' : ''} detected`
+              `${currentHandCount} hand detected`
             ) : (
               'No hands detected'
             )}
@@ -1064,7 +968,7 @@ const HandDrawing: React.FC = () => {
             <div className="text-sm font-bold mb-1">Hand Gestures:</div>
             <div className="flex items-center mb-1">
               <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
-              <span>Open Hand: Draw</span>
+              <span>Index Finger Only: Draw</span>
             </div>
             <div className="flex items-center mb-1">
               <div className="w-4 h-4 bg-white border-2 border-dashed border-black rounded-full mr-2"></div>
@@ -1072,7 +976,7 @@ const HandDrawing: React.FC = () => {
             </div>
             <div className="flex items-center">
               <div className="w-4 h-4 bg-red-200 mr-2"></div>
-              <span>Pointing: Clear All</span>
+              <span>Middle Finger Only: Clear All</span>
             </div>
           </div>
         )}
