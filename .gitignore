@@ -87,4 +87,12 @@ enhanced_drawings/
 .env.test.local
 .env.production.local
 
-venv/
+
+# CoCo specific
+story_videos/
+saved_drawings/
+enhanced_drawings/
+*.png
+*.jpg
+*.jpeg
+*.mp4

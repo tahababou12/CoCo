@@ -2,7 +2,6 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import os
-import time
 import base64
 from datetime import datetime
 from io import BytesIO
@@ -10,8 +9,6 @@ import threading
 from google import genai
 from google.genai import types
 from PIL import Image
-import hashlib
-import json
 import platform
 import subprocess
 
@@ -264,7 +261,6 @@ def determine_hand_mode(landmarks):
         # Any other hand position
         return "None", fingers_extended
 
-
 # Function to add image to storyboard
 def add_to_storyboard(image_path, image_data=None):
     """Add an image to the storyboard by its file path and optionally image data"""
@@ -347,7 +343,6 @@ def generate_video_background(request_id):
     finally:
         is_video_processing = False
 
-
 # API endpoint to save canvas image
 @app.route('/api/save-image', methods=['POST'])
 def save_image():
@@ -382,7 +377,6 @@ def save_image():
     except Exception as e:
         print(f"Error saving image: {str(e)}")
         return jsonify({"error": "Failed to save image", "details": str(e)}), 500
-
 
 # API endpoint to enhance an image
 @app.route('/api/enhance-image', methods=['POST'])
@@ -444,7 +438,6 @@ def enhance_image():
         traceback.print_exc()
         return jsonify({"error": "Failed to process enhancement request", "details": str(e)}), 500
 
-
 # API endpoint to check the status of an enhancement request
 @app.route('/api/enhancement-status/<request_id>', methods=['GET'])
 def check_enhancement_status(request_id):
@@ -471,7 +464,6 @@ def check_enhancement_status(request_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Error checking status", "details": str(e)}), 500
-
 
 # API endpoint to add an image to the storyboard
 @app.route('/api/storyboard/add', methods=['POST'])
@@ -522,7 +514,6 @@ def add_to_storyboard_api():
         traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
-
 # API endpoint to get current storyboard
 @app.route('/api/storyboard', methods=['GET'])
 def get_storyboard():
@@ -538,7 +529,6 @@ def get_storyboard():
         error_msg = f"Error getting storyboard: {str(e)}"
         print(error_msg)
         return jsonify({"error": error_msg}), 500
-
 
 # API endpoint to clear the storyboard
 @app.route('/api/storyboard/clear', methods=['POST'])
@@ -556,7 +546,6 @@ def clear_storyboard():
         error_msg = f"Error clearing storyboard: {str(e)}"
         print(error_msg)
         return jsonify({"error": error_msg}), 500
-
 
 # API endpoint to generate video from storyboard
 @app.route('/api/generate-video', methods=['POST'])
@@ -598,7 +587,6 @@ def generate_video_api():
         traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
-
 # API endpoint to check video generation status
 @app.route('/api/video-status/<request_id>', methods=['GET'])
 def check_video_status(request_id):
@@ -613,7 +601,6 @@ def check_video_status(request_id):
         error_msg = f"Error checking video status: {str(e)}"
         print(error_msg)
         return jsonify({"error": error_msg}), 500
-
 
 # API endpoint to play a video
 @app.route('/api/play-video/<video_filename>', methods=['POST'])
@@ -644,7 +631,6 @@ def play_video(video_filename):
         print(error_msg)
         return jsonify({"error": error_msg}), 500
 
-
 # Serve static files from the various directories
 @app.route('/img/<path:filename>')
 def serve_image(filename):
@@ -657,7 +643,6 @@ def serve_enhanced_image(filename):
 @app.route('/videos/<path:filename>')
 def serve_video(filename):
     return send_from_directory(story_videos_dir, filename)
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True) 

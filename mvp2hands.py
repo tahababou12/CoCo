@@ -44,7 +44,7 @@ os.makedirs(enhanced_dir, exist_ok=True)
 
 # Gemini API settings
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Load from environment variable if set
+GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")  # Load from environment variable if set
 GEMINI_MODEL = "gemini-2.0-flash-exp-image-generation"  # Using the specified image generation model
 
 # Initialize enhanced image placeholder
