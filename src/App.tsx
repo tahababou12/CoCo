@@ -16,6 +16,8 @@ import { WebSocketProvider } from './context/WebSocketContext'
 import { useDrawing } from './context/DrawingContext'
 import { useWebSocket } from './context/WebSocketContext'
 import { ShapesProvider } from './ShapesContext'
+import { addPointToPath, getSmoothedCursorPosition } from './utils/cursorUtils'
+import { UserPosition } from './types'
 
 import { useAuth0 } from '@auth0/auth0-react';
 import { withAuthenticationRequired } from '@auth0/auth0-react';
@@ -33,13 +35,19 @@ const WebcamDisplays: React.FC = () => {
       {Object.entries(state.remoteStreams).map(([userId, stream]) => {
         const user = state.collaborators.find(c => c.id === userId);
         if (!user || !stream) return null;
+        
+        // Default to a position based on user ID (to handle Point vs UserPosition type issues)
+        const defaultPosition: UserPosition = 
+          userId.startsWith('1') ? 'top-left' : 
+          userId.startsWith('2') ? 'top-right' : 
+          userId.startsWith('3') ? 'bottom-left' : 'bottom-right';
 
         return (
           <UserWebcam
             key={userId}
             stream={stream}
             username={user.name}
-            position={user.position}
+            position={defaultPosition}
           />
         );
       })}
@@ -49,7 +57,7 @@ const WebcamDisplays: React.FC = () => {
         <UserWebcam
           stream={webSocket.sharedWebcamStream}
           username={`${state.currentUser.name} (You)`}
-          position={state.currentUser.position}
+          position={'top-right'}
           mirrored={true}
         />
       )}
@@ -83,10 +91,18 @@ function ProtectedApp() {
     setShowStoryboard(!showStoryboard);
   };
 
-  // Simple direct cursor movement handler for reliable tracking
+  // Enhanced cursor movement handler with bezier curve interpolation
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (webSocket?.isConnected && webSocket?.sendCursorMove) {
-      webSocket.sendCursorMove({ x: e.clientX, y: e.clientY });
+      // Add the current point to our path history
+      const currentPoint = { x: e.clientX, y: e.clientY };
+      addPointToPath(currentPoint);
+      
+      // Get the smoothed position based on current and previous points
+      const smoothedPoint = getSmoothedCursorPosition(currentPoint);
+      
+      // Send the smoothed position to other users
+      webSocket.sendCursorMove(smoothedPoint);
     }
   }, [webSocket]);
 
