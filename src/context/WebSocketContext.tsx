@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode, useCallback, useMemo } from 'react';
 import { useDrawing } from './DrawingContext';
 import { WebSocketMessage, Shape, User, UserPosition, Point } from '../types';
 import { v4 as uuidv4 } from '../utils/uuid';
@@ -30,7 +30,7 @@ const ICE_SERVERS = {
   ]
 };
 
-interface WebSocketContextType {
+export type WebSocketContextType = {
   socket: WebSocket | null;
   isConnected: boolean;
   isConnecting: boolean;
@@ -53,7 +53,7 @@ interface WebSocketContextType {
   setSharedWebcamStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
   sendMessage: (message: WebSocketMessage) => void;
   toggleHandTracking: (isEnabled: boolean) => void;
-}
+};
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
 
@@ -560,6 +560,30 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         console.error('Error from server:', message.payload.message);
         break;
         
+      case 'cursor_move':
+        // Update the user's cursor position
+        setUsers(prevUsers => {
+          return prevUsers.map(u => {
+            if (u.id === message.userId) {
+              // If it's a hand cursor movement
+              if (message.data.isHandTracking) {
+                return {
+                  ...u,
+                  handPosition: { x: message.data.x, y: message.data.y },
+                  isHandTracking: true
+                };
+              }
+              // Regular cursor movement
+              return {
+                ...u,
+                position: { x: message.data.x, y: message.data.y }
+              };
+            }
+            return u;
+          });
+        });
+        break;
+        
       default:
         console.warn('Unknown message type:', message);
     }
@@ -646,25 +670,94 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
   }, []);
   
+  // Add missing method implementations - these match the interface but aren't yet used
+  const startDrawing = useCallback((point: Point, tool: string) => {
+    if (!isConnected || !currentUser || !wsRef.current) return;
+    // Placeholder for future implementation
+    console.log('startDrawing not yet implemented in WebSocket', point, tool);
+  }, [isConnected, currentUser]);
+
+  const continueDrawing = useCallback((point: Point) => {
+    if (!isConnected || !currentUser || !wsRef.current) return;
+    // Placeholder for future implementation
+    console.log('continueDrawing not yet implemented in WebSocket', point);
+  }, [isConnected, currentUser]);
+
+  const endDrawing = useCallback(() => {
+    if (!isConnected || !currentUser || !wsRef.current) return;
+    // Placeholder for future implementation
+    console.log('endDrawing not yet implemented in WebSocket');
+  }, [isConnected, currentUser]);
+
+  const addShape = useCallback((shape: Shape) => {
+    if (!isConnected || !currentUser || !wsRef.current) return;
+    // Placeholder for future implementation
+    console.log('addShape not yet implemented in WebSocket', shape);
+  }, [isConnected, currentUser]);
+
+  const deleteShape = useCallback((shapeId: string) => {
+    if (!isConnected || !currentUser || !wsRef.current) return;
+    // Placeholder for future implementation
+    console.log('deleteShape not yet implemented in WebSocket', shapeId);
+  }, [isConnected, currentUser]);
+
+  const updateViewTransform = useCallback((offsetX: number, offsetY: number, scale: number) => {
+    if (!isConnected || !currentUser || !wsRef.current) return;
+    // Placeholder for future implementation
+    console.log('updateViewTransform not yet implemented in WebSocket', offsetX, offsetY, scale);
+  }, [isConnected, currentUser]);
+  
+  // Update the context value to include the new function
+  const contextValue = useMemo(() => ({
+    socket,
+    isConnected,
+    isConnecting,
+    users,
+    currentUser,
+    peerConnections,
+    remoteStreams,
+    connect,
+    disconnect,
+    sendMessage,
+    sendCursorMove,
+    toggleHandTracking,
+    startWebcamSharing,
+    stopWebcamSharing,
+    sharedWebcamStream,
+    setSharedWebcamStream,
+    startDrawing,
+    continueDrawing,
+    endDrawing,
+    addShape,
+    deleteShape,
+    updateViewTransform
+  }), [
+    socket,
+    isConnected,
+    isConnecting,
+    users,
+    currentUser,
+    peerConnections,
+    remoteStreams,
+    connect,
+    disconnect,
+    sendMessage,
+    sendCursorMove,
+    toggleHandTracking,
+    startWebcamSharing,
+    stopWebcamSharing,
+    sharedWebcamStream,
+    setSharedWebcamStream,
+    startDrawing,
+    continueDrawing,
+    endDrawing,
+    addShape,
+    deleteShape,
+    updateViewTransform
+  ]);
+  
   return (
-    <WebSocketContext.Provider value={{ 
-      socket,
-      isConnected,
-      isConnecting,
-      users,
-      currentUser,
-      peerConnections,
-      remoteStreams,
-      connect,
-      disconnect,
-      sendMessage,
-      sendCursorMove,
-      toggleHandTracking,
-      startWebcamSharing,
-      stopWebcamSharing,
-      sharedWebcamStream,
-      setSharedWebcamStream
-    }}>
+    <WebSocketContext.Provider value={contextValue}>
       {children}
     </WebSocketContext.Provider>
   )

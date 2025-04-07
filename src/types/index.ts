@@ -1,6 +1,7 @@
 export type Point = {
   x: number
   y: number
+  isHandTracking?: boolean
 }
 
 export type ShapeStyle = {
@@ -35,11 +36,13 @@ export type ViewTransform = {
 // User position on screen: top-left, top-right, bottom-left, bottom-right 
 export type UserPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
-export type User = {
+export interface User {
   id: string
   name: string
   color: string
-  position: UserPosition
+  position: Point
+  handPosition?: Point
+  isHandTracking?: boolean
   isActive: boolean
   cursor?: Point
   isHandTrackingEnabled?: boolean

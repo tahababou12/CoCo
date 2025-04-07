@@ -9,6 +9,7 @@ import { videoToCanvasCoords, canvasToDrawingCoords } from '../utils/coordinates
 import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/handTracking';
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
 import { useHandGesture } from '../context/HandGestureContext';
+import { useWebSocket } from '../context/WebSocketContext';
 
 // Debug configuration
 const DEBUG = false;
@@ -17,6 +18,7 @@ const DEBUG_FINGER_DRAWING = false;
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
   const { isHandTrackingActive, setCurrentGestures, setIsHandTrackingActive } = useHandGesture();
+  const webSocket = useWebSocket();
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,8 +90,17 @@ const HandDrawing: React.FC = () => {
       // Position and style cursor
       const mode = activeHandModesRef.current[index];
       updateCursor(cursorDiv, canvasPoint.x, canvasPoint.y, mode);
+      
+      // Send hand cursor position to collaborators if connected
+      if (webSocket?.isConnected && webSocket?.sendCursorMove) {
+        webSocket.sendCursorMove({
+          x: canvasPoint.x,
+          y: canvasPoint.y,
+          isHandTracking: true
+        });
+      }
     });
-  }, [handCursors, isHandTrackingActive]);
+  }, [handCursors, isHandTrackingActive, webSocket]);
   
   // Initialize MediaPipe Hands and add cursor styles
   useEffect(() => {
