@@ -11,7 +11,7 @@ export const videoToCanvasCoords = (point: Point): Point => {
   
   return {
     x: (1 - point.x) * window.innerWidth,  // Flip x due to mirrored video
-    y: point.y * window.innerHeight
+    y: point.y * window.innerHeight + 5
   };
 };
 

@@ -2,6 +2,7 @@ export type Point = {
   x: number
   y: number
   isHandTracking?: boolean
+  handIndex?: number
 }
 
 export type ShapeStyle = {

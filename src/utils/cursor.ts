@@ -89,7 +89,7 @@ export const updateCursor = (
 ): void => {
   // Position cursor
   cursorElement.style.left = `${x}px`;
-  cursorElement.style.top = `${y}px`;
+  cursorElement.style.top = `${y+45}px`;
   cursorElement.style.display = 'block';
   
   // Style based on hand mode

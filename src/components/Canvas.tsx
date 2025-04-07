@@ -5,6 +5,9 @@ import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
 import EnhancedImageActions from './EnhancedImageActions'
 
+// Debug flag to control console logging
+const DEBUG = false;
+
 // Define a type for the enhanced image
 interface EnhancedImage {
   id: string;
@@ -76,26 +79,26 @@ const Canvas: React.FC = () => {
   }
 
   const renderCanvas = () => {
-    console.log('renderCanvas called');
+    void (DEBUG && console.log('renderCanvas called'));
     const canvas = canvasRef.current;
     let ctx = ctxRef.current;
     
     if (!canvas) {
-      console.error('Cannot render: canvas not available');
+      void (DEBUG && console.error('Cannot render: canvas not available'));
       return;
     }
     
     if (!ctx) {
-      console.error('Cannot render: context not available');
+      void (DEBUG && console.error('Cannot render: context not available'));
       
       // Try to reinitialize the context
       const context = canvas.getContext('2d', { willReadFrequently: true });
       if (context) {
-        console.log('Successfully reinitialized context');
+        void (DEBUG && console.log('Successfully reinitialized context'));
         ctxRef.current = context;
         ctx = context;
       } else {
-        console.error('Failed to reinitialize context');
+        void (DEBUG && console.error('Failed to reinitialize context'));
         return;
       }
     }
@@ -105,12 +108,12 @@ const Canvas: React.FC = () => {
 
     // Make sure canvas has dimensions
     if (canvas.width === 0 || canvas.height === 0) {
-      console.warn('Canvas has zero dimensions, setting defaults');
+      void (DEBUG && console.warn('Canvas has zero dimensions, setting defaults'));
       canvas.width = 800;
       canvas.height = 600;
     }
 
-    console.log(`Rendering canvas ${canvas.width}x${canvas.height} with ${state.shapes.length} shapes`);
+    void (DEBUG && console.log(`Rendering canvas ${canvas.width}x${canvas.height} with ${state.shapes.length} shapes`));
     
     // Clear canvas with background color
     // context.fillStyle = '#fafaf9'; // Dim white
@@ -128,7 +131,7 @@ const Canvas: React.FC = () => {
     // Draw all shapes
     if (state.shapes.length > 0) {
       state.shapes.forEach((shape, index) => {
-        console.log(`Rendering shape ${index}: ${shape.type}`);
+        void (DEBUG && console.log(`Rendering shape ${index}: ${shape.type}`));
         renderShape(context, shape);
       });
     }
@@ -139,13 +142,13 @@ const Canvas: React.FC = () => {
     
     // Draw current shape being created
     if (state.currentShape) {
-      console.log('Drawing current shape:', state.currentShape.type);
-      console.log('Current shape has points:', state.currentShape.points.length);
-      console.log('Using color:', state.defaultStyle.strokeColor);
+      void (DEBUG && console.log('Drawing current shape:', state.currentShape.type));
+      void (DEBUG && console.log('Current shape has points:', state.currentShape.points.length));
+      void (DEBUG && console.log('Using color:', state.defaultStyle.strokeColor));
       
       // Extra validation to help debugging
       if (state.currentShape.points.length === 0) {
-        console.warn('Current shape has no points!');
+        void (DEBUG && console.warn('Current shape has no points!'));
       }
       
       // Make sure current shape uses current style
@@ -162,12 +165,12 @@ const Canvas: React.FC = () => {
       
       // If we have a current shape, we should be in drawing mode
       if (!isDrawing) {
-        console.log('Syncing drawing state to true');
+        void (DEBUG && console.log('Syncing drawing state to true'));
         setIsDrawing(true);
       }
     } else if (isDrawing) {
       // No current shape but drawing flag is true - sync state
-      console.log('No current shape but isDrawing=true, syncing state');
+      void (DEBUG && console.log('No current shape but isDrawing=true, syncing state'));
       setIsDrawing(false);
     }
 
@@ -176,11 +179,11 @@ const Canvas: React.FC = () => {
 
   // Initialize canvas and context
   useEffect(() => {
-    console.log('Canvas initialization effect running');
+    void (DEBUG && console.log('Canvas initialization effect running'));
     
     // Ensure we have references to both canvas and container
     if (!canvasRef.current) {
-      console.error('Canvas element not available during initialization');
+      void (DEBUG && console.error('Canvas element not available during initialization'));
       return;
     }
     
@@ -207,13 +210,13 @@ const Canvas: React.FC = () => {
       canvas.style.height = '600px';
     }
     
-    console.log(`Canvas dimensions set: ${canvas.width}x${canvas.height}`);
+    void (DEBUG && console.log(`Canvas dimensions set: ${canvas.width}x${canvas.height}`));
     
     // Use willReadFrequently for better performance with frequent reads
     const context = canvas.getContext('2d', { willReadFrequently: true });
     
     if (!context) {
-      console.error('Failed to get canvas 2d context');
+      void (DEBUG && console.error('Failed to get canvas 2d context'));
       return;
     }
     
@@ -224,17 +227,17 @@ const Canvas: React.FC = () => {
     context.lineWidth = state.defaultStyle.strokeWidth || 2;
     
     ctxRef.current = context;
-    console.log('Canvas context initialized');
+    void (DEBUG && console.log('Canvas context initialized'));
     
     // Force an initial render after a short delay to ensure everything is set up
     setTimeout(() => {
-      console.log('Triggering delayed initial render');
+      void (DEBUG && console.log('Triggering delayed initial render'));
       renderCanvas();
     }, 200);
     
     // Add extra debugging on the canvas element
     canvas.addEventListener('pointerdown', () => {
-      console.log('Native pointerdown event fired');
+      void (DEBUG && console.log('Native pointerdown event fired'));
     });
     
   }, []);
@@ -250,7 +253,7 @@ const Canvas: React.FC = () => {
         const width = Math.max(containerWidth, 1);
         const height = Math.max(containerHeight, 1);
         
-        console.log(`Resizing canvas to: ${width}x${height}`);
+        void (DEBUG && console.log(`Resizing canvas to: ${width}x${height}`));
         
         canvasRef.current.width = width;
         canvasRef.current.height = height;
@@ -278,13 +281,13 @@ const Canvas: React.FC = () => {
   useEffect(() => {
     // Handle case where drawing starts from HandDrawing component
     if (state.currentShape && !isDrawing) {
-      console.log('Canvas detected drawing started externally, syncing state');
+      void (DEBUG && console.log('Canvas detected drawing started externally, syncing state'));
       setIsDrawing(true);
     }
     
     // Handle case where drawing ends from HandDrawing component
     if (!state.currentShape && isDrawing) {
-      console.log('Canvas detected drawing ended externally, syncing state');
+      void (DEBUG && console.log('Canvas detected drawing ended externally, syncing state'));
       setIsDrawing(false);
     }
   }, [state.currentShape, isDrawing]);
@@ -306,10 +309,10 @@ const Canvas: React.FC = () => {
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    console.log('React handlePointerDown triggered', e.type, e.clientX, e.clientY);
+    void (DEBUG && console.log('React handlePointerDown triggered', e.type, e.clientX, e.clientY));
     
     if (!canvasRef.current) {
-      console.error('Canvas ref not available in handlePointerDown');
+      void (DEBUG && console.error('Canvas ref not available in handlePointerDown'));
       return;
     }
     
@@ -320,7 +323,7 @@ const Canvas: React.FC = () => {
         (target.tagName === 'DIV' && target.getAttribute('role') === 'button') ||
         target.closest('button') || 
         target.closest('[role="button"]')) {
-      console.log('Clicked on a button - not handling canvas event');
+      void (DEBUG && console.log('Clicked on a button - not handling canvas event'));
       return;
     }
     
@@ -331,13 +334,13 @@ const Canvas: React.FC = () => {
     try {
       // Capture pointer to ensure all events go to this element
       canvasRef.current.setPointerCapture(e.pointerId);
-      console.log('Pointer captured successfully', e.pointerId);
+      void (DEBUG && console.log('Pointer captured successfully', e.pointerId));
     } catch (err) {
-      console.error('Failed to capture pointer', err);
+      void (DEBUG && console.error('Failed to capture pointer', err));
     }
     
     const point = getCanvasPoint(e.clientX, e.clientY);
-    console.log('Pointer down at', point, 'with tool', state.tool);
+    void (DEBUG && console.log('Pointer down at', point, 'with tool', state.tool));
     
     // Variables for switch cases
     let clickedShape: Shape | undefined;
@@ -390,7 +393,7 @@ const Canvas: React.FC = () => {
       case 'ellipse':
       case 'line':
       case 'pencil':
-        console.log('Starting to draw with', state.tool, 'using color', state.defaultStyle.strokeColor);
+        void (DEBUG && console.log('Starting to draw with', state.tool, 'using color', state.defaultStyle.strokeColor));
         setIsDrawing(true);
         dispatch({
           type: 'START_DRAWING',
@@ -399,14 +402,14 @@ const Canvas: React.FC = () => {
         break;
 
       default:
-        console.warn('Unknown tool:', state.tool);
+        void (DEBUG && console.warn('Unknown tool:', state.tool));
         break;
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!canvasRef.current) {
-      console.warn('Canvas ref not available in handlePointerMove');
+      void (DEBUG && console.warn('Canvas ref not available in handlePointerMove'));
       return;
     }
     
@@ -499,7 +502,7 @@ const Canvas: React.FC = () => {
 
     // For drawing, check if we're in drawing mode rather than relying only on button state
     if (isDrawing && state.currentShape) {
-      console.log('Drawing in progress...', state.tool, point, 'pointerType:', e.pointerType, 'using color:', state.defaultStyle.strokeColor);
+      void (DEBUG && console.log('Drawing in progress...', state.tool, point, 'pointerType:', e.pointerType, 'using color:', state.defaultStyle.strokeColor));
       
       // Continue drawing with current point
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
@@ -596,7 +599,7 @@ const Canvas: React.FC = () => {
     try {
       canvasRef.current.releasePointerCapture(e.pointerId);
     } catch (err) {
-      console.error('Failed to release pointer capture', err);
+      void (DEBUG && console.error('Failed to release pointer capture', err));
     }
     
     // Reset enhanced image interaction states
@@ -618,7 +621,7 @@ const Canvas: React.FC = () => {
     }
 
     if (isDrawing && state.currentShape) {
-      console.log('Ending drawing', state.currentShape.type);
+      void (DEBUG && console.log('Ending drawing', state.currentShape.type));
       setIsDrawing(false);
       dispatch({ type: 'END_DRAWING' });
     }
@@ -789,13 +792,13 @@ const Canvas: React.FC = () => {
       }
       
       const result = await response.json();
-      console.log(`Image saved successfully to: ${result.absolutePath}`);
+      void (DEBUG && console.log(`Image saved successfully to: ${result.absolutePath}`));
       
       // Show success message with toast instead of alert
       window.showToast(`Image saved as: ${result.filename}`, 'success', 3000);
       
     } catch (err) {
-      console.error('Error saving canvas:', err);
+      void (DEBUG && console.error('Error saving canvas:', err));
       window.showToast(`Error saving image: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
     }
   }
@@ -890,7 +893,7 @@ const Canvas: React.FC = () => {
       }
       
       const saveResult = await saveResponse.json();
-      console.log(`Image saved for enhancement: ${saveResult.absolutePath}`);
+      void (DEBUG && console.log(`Image saved for enhancement: ${saveResult.absolutePath}`));
       
       // Use a default enhancement prompt
       const defaultPrompt = 'Enhance this sketch into an image with more detail';
@@ -913,7 +916,7 @@ const Canvas: React.FC = () => {
       }
 
       const result = await response.json();
-      console.log('Enhancement started:', result);
+      void (DEBUG && console.log('Enhancement started:', result));
 
       if (result.success && result.requestId) {
         // Show a toast notification that enhancement is in progress
@@ -925,7 +928,7 @@ const Canvas: React.FC = () => {
         throw new Error('Failed to start enhancement process');
       }
     } catch (err) {
-      console.error('Error enhancing drawing:', err);
+      void (DEBUG && console.error('Error enhancing drawing:', err));
       window.showToast(`Error enhancing drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
       setEnhancementStatus('error');
     }
@@ -937,12 +940,12 @@ const Canvas: React.FC = () => {
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Error response: ${response.status} - ${errorText}`);
+        void (DEBUG && console.error(`Error response: ${response.status} - ${errorText}`));
         throw new Error(`Failed to fetch enhancement status: ${response.status} ${response.statusText}`);
       }
       
       const status = await response.json();
-      console.log('Enhancement status:', status);
+      void (DEBUG && console.log('Enhancement status:', status));
       
       if (status.status === 'processing') {
         // Continue polling every 2 seconds
@@ -962,7 +965,7 @@ const Canvas: React.FC = () => {
         
         // Show a more detailed error message
         const errorMessage = status.message || 'Unknown error occurred';
-        console.error('Enhancement error:', errorMessage);
+        void (DEBUG && console.error('Enhancement error:', errorMessage));
         window.showToast(`Enhancement failed: ${errorMessage}`, 'error', 3000);
       } else {
         // Unexpected status
@@ -970,7 +973,7 @@ const Canvas: React.FC = () => {
         window.showToast(`Unexpected status returned: ${status.status}`, 'error', 3000);
       }
     } catch (err) {
-      console.error('Error polling enhancement status:', err);
+      void (DEBUG && console.error('Error polling enhancement status:', err));
       setEnhancementStatus('error');
       window.showToast(`Error checking enhancement status: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
     }

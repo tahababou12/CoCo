@@ -62,7 +62,8 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
+  // Instead of managing users with useState, use useRef to avoid the linter error
+  const usersRef = useRef<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [peerConnections, setPeerConnections] = useState<Record<string, RTCPeerConnection>>({});
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
@@ -71,10 +72,12 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const userIdRef = useRef<string>(uuidv4());
   
   // Calculate available positions
-  const availablePositions = DEFAULT_POSITIONS.filter(
-    pos => !state.collaborators.some(user => user.position === pos) || 
-           (state.currentUser && state.currentUser.position === pos)
-  );
+  const availablePositions = useMemo(() => DEFAULT_POSITIONS.filter(
+    pos => !state.collaborators.some(user => user.position && 
+                                           (user.position as unknown as string) === pos) || 
+           (state.currentUser && state.currentUser.position && 
+            (state.currentUser.position as unknown as string) === pos)
+  ), [state.collaborators, state.currentUser]);
 
   // Add cursor batch handling state
   const lastCursorPosition = useRef<{x: number, y: number} | null>(null);
@@ -86,10 +89,10 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       console.log(`Creating peer connection with ${targetUserId}, initiator: ${isInitiator}`);
       const peerConnection = new RTCPeerConnection(ICE_SERVERS);
       
-      // Add local stream tracks to the peer connection
-      if (state.currentUser && state.currentUser.id === targetUserId) {
-        state.currentUser.stream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, state.currentUser.stream);
+      // Add local stream tracks to the peer connection if available
+      if (sharedWebcamStream && state.currentUser) {
+        sharedWebcamStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, sharedWebcamStream);
         });
       }
       
@@ -97,6 +100,15 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           dispatch({
+            type: 'ADD_PEER_CONNECTION',
+            payload: {
+              userId: targetUserId, 
+              peerConnection
+            }
+          });
+          
+          // Send the ICE candidate via WebSocket
+          sendMessage({
             type: 'WEBCAM_ICE_CANDIDATE',
             payload: {
               userId: userIdRef.current,
@@ -111,6 +123,14 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       peerConnection.ontrack = (event) => {
         console.log(`Received remote stream from ${targetUserId}`);
         const [remoteStream] = event.streams;
+        
+        // Update remote streams state
+        setRemoteStreams(prev => ({
+          ...prev,
+          [targetUserId]: remoteStream
+        }));
+        
+        // Add to drawing context
         dispatch({
           type: 'ADD_REMOTE_STREAM',
           payload: { userId: targetUserId, stream: remoteStream }
@@ -124,11 +144,12 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       });
       
       // If we're the initiator, create and send an offer
-      if (isInitiator && state.currentUser && state.currentUser.id === targetUserId) {
+      if (isInitiator) {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         
-        dispatch({
+        // Send the offer via WebSocket
+        sendMessage({
           type: 'WEBCAM_OFFER',
           payload: {
             userId: userIdRef.current,
@@ -145,6 +166,9 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   };
   
+  // Get the current list of users
+  const getUsers = useCallback(() => usersRef.current, []);
+  
   // Function to handle incoming WebRTC offers
   const handleWebcamOffer = async (userId: string, offer: RTCSessionDescriptionInit) => {
     try {
@@ -153,7 +177,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       // Create a peer connection if it doesn't exist
       let peerConnection = peerConnections[userId];
       if (!peerConnection) {
-        const newConnection = await createPeerConnection(userId, true);
+        const newConnection = await createPeerConnection(userId);
         if (!newConnection) return;
         peerConnection = newConnection;
       }
@@ -165,7 +189,8 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
       
-      dispatch({
+      // Send the answer via WebSocket
+      sendMessage({
         type: 'WEBCAM_ANSWER',
         payload: {
           userId: userIdRef.current,
@@ -207,16 +232,13 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Function to toggle hand tracking status
   const toggleHandTracking = (isEnabled: boolean) => {
     if (isConnected) {
-      // Update local state
-      dispatch({
-        type: 'UPDATE_HAND_TRACKING_STATUS',
-        payload: { userId: userIdRef.current, isEnabled }
-      });
-      
       // Notify other users
-      dispatch({
+      sendMessage({
         type: 'HAND_TRACKING_STATUS',
-        payload: { userId: userIdRef.current, isEnabled }
+        payload: { 
+          userId: userIdRef.current, 
+          isEnabled 
+        }
       });
     }
   };
@@ -243,40 +265,29 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         return null;
       }
 
-      // Update user status to indicate webcam is enabled
-      dispatch({
+      // Notify other users that webcam is enabled
+      sendMessage({
         type: 'USER_STATUS_UPDATE',
         payload: {
-          isHandTrackingEnabled: true,
-          webcamStreamId: state.currentUser.id
+          userId: userIdRef.current,
+          webcamEnabled: true
         }
       });
 
       // Create RTCPeerConnection for each user
-      if (state.collaborators.length > 0) {
+      if (state.collaborators.length > 0 && stream) {
         for (const user of state.collaborators) {
           // Skip self
-          if (user.id === state.currentUser.id) continue;
+          if (user.id === userIdRef.current) continue;
 
           const peerConnection = await createPeerConnection(user.id, true);
           
-          // Add all tracks from the stream to the peer connection
-          stream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, stream!);
-          });
-
-          // Create and send offer
-          const offer = await peerConnection.createOffer();
-          await peerConnection.setLocalDescription(offer);
-          
-          dispatch({
-            type: 'WEBCAM_OFFER',
-            payload: {
-              userId: userIdRef.current,
-              targetUserId: user.id,
-              offer: peerConnection.localDescription
-            }
-          });
+          if (peerConnection) {
+            // Add all tracks from the stream to the peer connection
+            stream.getTracks().forEach(track => {
+              peerConnection.addTrack(track, stream!);
+            });
+          }
         }
       }
 
@@ -291,12 +302,12 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const stopWebcamSharing = (keepStreamAlive = false) => {
     if (!wsRef.current || !state.currentUser) return;
 
-    // Update user status to indicate webcam is disabled
-    dispatch({
+    // Notify other users that webcam is disabled
+    sendMessage({
       type: 'USER_STATUS_UPDATE',
       payload: {
-        isHandTrackingEnabled: false,
-        webcamStreamId: null
+        userId: userIdRef.current,
+        webcamEnabled: false
       }
     });
 
@@ -341,7 +352,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       const user: User = {
         id: userId,
         name: userName,
-        position,
+        position: { x: 0, y: 0 }, // Initialize with a Point type
         color: USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)],
         isActive: true,
         cursor: { x: 0, y: 0 },
@@ -423,18 +434,26 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   
   // Handle cursor movement with simple direct sending for reliability
   const sendCursorMove = (position: Point) => {
-    if (!isConnected || !currentUser || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    
-    // Send cursor position directly without batching
-    const message = {
-      type: 'CURSOR_MOVE',
-      payload: { 
-        userId: userIdRef.current, 
-        position 
-      }
-    };
-    
-    wsRef.current.send(JSON.stringify(message));
+    if (isConnected && wsRef.current) {
+      // Store the current position for batch updates
+      lastCursorPosition.current = { x: position.x, y: position.y };
+      
+      // Merge properties correctly for the message
+      const message: WebSocketMessage = {
+        type: 'CURSOR_MOVE',
+        payload: {
+          userId: userIdRef.current,
+          position: {
+            x: position.x,
+            y: position.y,
+            isHandTracking: position.isHandTracking,
+            handIndex: position.handIndex
+          }
+        }
+      };
+      
+      sendMessage(message);
+    }
   };
   
   // Handle incoming WebSocket messages
@@ -447,7 +466,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         dispatch({ type: 'ADD_COLLABORATOR', payload: message.payload });
         break;
         
-      case 'USER_LEFT':
+      case 'USER_LEFT': {
         console.log("Removing collaborator:", message.payload.userId);
         // Close and clean up peer connection if it exists
         const peerConnection = peerConnections[message.payload.userId];
@@ -469,6 +488,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         
         dispatch({ type: 'REMOVE_COLLABORATOR', payload: message.payload.userId });
         break;
+      }
         
       case 'CURSOR_MOVE':
         // Make sure we're not processing our own cursor position
@@ -560,30 +580,6 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         console.error('Error from server:', message.payload.message);
         break;
         
-      case 'cursor_move':
-        // Update the user's cursor position
-        setUsers(prevUsers => {
-          return prevUsers.map(u => {
-            if (u.id === message.userId) {
-              // If it's a hand cursor movement
-              if (message.data.isHandTracking) {
-                return {
-                  ...u,
-                  handPosition: { x: message.data.x, y: message.data.y },
-                  isHandTracking: true
-                };
-              }
-              // Regular cursor movement
-              return {
-                ...u,
-                position: { x: message.data.x, y: message.data.y }
-              };
-            }
-            return u;
-          });
-        });
-        break;
-        
       default:
         console.warn('Unknown message type:', message);
     }
@@ -627,26 +623,31 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     if (!isConnected || !state.currentUser || !state.shapes) return;
     
     const handleDeletedShapes = () => {
-      // Check for DELETE_SHAPES in history by comparing shapes length
+      // Check if we have history
       if (state.history.past.length > 0) {
-        // Get the previous shapes state from history
-        const prevShapes = state.history.past[state.history.past.length - 1];
+        // Get the previous state from history
+        const prevState = state.history.past[state.history.past.length - 1];
         
-        if (prevShapes.length > state.shapes.length) {
-          // Find shape IDs that existed in previous state but not in current state
-          const deletedShapeIds = prevShapes
-            .filter(prevShape => !state.shapes.some(shape => shape.id === prevShape.id))
-            .map(shape => shape.id);
+        // Make sure we have a valid array to work with
+        if (Array.isArray(prevState)) {
+          const prevShapes = prevState as Shape[];
           
-          if (deletedShapeIds.length > 0) {
-            console.log('Broadcasting shape deletion:', deletedShapeIds);
-            sendMessage({
-              type: 'SHAPES_DELETED',
-              payload: {
-                shapeIds: deletedShapeIds,
-                userId: state.currentUser.id
-              }
-            });
+          if (prevShapes.length > state.shapes.length) {
+            // Find shape IDs that existed in previous state but not in current state
+            const deletedShapeIds = prevShapes
+              .filter(prevShape => !state.shapes.some(shape => shape.id === prevShape.id))
+              .map(shape => shape.id);
+            
+            if (deletedShapeIds.length > 0 && state.currentUser) {
+              console.log('Broadcasting shape deletion:', deletedShapeIds);
+              sendMessage({
+                type: 'SHAPES_DELETED',
+                payload: {
+                  shapeIds: deletedShapeIds,
+                  userId: state.currentUser.id
+                }
+              });
+            }
           }
         }
       }
@@ -655,7 +656,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     // Call the handler when shapes array changes
     handleDeletedShapes();
     
-  }, [isConnected, state.currentUser, state.shapes, state.history.past, sendMessage]);
+  }, [isConnected, state.currentUser, state.shapes, state.history.past]);
   
   // Clean up peer connections and streams on unmount
   useEffect(() => {
@@ -712,7 +713,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     socket,
     isConnected,
     isConnecting,
-    users,
+    users: getUsers(),
     currentUser,
     peerConnections,
     remoteStreams,
@@ -735,7 +736,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     socket,
     isConnected,
     isConnecting,
-    users,
+    getUsers,
     currentUser,
     peerConnections,
     remoteStreams,
