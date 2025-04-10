@@ -1,8 +1,18 @@
 import { HandLandmark, HandMode, SmoothingBuffer } from '../types/handTracking';
 import { Point } from '../types';
 
+// Define a type for finger state
+export interface FingerState {
+  thumb: boolean;
+  index: boolean;
+  middle: boolean;
+  ring: boolean;
+  pinky: boolean;
+  handType: 'Left' | 'Right' | 'None';
+}
+
 // Determine hand mode from MediaPipe hand landmarks
-export const determineHandMode = (landmarks: HandLandmark[]): HandMode => {
+export const determineHandMode = (landmarks: HandLandmark[]): { mode: HandMode, fingerState: FingerState } => {
   // Calculate finger states - are they extended or not?
   const fingersExtended = [];
   
@@ -20,36 +30,65 @@ export const determineHandMode = (landmarks: HandLandmark[]): HandMode => {
   // Check if thumb is extended 
   // For right hand: thumbTip.x < thumbIP.x
   // For left hand: thumbTip.x > thumbIP.x
-  const thumbExtended = isRightHand ? thumbTip.x < thumbIP.x : thumbTip.x > thumbIP.x;
+  const thumbExtended = isRightHand ? thumbTip.x > thumbIP.x : thumbTip.x < thumbIP.x;
   fingersExtended.push(thumbExtended);
   
   // For index finger (8 is tip, 6 is PIP joint)
-  fingersExtended.push(landmarks[8].y < landmarks[6].y);
+  // Check if index finger is extended using both comparisons for reliability
+  const indexTip = landmarks[8];
+  const indexPIP = landmarks[6]; 
+  const indexMCP = landmarks[5];
+  // Use both typical method (tip above PIP) and more generous threshold from MCP
+  const indexExtended = indexTip.y < indexPIP.y || indexTip.y < indexMCP.y - 0.03;
+  fingersExtended.push(indexExtended);
   
   // For middle finger (12 is tip, 10 is PIP joint)
-  fingersExtended.push(landmarks[12].y < landmarks[10].y);
+  const middleExtended = landmarks[12].y < landmarks[10].y;
+  fingersExtended.push(middleExtended);
   
   // For ring finger (16 is tip, 14 is PIP joint)
-  fingersExtended.push(landmarks[16].y < landmarks[14].y);
+  const ringExtended = landmarks[16].y < landmarks[14].y;
+  fingersExtended.push(ringExtended);
   
   // For pinky finger (20 is tip, 18 is PIP joint)
-  fingersExtended.push(landmarks[20].y < landmarks[18].y);
+  const pinkyExtended = landmarks[20].y < landmarks[18].y;
+  fingersExtended.push(pinkyExtended);
+  
+  // Create finger state object
+  const fingerState: FingerState = {
+    thumb: thumbExtended,
+    index: indexExtended,
+    middle: middleExtended,
+    ring: ringExtended,
+    pinky: pinkyExtended,
+    handType: isRightHand ? 'Right' : 'Left'
+  };
+  
+  // Log finger states for debugging
+  console.log('Finger states:', {
+    thumb: thumbExtended ? 'Extended' : 'Closed',
+    index: indexExtended ? 'Extended' : 'Closed',
+    middle: middleExtended ? 'Extended' : 'Closed',
+    ring: ringExtended ? 'Extended' : 'Closed',
+    pinky: pinkyExtended ? 'Extended' : 'Closed',
+    handType: isRightHand ? 'Right hand' : 'Left hand'
+  });
   
   // FEATURE 1: DRAWING MODE - Only index finger is extended
+  // Allow thumb to be slightly extended for more reliable detection
   if (!fingersExtended[0] && fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
-    return 'Drawing';
+    console.log('GESTURE DETECTED: Drawing mode');
+    return { mode: 'Drawing', fingerState };
   }
-  // FEATURE 2: ERASING MODE - Closed fist (no fingers extended)
+  // FEATURE 2: CLICKING MODE - Closed fist (no fingers extended)
   else if (!fingersExtended[0] && !fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
-    return 'Erasing';
-  }
-  // FEATURE 3: CLEAR ALL - Only pinky finger extended
-  else if (!fingersExtended[0] && !fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && fingersExtended[4]) {
-    return 'Clear All';
+    console.log('GESTURE DETECTED: Clicking mode');
+    return { mode: 'Clicking', fingerState };
   }
   else {
     // Any other hand position
-    return 'None';
+    console.log('GESTURE DETECTED: None (unrecognized gesture)');
+    return { mode: 'None', fingerState };
   }
 };
 
@@ -91,8 +130,7 @@ export const getSmoothPoint = (buffer: SmoothingBuffer, currentPoint: Point): Po
 export const getStableHandMode = (
   buffer: SmoothingBuffer, 
   currentMode: HandMode,
-  lastClearTime: number,
-  clearCooldownMs: number
+  lastClearTime: number
 ): { mode: HandMode, newLastClearTime: number } => {
   // Add current mode to history
   buffer.modeHistory.push(currentMode);
@@ -109,16 +147,20 @@ export const getStableHandMode = (
   
   // Count occurrences of each mode
   let drawingCount = 0;
-  let erasingCount = 0;
-  let clearAllCount = 0;
+  let clickingCount = 0;
   let noneCount = 0;
   
   buffer.modeHistory.forEach(mode => {
     if (mode === 'Drawing') drawingCount++;
-    else if (mode === 'Erasing') erasingCount++;
-    else if (mode === 'Clear All') clearAllCount++;
+    else if (mode === 'Clicking') clickingCount++;
     else if (mode === 'None') noneCount++;
   });
+  
+  // If drawing mode is detected even just a few times, prioritize it
+  // This makes drawing mode more responsive
+  if (drawingCount >= 2 && buffer.modeHistory.length >= 3) {
+    return { mode: 'Drawing', newLastClearTime: lastClearTime };
+  }
   
   // Find the most common mode
   let mostCommonMode: HandMode = 'None';
@@ -129,33 +171,9 @@ export const getStableHandMode = (
     mostCommonMode = 'Drawing';
   }
   
-  if (erasingCount > maxCount) {
-    maxCount = erasingCount;
-    mostCommonMode = 'Erasing';
-  }
-  
-  if (clearAllCount > maxCount) {
-    maxCount = clearAllCount;
-    mostCommonMode = 'Clear All';
-  }
-  
-  // Clear All needs special handling to avoid accidental triggering
-  if (mostCommonMode === 'Clear All') {
-    const now = Date.now();
-    // If we've recently cleared, don't allow another clear yet
-    if (now - lastClearTime < clearCooldownMs) {
-      // Find the next most common mode
-      if (drawingCount >= erasingCount && drawingCount >= noneCount) {
-        return { mode: 'Drawing', newLastClearTime: lastClearTime };
-      } else if (erasingCount >= drawingCount && erasingCount >= noneCount) {
-        return { mode: 'Erasing', newLastClearTime: lastClearTime };
-      } else {
-        return { mode: 'None', newLastClearTime: lastClearTime };
-      }
-    } else {
-      // Update the last clear time
-      return { mode: 'Clear All', newLastClearTime: now };
-    }
+  if (clickingCount > maxCount) {
+    maxCount = clickingCount;
+    mostCommonMode = 'Clicking';
   }
   
   return { mode: mostCommonMode, newLastClearTime: lastClearTime };

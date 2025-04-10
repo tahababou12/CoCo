@@ -9,7 +9,7 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0', // Expose to all network interfaces
-    port: 5173,
-    strictPort: false, // Allow fallback to another port if 5173 is in use
+    port: 5174,
+    strictPort: true, // Allow fallback to another port if 5173 is in use
   }
 })

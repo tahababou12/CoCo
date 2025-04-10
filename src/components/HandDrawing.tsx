@@ -12,8 +12,8 @@ import { useHandGesture } from '../context/HandGestureContext';
 import { useWebSocket } from '../context/WebSocketContext';
 
 // Debug configuration
-const DEBUG = false;
-const DEBUG_FINGER_DRAWING = false;
+const DEBUG = true;
+const DEBUG_FINGER_DRAWING = true;
 const DEBUG_COLLAB = false;
 
 const HandDrawing: React.FC = () => {
@@ -32,6 +32,9 @@ const HandDrawing: React.FC = () => {
   const [handCursors, setHandCursors] = useState<{ [key: number]: Point | null }>({
     0: null
   });
+  
+  // Track dual hand mode
+  const [dualHandMode, setDualHandMode] = useState(false);
   
   // Track drawing state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -53,7 +56,6 @@ const HandDrawing: React.FC = () => {
   
   // Last time we detected a "Clear All" gesture to avoid rapid clearing
   const lastClearTimeRef = useRef<number>(0);
-  const CLEAR_COOLDOWN_MS = 1500; // Cooldown of 1.5 seconds between clear actions
   
   // Add timeout ref to automatically end drawings if no updates for a while
   const lastDrawingUpdateRef = useRef<number>(0);
@@ -70,6 +72,26 @@ const HandDrawing: React.FC = () => {
   
   // Reference to style element for cursor
   const styleElementRef = useRef<HTMLStyleElement | null>(null);
+  
+  // Track finger states for debug display
+  const [fingerStates, setFingerStates] = useState({
+    thumb: false,
+    index: false,
+    middle: false,
+    ring: false,
+    pinky: false,
+    handType: 'None'
+  });
+  
+  // Track second hand's finger states for dual mode
+  const [secondHandFingerStates, setSecondHandFingerStates] = useState({
+    thumb: false,
+    index: false,
+    middle: false,
+    ring: false,
+    pinky: false,
+    handType: 'None'
+  });
   
   // Update cursor positions
   useEffect(() => {
@@ -149,61 +171,85 @@ const HandDrawing: React.FC = () => {
         ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000');
         ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00');
         
-        // Initialize MediaPipe Hands
-        const hands = new Hands({
-          locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-          }
-        });
-        
-        // Configure MediaPipe Hands
-        hands.setOptions({
-          maxNumHands: 2,
-          modelComplexity: 1,
-          minDetectionConfidence: 0.5,  // Lower for better sensitivity
-          minTrackingConfidence: 0.5    // Lower for better continuity
-        });
-        
-        // Set up the camera
-        if (videoRef.current) {
-          // Get user's camera
-          videoStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-              width: 640, 
-              height: 480,
-              facingMode: 'user' // Use front camera on mobile devices
-            } 
-          });
-          
-          // Set video source
-          videoRef.current.srcObject = videoStream;
-          
-          // Set up MediaPipe camera utility
-          const camera = new Camera(videoRef.current, {
-            onFrame: async () => {
-              if (videoRef.current && hands) {
-                await hands.send({ image: videoRef.current });
-              }
-            },
-            width: 640,
-            height: 480
-          });
-          
-          // Set up the results handler
-          hands.onResults(onHandResults);
-          
-          // Store references
-          mediapipeRef.current = hands;
-          cameraRef.current = camera;
-          
-          // Start the camera
-          camera.start();
+        // Make sure any previous instances are properly cleaned up
+        if (cameraRef.current) {
+          cameraRef.current.stop();
+          cameraRef.current = null;
         }
         
-        setIsLoading(false);
+        if (mediapipeRef.current) {
+          try {
+            mediapipeRef.current.close();
+          } catch (e) {
+            console.warn("Error closing existing MediaPipe Hands instance:", e);
+          }
+          mediapipeRef.current = null;
+        }
+        
+        // Initialize MediaPipe Hands with a delay to ensure previous instances are cleaned up
+        setTimeout(async () => {
+          try {
+            // Initialize MediaPipe Hands
+            const hands = new Hands({
+              locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+              }
+            });
+            
+            // Configure MediaPipe Hands
+            hands.setOptions({
+              maxNumHands: dualHandMode ? 2 : 1,
+              modelComplexity: 1,
+              minDetectionConfidence: 0.5,  // Lower for better sensitivity
+              minTrackingConfidence: 0.5    // Lower for better continuity
+            });
+            
+            // Set up the camera
+            if (videoRef.current) {
+              // Get user's camera
+              videoStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                  width: 640, 
+                  height: 480,
+                  facingMode: 'user' // Use front camera on mobile devices
+                } 
+              });
+              
+              // Set video source
+              videoRef.current.srcObject = videoStream;
+              
+              // Set up MediaPipe camera utility
+              const camera = new Camera(videoRef.current, {
+                onFrame: async () => {
+                  if (videoRef.current && hands) {
+                    await hands.send({ image: videoRef.current });
+                  }
+                },
+                width: 640,
+                height: 480
+              });
+              
+              // Set up the results handler
+              hands.onResults(onHandResults);
+              
+              // Store references
+              mediapipeRef.current = hands;
+              cameraRef.current = camera;
+              
+              // Start the camera
+              camera.start();
+            }
+            
+            setIsLoading(false);
+          } catch (error) {
+            setErrorMessage(`Error initializing hand tracking: ${error instanceof Error ? error.message : String(error)}`);
+            console.error('Error initializing hand tracking:', error);
+            setIsLoading(false);
+          }
+        }, 100); // Short delay to ensure cleanup
       } catch (error) {
-        setErrorMessage(`Error initializing hand tracking: ${error instanceof Error ? error.message : String(error)}`);
-        console.error('Error initializing hand tracking:', error);
+        setErrorMessage(`Error in hand tracking setup: ${error instanceof Error ? error.message : String(error)}`);
+        console.error('Error in hand tracking setup:', error);
         setIsLoading(false);
       }
     };
@@ -252,14 +298,20 @@ const HandDrawing: React.FC = () => {
           newHandCursors[index] = smoothedPoint;
           
           // Determine hand mode based on finger positions
-          const mode = determineHandMode(landmarks);
+          const { mode, fingerState } = determineHandMode(landmarks);
+          
+          // Update finger states for the debug display
+          if (index === 0) {
+            setFingerStates(fingerState);
+          } else if (index === 1) {
+            setSecondHandFingerStates(fingerState);
+          }
           
           // Apply stability to the hand mode
           const { mode: stableMode, newLastClearTime } = getStableHandMode(
             smoothingBuffersRef.current[index], 
             mode,
-            lastClearTimeRef.current,
-            CLEAR_COOLDOWN_MS
+            lastClearTimeRef.current
           );
           
           // Update last clear time if needed
@@ -300,11 +352,17 @@ const HandDrawing: React.FC = () => {
       // Stop camera
       if (cameraRef.current) {
         cameraRef.current.stop();
+        cameraRef.current = null;
       }
       
       // Close MediaPipe Hands
       if (mediapipeRef.current) {
-        mediapipeRef.current.close();
+        try {
+          mediapipeRef.current.close();
+        } catch (e) {
+          console.warn("Error during cleanup of MediaPipe Hands:", e);
+        }
+        mediapipeRef.current = null;
       }
       
       // Stop video stream
@@ -315,7 +373,7 @@ const HandDrawing: React.FC = () => {
       // Hide cursor
       setHandCursors({});
     };
-  }, [isHandTrackingActive, isWebcamSupported]);
+  }, [isHandTrackingActive, isWebcamSupported, dualHandMode]);
 
   // Handle different hand modes
   const handleHandMode = (
@@ -442,35 +500,6 @@ const HandDrawing: React.FC = () => {
         break;
       }
       
-      case 'Erasing': {
-        // Check for shapes near the cursor for erasing
-        const shapesToErase = findShapesNearPoint(transformedPoint, state.shapes, 10);
-        
-        if (shapesToErase.length > 0) {
-          // Only erase shapes we own or if we're an admin/owner
-          // For now, erase any shape
-          const shapeIds = shapesToErase.map(shape => shape.id);
-          dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-        }
-        break;
-      }
-      
-      case 'Clear All': {
-        // Only allow clearing at most once every X seconds to avoid accidental clears
-        const now = Date.now();
-        if (now - lastClearTimeRef.current > CLEAR_COOLDOWN_MS) {
-          lastClearTimeRef.current = now;
-          
-          // Clear all shapes
-          const allShapeIds = state.shapes.map(shape => shape.id);
-          if (allShapeIds.length > 0) {
-            console.log('Clearing all shapes', allShapeIds);
-            dispatch({ type: 'DELETE_SHAPES', payload: allShapeIds });
-          }
-        }
-        break;
-      }
-      
       default:
         // No action for other modes
         break;
@@ -537,6 +566,48 @@ const HandDrawing: React.FC = () => {
     
     setIsHandTrackingActive(newActiveState);
     setErrorMessage(null);
+  };
+
+  // Toggle dual hand mode
+  const toggleDualHandMode = () => {
+    // Toggle the state
+    const newDualHandMode = !dualHandMode;
+    setDualHandMode(newDualHandMode);
+    
+    console.log(`Toggling dual hand mode: ${newDualHandMode ? 'ON' : 'OFF'}`);
+    
+    // Restart hand tracking if it's currently active
+    if (isHandTrackingActive) {
+      // First turn off hand tracking completely
+      setIsHandTrackingActive(false);
+      
+      // Clean up resources properly
+      if (cameraRef.current) {
+        cameraRef.current.stop();
+        cameraRef.current = null;
+      }
+      
+      if (mediapipeRef.current) {
+        try {
+          mediapipeRef.current.close();
+        } catch (e) {
+          console.warn("Error closing MediaPipe Hands:", e);
+        }
+        mediapipeRef.current = null;
+      }
+      
+      // Hide cursor when toggling
+      const cursor0 = document.getElementById('hand-cursor-0');
+      const cursor1 = document.getElementById('hand-cursor-1');
+      if (cursor0) cursor0.style.display = 'none';
+      if (cursor1) cursor1.style.display = 'none';
+      
+      // Wait a bit longer to ensure cleanup is complete
+      setTimeout(() => {
+        // Turn hand tracking back on with new settings
+        setIsHandTrackingActive(true);
+      }, 500); // Increased timeout to ensure proper cleanup
+    }
   };
 
   // Add synchronization effect for drawing state
@@ -628,21 +699,6 @@ const HandDrawing: React.FC = () => {
     lastDrawingUpdateRef.current = Date.now();
   };
 
-  // Add findShapesNearPoint function
-  const findShapesNearPoint = (point: Point, shapes: Shape[], radius: number): Shape[] => {
-    // Find shapes that are close to the point
-    return shapes.filter(shape => {
-      // For simplicity, check if any point of the shape is within radius
-      return shape.points.some(shapePoint => {
-        const distance = Math.sqrt(
-          Math.pow(point.x - shapePoint.x, 2) + 
-          Math.pow(point.y - shapePoint.y, 2)
-        );
-        return distance < radius;
-      });
-    });
-  };
-
   // Update drawing colors
   useEffect(() => {
     // Set colors for each hand
@@ -690,6 +746,16 @@ const HandDrawing: React.FC = () => {
             width={640}
             height={480}
           ></canvas>
+          {/* Dual hand mode toggle button */}
+          <button
+            className="absolute bottom-2 left-2 bg-white p-1 rounded-full shadow-lg z-20 transition-transform hover:scale-110"
+            onClick={toggleDualHandMode}
+            title={dualHandMode ? "Switch to single hand mode" : "Switch to dual hand mode"}
+          >
+            <span role="img" aria-label="Hands" className="text-lg">
+              {dualHandMode ? "🙌" : "👋"}
+            </span>
+          </button>
         </div>
         <div className="text-xs bg-white p-1 rounded mt-1 text-center">
           {errorMessage ? (
@@ -714,9 +780,8 @@ const HandDrawing: React.FC = () => {
             <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
             <span>Closed Fist: Click Buttons</span>
           </div>
-          <div className="flex items-center">
-            <div className="w-4 h-4 bg-red-200 mr-2"></div>
-            <span>Pinky Finger Only: Clear All</span>
+          <div className="text-xs text-gray-600 mt-1">
+            Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
           </div>
         </div>
       )}
@@ -747,6 +812,64 @@ const HandDrawing: React.FC = () => {
           }</div>
           <div>View transform: scale:{state.viewTransform.scale.toFixed(2)}, 
             offset:({state.viewTransform.offsetX.toFixed(0)},{state.viewTransform.offsetY.toFixed(0)})</div>
+        </div>
+      )}
+      
+      {/* Finger state debug panel */}
+      {isHandTrackingActive && (
+        <div className="absolute left-4 top-60 bg-white p-2 rounded shadow-md z-10">
+          <div className="text-sm font-bold mb-1">
+            Hand Finger States: 
+            <span className="text-xs font-normal ml-2">
+              ({dualHandMode ? "Dual Hand Mode" : "Single Hand Mode"})
+            </span>
+          </div>
+          
+          {/* First hand */}
+          <div className="mb-2">
+            <div className="mb-1">Hand 1: {fingerStates.handType}</div>
+            <div className="flex space-x-2">
+              <div className={`w-8 h-12 border ${fingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <span className="text-xs font-bold">👍</span>
+              </div>
+              <div className={`w-8 h-12 border ${fingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <span className="text-xs font-bold">☝️</span>
+              </div>
+              <div className={`w-8 h-12 border ${fingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <span className="text-xs font-bold">🖕</span>
+              </div>
+              <div className={`w-8 h-12 border ${fingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <span className="text-xs font-bold">💍</span>
+              </div>
+              <div className={`w-8 h-12 border ${fingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <span className="text-xs font-bold">🤙</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Second hand - only show in dual hand mode */}
+          {dualHandMode && (
+            <div>
+              <div className="mb-1">Hand 2: {secondHandFingerStates.handType}</div>
+              <div className="flex space-x-2">
+                <div className={`w-8 h-12 border ${secondHandFingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                  <span className="text-xs font-bold">👍</span>
+                </div>
+                <div className={`w-8 h-12 border ${secondHandFingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                  <span className="text-xs font-bold">☝️</span>
+                </div>
+                <div className={`w-8 h-12 border ${secondHandFingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                  <span className="text-xs font-bold">🖕</span>
+                </div>
+                <div className={`w-8 h-12 border ${secondHandFingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                  <span className="text-xs font-bold">💍</span>
+                </div>
+                <div className={`w-8 h-12 border ${secondHandFingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                  <span className="text-xs font-bold">🤙</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -4,7 +4,7 @@ import { useDrawing } from '../context/DrawingContext';
 import { Point, Shape } from '../types';
 
 // Define hand mode type for better type safety
-type HandMode = 'Drawing' | 'Erasing' | 'Clear All' | 'None';
+type HandMode = 'Drawing' | 'Clicking' | 'None';
 
 // Extend window interface to work with MediaPipe
 declare global {
@@ -142,7 +142,6 @@ const SimpleWebcam: React.FC = () => {
     const middleTip = landmarks[12]; // Middle finger tip
     const ringTip = landmarks[16];  // Ring finger tip
     const pinkyTip = landmarks[20]; // Pinky tip
-    const wrist = landmarks[0];     // Wrist position
     
     // Check if the hand is closed (all fingers curled)
     const thumbIsClosed = thumbTip.y > landmarks[2].y;
@@ -151,19 +150,14 @@ const SimpleWebcam: React.FC = () => {
     const ringIsClosed = ringTip.y > landmarks[14].y;
     const pinkyIsClosed = pinkyTip.y > landmarks[18].y;
     
-    // Fist (all fingers closed) = Erasing
+    // Fist (all fingers closed) = Clicking
     if (indexIsClosed && middleIsClosed && ringIsClosed && pinkyIsClosed) {
-      return "Erasing";
+      return "Clicking";
     }
     
     // Open palm (all fingers extended) = Drawing
     if (!indexIsClosed && !middleIsClosed && !ringIsClosed && !pinkyIsClosed) {
       return "Drawing";
-    }
-    
-    // Only index finger extended = Clear All
-    if (!indexIsClosed && middleIsClosed && ringIsClosed && pinkyIsClosed) {
-      return "Clear All";
     }
     
     // Default - no special gesture detected
@@ -236,14 +230,11 @@ const SimpleWebcam: React.FC = () => {
         if (stableMode === 'Drawing') {
           cursorDiv.style.backgroundColor = index === 0 ? 'rgba(0, 128, 255, 0.7)' : 'rgba(255, 64, 128, 0.7)';
           cursorDiv.style.border = '2px solid white';
-        } else if (stableMode === 'Erasing') {
+        } else if (stableMode === 'Clicking') {
           cursorDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
           cursorDiv.style.border = '2px solid black';
           cursorDiv.style.width = '30px';
           cursorDiv.style.height = '30px';
-        } else if (stableMode === 'Clear All') {
-          cursorDiv.style.backgroundColor = 'rgba(255, 165, 0, 0.7)';
-          cursorDiv.style.border = '2px dashed black';
         } else {
           cursorDiv.style.backgroundColor = 'rgba(200, 200, 200, 0.5)';
           cursorDiv.style.border = '1px solid gray';
@@ -503,7 +494,7 @@ const SimpleWebcam: React.FC = () => {
         });
       }
     }
-    else if (mode === "Erasing") {
+    else if (mode === "Clicking") {
       // End any active drawing first
       if (state.currentShape) {
         dispatch({ type: 'END_DRAWING' });
@@ -537,17 +528,6 @@ const SimpleWebcam: React.FC = () => {
       
       // End the erasing stroke immediately to make it apply
       dispatch({ type: 'END_DRAWING' });
-      
-      // Store the current point
-      prevHandPositions.current[handIndex] = transformedPoint;
-    }
-    else if (mode === "Clear All") {
-      // Delete all shapes
-      const shapeIds = state.shapes.map((shape: Shape) => shape.id);
-      if (shapeIds.length > 0) {
-        console.log(`Hand ${handIndex} clearing all ${shapeIds.length} shapes`);
-        dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-      }
       
       // Store the current point
       prevHandPositions.current[handIndex] = transformedPoint;

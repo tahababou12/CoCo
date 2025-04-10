@@ -17,11 +17,12 @@ export const ensureCursorExists = (
     cursor.style.height = '20px';
     cursor.style.borderRadius = '50%';
     cursor.style.backgroundColor = color;
-    cursor.style.opacity = '0.7';
+    cursor.style.opacity = '0.5';
     cursor.style.pointerEvents = 'none';
     cursor.style.zIndex = '9999';
     cursor.style.display = 'none';
     cursor.style.transform = 'translate(-50%, -50%)';
+    cursor.style.marginTop = '0px';
     
     document.body.appendChild(cursor);
   }
@@ -49,8 +50,8 @@ export const addCursorStyles = (): HTMLStyleElement => {
       height: 15px !important;
       border: 3px solid #FF0000 !important;
     }
-    .erasing-mode {
-      background-color: rgba(255,255,255,0.5) !important;
+    .clicking-mode {
+      background-color: rgba(0,85,255,0.5) !important;
       width: 25px !important;
       height: 25px !important;
       border: 2px solid #0055FF !important;
@@ -58,18 +59,10 @@ export const addCursorStyles = (): HTMLStyleElement => {
       cursor: pointer !important;
       transition: transform 0.15s ease-out !important;
     }
-    .erasing-mode[data-clicked="true"] {
+    .clicking-mode[data-clicked="true"] {
       background-color: rgba(0,85,255,0.3) !important;
       transform: translate(-50%, -50%) scale(0.8) !important;
       box-shadow: 0 0 10px rgba(0,85,255,0.7) !important;
-    }
-    .clear-all-mode {
-      background-color: rgba(255,0,0,0.3) !important;
-      width: 40px !important;
-      height: 40px !important;
-      border-radius: 0 !important;
-      border: 3px solid #FF0000 !important;
-      transform: translate(-50%, -50%) rotate(45deg) !important;
     }
     .none-mode {
       background-color: rgba(200,200,200,0.5) !important;
@@ -89,20 +82,20 @@ export const updateCursor = (
 ): void => {
   // Position cursor
   cursorElement.style.left = `${x}px`;
-  cursorElement.style.top = `${y+45}px`;
+  cursorElement.style.top = `${y}px`;
   cursorElement.style.display = 'block';
   
   // Style based on hand mode
   cursorElement.className = `hand-cursor hand-cursor-0 ${mode.toLowerCase()}-mode`;
   
-  // If it's erasing mode (closed fist), check for elements at this position and click them
-  if (mode === 'Erasing') {
+  // Handle clicking functionality for Clicking mode
+  if (mode === 'Clicking') {
     // Skip if we recently clicked (prevent rapid clicks)
     if (cursorElement.getAttribute('data-clicked') === 'true') {
       return;
     }
     
-    // Get element at cursor position
+    // Get element at cursor position at the exact position
     const elementAtPoint = document.elementFromPoint(x, y);
     
     if (!elementAtPoint) return;
