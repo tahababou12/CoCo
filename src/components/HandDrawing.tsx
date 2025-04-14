@@ -93,6 +93,13 @@ const HandDrawing: React.FC = () => {
     handType: 'None'
   });
   
+  // Track if we're currently dragging the canvas
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<Point | null>(null);
+  
+  // Add a state to track if we're in the process of toggling modes
+  const [isToggling, setIsToggling] = useState(false);
+  
   // Update cursor positions
   useEffect(() => {
     // If hand tracking is not active, hide cursors
@@ -154,7 +161,13 @@ const HandDrawing: React.FC = () => {
       return;
     }
     
+    // Skip reinitializing while toggling to prevent race conditions
+    if (isToggling) {
+      return;
+    }
+    
     let videoStream: MediaStream | null = null;
+    let cleanupCompleted = false;
     
     const initializeHandTracking = async () => {
       try {
@@ -173,7 +186,11 @@ const HandDrawing: React.FC = () => {
         
         // Make sure any previous instances are properly cleaned up
         if (cameraRef.current) {
-          cameraRef.current.stop();
+          try {
+            cameraRef.current.stop();
+          } catch (e) {
+            console.warn("Error stopping camera:", e);
+          }
           cameraRef.current = null;
         }
         
@@ -188,6 +205,9 @@ const HandDrawing: React.FC = () => {
         
         // Initialize MediaPipe Hands with a delay to ensure previous instances are cleaned up
         setTimeout(async () => {
+          // Skip initialization if component was unmounted during the timeout
+          if (cleanupCompleted) return;
+          
           try {
             // Initialize MediaPipe Hands
             const hands = new Hands({
@@ -221,7 +241,7 @@ const HandDrawing: React.FC = () => {
               // Set up MediaPipe camera utility
               const camera = new Camera(videoRef.current, {
                 onFrame: async () => {
-                  if (videoRef.current && hands) {
+                  if (videoRef.current && hands && !cleanupCompleted) {
                     await hands.send({ image: videoRef.current });
                   }
                 },
@@ -256,7 +276,7 @@ const HandDrawing: React.FC = () => {
     
     // Handle results from MediaPipe Hands
     const onHandResults = (results: Results) => {
-      if (!canvasRef.current) return;
+      if (!canvasRef.current || cleanupCompleted) return;
       
       const ctx = canvasRef.current.getContext('2d');
       if (!ctx) return;
@@ -343,37 +363,57 @@ const HandDrawing: React.FC = () => {
     
     // Cleanup function
     return () => {
+      // Mark that cleanup is in progress to prevent callbacks
+      cleanupCompleted = true;
+      
       // End any active drawing before cleanup
       if (state.currentShape) {
         dispatch({ type: 'END_DRAWING' });
         setIsDrawing(false);
       }
       
-      // Stop camera
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-        cameraRef.current = null;
-      }
-      
-      // Close MediaPipe Hands
-      if (mediapipeRef.current) {
-        try {
-          mediapipeRef.current.close();
-        } catch (e) {
-          console.warn("Error during cleanup of MediaPipe Hands:", e);
+      // Prevent racing conditions by wrapping cleanup in a safe context
+      const safeCleanup = () => {
+        // Stop camera first
+        if (cameraRef.current) {
+          try {
+            cameraRef.current.stop();
+          } catch (e) {
+            console.warn("Error stopping camera during cleanup:", e);
+          }
+          cameraRef.current = null;
         }
-        mediapipeRef.current = null;
-      }
+        
+        // Give a small delay before closing MediaPipe hands
+        setTimeout(() => {
+          // Close MediaPipe Hands
+          if (mediapipeRef.current) {
+            try {
+              mediapipeRef.current.close();
+            } catch (e) {
+              console.warn("Error during cleanup of MediaPipe Hands:", e);
+            }
+            mediapipeRef.current = null;
+          }
+          
+          // Stop video stream
+          if (videoStream) {
+            try {
+              videoStream.getTracks().forEach(track => track.stop());
+            } catch (e) {
+              console.warn("Error stopping video stream:", e);
+            }
+          }
+          
+          // Hide cursor
+          setHandCursors({});
+        }, 100);
+      };
       
-      // Stop video stream
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
-      }
-      
-      // Hide cursor
-      setHandCursors({});
+      // Start the safe cleanup process
+      safeCleanup();
     };
-  }, [isHandTrackingActive, isWebcamSupported, dualHandMode]);
+  }, [isHandTrackingActive, isWebcamSupported, dualHandMode, isToggling]);
 
   // Handle different hand modes
   const handleHandMode = (
@@ -500,7 +540,86 @@ const HandDrawing: React.FC = () => {
         break;
       }
       
+      case 'Dragging': {
+        // Get the current cursor element
+        const cursorElement = document.getElementById(`hand-cursor-${handIndex}`);
+        if (cursorElement) {
+          cursorElement.setAttribute('data-dragging', 'true');
+        }
+        
+        // Get the current point for dragging
+        const currentPoint = canvasSpacePoint; // Use canvas space for dragging
+        
+        // When starting a drag operation
+        if (!isDragging) {
+          console.log('Starting drag operation');
+          setIsDragging(true);
+          dragStartRef.current = currentPoint;
+          // No need to store offsetX/Y, we'll use relative movement
+        } 
+        // During drag operation
+        else if (dragStartRef.current) {
+          // Calculate drag delta from last position
+          const deltaX = currentPoint.x - dragStartRef.current.x;
+          const deltaY = currentPoint.y - dragStartRef.current.y;
+          
+          if (Math.abs(deltaX) > 1 || Math.abs(deltaY) > 1) {
+            // Apply drag to view transform using the PAN action
+            dispatch({
+              type: 'PAN',
+              payload: { 
+                x: deltaX, 
+                y: deltaY 
+              }
+            });
+            
+            if (DEBUG) console.log('Dragging canvas, delta:', { deltaX, deltaY });
+            
+            // Update start position for next frame
+            dragStartRef.current = currentPoint;
+          }
+        }
+        
+        // Store the current point for next frame
+        prevPointsRef.current[handIndex] = transformedPoint;
+        break;
+      }
+      
+      case 'Clearing': {
+        // Clear all drawings when Clearing mode is detected
+        console.log('Clearing mode detected - clearing all drawings');
+        console.log('Current shapes count:', state.shapes.length);
+        console.log('Current drawing state:', state.currentShape ? 'Drawing in progress' : 'No active drawing');
+        
+        // Call the forceClearAll function
+        forceClearAll();
+        
+        // Show a temporary visual feedback
+        const cursorElement = document.getElementById(`hand-cursor-${handIndex}`);
+        if (cursorElement) {
+          cursorElement.classList.add('clearing-gesture');
+          setTimeout(() => {
+            cursorElement?.classList.remove('clearing-gesture');
+          }, 500);
+        }
+        
+        break;
+      }
+      
       default:
+        // If we were previously dragging, end the drag
+        if (isDragging) {
+          console.log('Ending drag operation');
+          setIsDragging(false);
+          dragStartRef.current = null;
+          
+          // Get the current cursor element and reset dragging state
+          const cursorElement = document.getElementById(`hand-cursor-${handIndex}`);
+          if (cursorElement) {
+            cursorElement.removeAttribute('data-dragging');
+          }
+        }
+        
         // No action for other modes
         break;
     }
@@ -570,43 +689,49 @@ const HandDrawing: React.FC = () => {
 
   // Toggle dual hand mode
   const toggleDualHandMode = () => {
+    // If already toggling, prevent multiple calls
+    if (isToggling) return;
+    
+    // Set toggling state to prevent effect from firing early
+    setIsToggling(true);
+    
+    // End any active drawing
+    if (state.currentShape) {
+      dispatch({ type: 'END_DRAWING' });
+      setIsDrawing(false);
+    }
+
     // Toggle the state
     const newDualHandMode = !dualHandMode;
     setDualHandMode(newDualHandMode);
     
     console.log(`Toggling dual hand mode: ${newDualHandMode ? 'ON' : 'OFF'}`);
     
-    // Restart hand tracking if it's currently active
+    // Clear any active cursors
+    const cursor0 = document.getElementById('hand-cursor-0');
+    const cursor1 = document.getElementById('hand-cursor-1');
+    if (cursor0) cursor0.style.display = 'none';
+    if (cursor1) cursor1.style.display = 'none';
+    
+    // If hand tracking is active, we need to restart it with new settings
     if (isHandTrackingActive) {
-      // First turn off hand tracking completely
+      // Temporarily disable hand tracking
       setIsHandTrackingActive(false);
       
-      // Clean up resources properly
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-        cameraRef.current = null;
-      }
-      
-      if (mediapipeRef.current) {
-        try {
-          mediapipeRef.current.close();
-        } catch (e) {
-          console.warn("Error closing MediaPipe Hands:", e);
-        }
-        mediapipeRef.current = null;
-      }
-      
-      // Hide cursor when toggling
-      const cursor0 = document.getElementById('hand-cursor-0');
-      const cursor1 = document.getElementById('hand-cursor-1');
-      if (cursor0) cursor0.style.display = 'none';
-      if (cursor1) cursor1.style.display = 'none';
-      
-      // Wait a bit longer to ensure cleanup is complete
+      // Wait for a short time to ensure cleanup, then re-enable
       setTimeout(() => {
-        // Turn hand tracking back on with new settings
         setIsHandTrackingActive(true);
-      }, 500); // Increased timeout to ensure proper cleanup
+        
+        // Reset toggling flag after a delay to ensure new effect has started
+        setTimeout(() => {
+          setIsToggling(false);
+        }, 200);
+      }, 1000); // Longer timeout to ensure proper cleanup
+    } else {
+      // If hand tracking is not active, just reset the toggling flag
+      setTimeout(() => {
+        setIsToggling(false);
+      }, 200);
     }
   };
 
@@ -699,6 +824,54 @@ const HandDrawing: React.FC = () => {
     lastDrawingUpdateRef.current = Date.now();
   };
 
+  // Force clear all drawings
+  const forceClearAll = () => {
+    console.log('Force clearing all drawings');
+    
+    // Try to find and click the Clear All button in the Canvas component
+    const clearAllButton = document.querySelector('button[title="Clear All Drawings"]');
+    if (clearAllButton) {
+      console.log('Found Clear All button, clicking it');
+      (clearAllButton as HTMLButtonElement).click();
+      return;
+    }
+    
+    // Fallback: First make sure any current drawing is ended and saved
+    if (state.currentShape) {
+      console.log('Ending current drawing before clearing');
+      dispatch({ type: 'END_DRAWING' });
+      setIsDrawing(false);
+    }
+    
+    // Get all shape IDs
+    const shapeIds = state.shapes.map(shape => shape.id);
+    console.log('Shape IDs to delete:', shapeIds);
+    
+    // Delete all shapes if there are any
+    if (shapeIds.length > 0) {
+      console.log('Dispatching DELETE_SHAPES action with payload:', shapeIds);
+      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
+      
+      // Verify the shapes were cleared after a short delay
+      setTimeout(() => {
+        console.log('After clearing, shapes count:', state.shapes.length);
+        
+        // If shapes weren't cleared, try again using a different approach
+        if (state.shapes.length > 0) {
+          console.log('Shapes not cleared on first attempt, trying individual deletion');
+          state.shapes.forEach(shape => {
+            dispatch({ 
+              type: 'DELETE_SHAPES', 
+              payload: [shape.id] 
+            });
+          });
+        }
+      }, 100);
+    } else {
+      console.log('No shapes to clear');
+    }
+  };
+
   // Update drawing colors
   useEffect(() => {
     // Set colors for each hand
@@ -779,6 +952,16 @@ const HandDrawing: React.FC = () => {
           <div className="flex items-center mb-1">
             <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
             <span>Closed Fist: Click Buttons</span>
+          </div>
+          <div className="flex items-center mb-1">
+            <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
+            <span>Thumb + Index + Middle: Drag Canvas</span>
+          </div>
+          <div className="flex items-center mb-1">
+            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
+              <span className="text-red-500 font-bold text-xs">✕</span>
+            </div>
+            <span>Thumb + Pinky: Clear All Drawings</span>
           </div>
           <div className="text-xs text-gray-600 mt-1">
             Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}

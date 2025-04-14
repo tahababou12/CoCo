@@ -90,9 +90,10 @@ enhanced_drawings/
 
 
 # CoCo specific
-story_videos/
-saved_drawings/
 enhanced_drawings/
+story_videos/
+temp_processing/
+saved_drawings/
 *.png
 *.jpg
 *.jpeg

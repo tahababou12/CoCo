@@ -64,6 +64,59 @@ export const addCursorStyles = (): HTMLStyleElement => {
       transform: translate(-50%, -50%) scale(0.8) !important;
       box-shadow: 0 0 10px rgba(0,85,255,0.7) !important;
     }
+    .dragging-mode {
+      background-color: rgba(255,165,0,0.5) !important;
+      width: 30px !important;
+      height: 30px !important;
+      border: 2px solid #FF8C00 !important;
+      border-radius: 10% !important;
+      transition: transform 0.1s ease-out !important;
+      transform: translate(-50%, -50%) !important;
+      cursor: move !important;
+    }
+    .dragging-mode:before {
+      content: "" !important;
+      position: absolute !important;
+      width: 70% !important;
+      height: 70% !important;
+      background-image: radial-gradient(
+        circle, 
+        rgba(255, 255, 255, 0.8) 10%, 
+        rgba(255, 255, 255, 0) 70%
+      ) !important;
+    }
+    .dragging-mode[data-dragging="true"] {
+      background-color: rgba(255,140,0,0.7) !important;
+      transform: translate(-50%, -50%) scale(0.9) !important;
+      box-shadow: 0 0 15px rgba(255,140,0,0.5) !important;
+    }
+    .clearing-mode {
+      background-color: rgba(255,0,0,0.5) !important; 
+      width: 35px !important;
+      height: 35px !important;
+      border: 2px solid #FF0000 !important;
+      border-radius: 50% !important;
+      transition: transform 0.15s ease-out !important;
+    }
+    .clearing-mode:before {
+      content: "✕" !important;
+      position: absolute !important;
+      left: 50% !important;
+      top: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      color: white !important;
+      font-weight: bold !important;
+      font-size: 18px !important;
+    }
+    .clearing-gesture {
+      animation: pulse-red 0.5s ease-in-out !important;
+      box-shadow: 0 0 20px rgba(255,0,0,0.8) !important;
+    }
+    @keyframes pulse-red {
+      0% { transform: translate(-50%, -50%) scale(1); }
+      50% { transform: translate(-50%, -50%) scale(1.5); box-shadow: 0 0 30px rgba(255,0,0,0.9); }
+      100% { transform: translate(-50%, -50%) scale(1); }
+    }
     .none-mode {
       background-color: rgba(200,200,200,0.5) !important;
     }
@@ -156,6 +209,14 @@ export const updateCursor = (
         cursorElement.removeAttribute('data-clicked');
       }, 800); // 800ms cooldown between clicks
     }
+  }
+  // Handle Clearing mode visual feedback
+  else if (mode === 'Clearing') {
+    // Add a pulsing effect to indicate clearing action
+    cursorElement.classList.add('clearing-gesture');
+    setTimeout(() => {
+      cursorElement.classList.remove('clearing-gesture');
+    }, 500);
   }
 };
 

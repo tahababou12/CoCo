@@ -74,16 +74,27 @@ export const determineHandMode = (landmarks: HandLandmark[]): { mode: HandMode, 
     handType: isRightHand ? 'Right hand' : 'Left hand'
   });
   
-  // FEATURE 1: DRAWING MODE - Only index finger is extended
+  // FEATURE 1: DRAGGING MODE - Thumb, index, and middle fingers extended (ring and pinky closed)
+  if (fingersExtended[0] && fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
+    console.log('GESTURE DETECTED: Dragging mode');
+    return { mode: 'Dragging', fingerState };
+  }
+  // FEATURE 2: DRAWING MODE - Only index finger is extended
   // Allow thumb to be slightly extended for more reliable detection
-  if (!fingersExtended[0] && fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
+  else if (!fingersExtended[0] && fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
     console.log('GESTURE DETECTED: Drawing mode');
     return { mode: 'Drawing', fingerState };
   }
-  // FEATURE 2: CLICKING MODE - Closed fist (no fingers extended)
+  // FEATURE 3: CLICKING MODE - Closed fist (no fingers extended)
   else if (!fingersExtended[0] && !fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
     console.log('GESTURE DETECTED: Clicking mode');
     return { mode: 'Clicking', fingerState };
+  }
+  // FEATURE 4: CLEARING MODE - Thumb and pinky extended (other fingers closed)
+  // Be more lenient on the detection for a more natural gesture
+  else if (fingersExtended[0] && !fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && fingersExtended[4]) {
+    console.log('GESTURE DETECTED: Clearing mode (thumb and pinky extended)');
+    return { mode: 'Clearing', fingerState };
   }
   else {
     // Any other hand position
@@ -148,18 +159,35 @@ export const getStableHandMode = (
   // Count occurrences of each mode
   let drawingCount = 0;
   let clickingCount = 0;
+  let draggingCount = 0;
+  let clearingCount = 0;
   let noneCount = 0;
   
   buffer.modeHistory.forEach(mode => {
     if (mode === 'Drawing') drawingCount++;
     else if (mode === 'Clicking') clickingCount++;
+    else if (mode === 'Dragging') draggingCount++;
+    else if (mode === 'Clearing') clearingCount++;
     else if (mode === 'None') noneCount++;
   });
+  
+  // If clearing mode is detected multiple times in a row, prioritize it
+  // But only allow clearing once every 3 seconds to avoid rapid multiple clears
+  const now = Date.now();
+  if (clearingCount >= 2 && now - lastClearTime > 3000) {
+    console.log('Clearing mode detected consistently - triggering clear all');
+    return { mode: 'Clearing', newLastClearTime: now };
+  }
   
   // If drawing mode is detected even just a few times, prioritize it
   // This makes drawing mode more responsive
   if (drawingCount >= 2 && buffer.modeHistory.length >= 3) {
     return { mode: 'Drawing', newLastClearTime: lastClearTime };
+  }
+  
+  // If dragging mode is detected consistently, prioritize it
+  if (draggingCount >= 3 && buffer.modeHistory.length >= 5) {
+    return { mode: 'Dragging', newLastClearTime: lastClearTime };
   }
   
   // Find the most common mode
@@ -174,6 +202,16 @@ export const getStableHandMode = (
   if (clickingCount > maxCount) {
     maxCount = clickingCount;
     mostCommonMode = 'Clicking';
+  }
+  
+  if (draggingCount > maxCount) {
+    maxCount = draggingCount;
+    mostCommonMode = 'Dragging';
+  }
+  
+  if (clearingCount > maxCount) {
+    maxCount = clearingCount;
+    mostCommonMode = 'Clearing';
   }
   
   return { mode: mostCommonMode, newLastClearTime: lastClearTime };
