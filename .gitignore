@@ -88,7 +88,7 @@ enhanced_drawings/
 .env.test.local
 .env.production.local
 
-
+#
 # CoCo specific
 enhanced_drawings/
 story_videos/
