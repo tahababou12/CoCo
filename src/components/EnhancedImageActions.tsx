@@ -1,5 +1,8 @@
 import React from 'react';
 
+// Define API URL constant
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 interface EnhancedImageActionsProps {
   imageData: {
     path: string;
@@ -13,9 +16,9 @@ const EnhancedImageActions: React.FC<EnhancedImageActionsProps> = ({ imageData }
   const addToStoryboard = async () => {
     try {
       // Extract just the path part from the full URL
-      const path = imageData.path.replace('http://localhost:5001', '');
+      const path = imageData.path.replace(API_URL, '');
       
-      const response = await fetch('http://localhost:5001/api/storyboard/add', {
+      const response = await fetch(`${API_URL}/api/storyboard/add`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

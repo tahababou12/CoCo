@@ -120,5 +120,5 @@ process.on('SIGINT', () => {
 });
 
 console.log(`\n${colors.green}All servers started! 🚀${colors.reset}`);
-console.log(`${colors.blue}WebSocket Server:${colors.reset} ws://localhost:8080`);
-console.log(`${colors.blue}Flask API Server:${colors.reset} http://localhost:5001`); 
+console.log(`${colors.blue}WebSocket Server (proxied):${colors.reset} wss://coco.bragai.tech/ws`);
+console.log(`${colors.blue}Flask API Server (proxied):${colors.reset} https://coco.bragai.tech/api`); 

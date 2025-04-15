@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import './Storyboard.css';
 
+// Define API URL constant
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 interface StoryboardImage {
   path: string;
   filename: string;
@@ -53,7 +56,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:5001/api/storyboard');
+      const response = await fetch(`${API_URL}/api/storyboard`);
       
       if (!response.ok) {
         throw new Error(`Failed to fetch storyboard: ${response.status} ${response.statusText}`);
@@ -79,7 +82,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:5001/api/storyboard/add', {
+      const response = await fetch(`${API_URL}/api/storyboard/add`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -121,7 +124,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch('http://localhost:5001/api/storyboard/clear', {
+      const response = await fetch(`${API_URL}/api/storyboard/clear`, {
         method: 'POST',
       });
       
@@ -153,7 +156,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       setVideoResult(null);
       setError(null);
 
-      const response = await fetch('http://localhost:5001/api/generate-video', {
+      const response = await fetch(`${API_URL}/api/generate-video`, {
         method: 'POST',
       });
       
@@ -181,7 +184,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
   const checkVideoStatus = async (requestId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/video-status/${requestId}`);
+      const response = await fetch(`${API_URL}/api/video-status/${requestId}`);
       
       if (!response.ok) {
         throw new Error(`Failed to check video status: ${response.status} ${response.statusText}`);
@@ -212,7 +215,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
   const playVideo = async (filename: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/play-video/${filename}`, {
+      const response = await fetch(`${API_URL}/api/play-video/${filename}`, {
         method: 'POST',
       });
       

@@ -36,6 +36,9 @@ interface EnhancedImageResult {
   prompt: string;
 }
 
+// Define API URL constant
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -778,7 +781,7 @@ const Canvas: React.FC = () => {
       const dataUrl = tempCanvas.toDataURL('image/png');
       
       // Send image data to server
-      const response = await fetch('http://localhost:5001/api/save-image', {
+      const response = await fetch(`${API_URL}/api/save-image`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -879,7 +882,7 @@ const Canvas: React.FC = () => {
       const dataUrl = tempCanvas.toDataURL('image/png');
       
       // Send image data to server
-      const saveResponse = await fetch('http://localhost:5001/api/save-image', {
+      const response = await fetch(`${API_URL}/api/save-image`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -887,19 +890,19 @@ const Canvas: React.FC = () => {
         body: JSON.stringify({ imageData: dataUrl }),
       });
       
-      if (!saveResponse.ok) {
-        const errorData = await saveResponse.json();
+      if (!response.ok) {
+        const errorData = await response.json();
         throw new Error(`Server error while saving: ${errorData.error || 'Unknown error'}`);
       }
       
-      const saveResult = await saveResponse.json();
+      const saveResult = await response.json();
       void (DEBUG && console.log(`Image saved for enhancement: ${saveResult.absolutePath}`));
       
       // Use a default enhancement prompt
       const defaultPrompt = 'Enhance this sketch into an image with more detail';
 
       // Request image enhancement from Flask server
-      const response = await fetch('http://localhost:5001/api/enhance-image', {
+      const enhanceResponse = await fetch(`${API_URL}/api/enhance-image`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -910,12 +913,12 @@ const Canvas: React.FC = () => {
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      if (!enhanceResponse.ok) {
+        const errorData = await enhanceResponse.json();
         throw new Error(`Server error: ${errorData.error || 'Unknown error'}`);
       }
 
-      const result = await response.json();
+      const result = await enhanceResponse.json();
       void (DEBUG && console.log('Enhancement started:', result));
 
       if (result.success && result.requestId) {
@@ -936,7 +939,7 @@ const Canvas: React.FC = () => {
 
   const pollEnhancementStatus = async (requestId: string) => {
     try {
-      const response = await fetch(`http://localhost:5001/api/enhancement-status/${requestId}`);
+      const response = await fetch(`${API_URL}/api/enhancement-status/${requestId}`);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -1066,7 +1069,7 @@ const Canvas: React.FC = () => {
       ...prev,
       {
         id,
-        url: `http://localhost:5001${result.path}`,
+        url: `${API_URL}${result.path.startsWith('/') ? '' : '/'}${result.path}`, // Construct URL using API URL
         x,
         y,
         width: displayWidth,
@@ -1080,7 +1083,7 @@ const Canvas: React.FC = () => {
     ]);
     
     // Show the preview image
-    setEnhancedImage(`http://localhost:5001${result.path}`);
+    setEnhancedImage(`${API_URL}${result.path.startsWith('/') ? '' : '/'}${result.path}`); // Construct URL using API URL
   };
 
   // Add a function to render enhanced images on the canvas
