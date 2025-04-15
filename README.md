@@ -194,10 +194,6 @@ CoCo/
 - Verify your API keys are correctly set in backend/.env
 - Check the Flask server logs for API-related errors
 
-## License
-
-[MIT License](LICENSE)
-
 ## Acknowledgements
 
 - Google Gemini API for image generation
