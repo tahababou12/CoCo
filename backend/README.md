@@ -1,18 +1,25 @@
-# CoCo Collaboration WebSocket Server
+# CoCo Backend Services
 
-This WebSocket server enables real-time collaboration features for CoCo, allowing multiple users to draw on the same canvas simultaneously.
+This directory contains the backend services for CoCo, including the WebSocket server for real-time collaboration and the Flask API server for image processing and other features.
 
 ## Features
 
-- Supports up to 4 users collaborating in real-time
-- Users can see each other's cursor positions
-- Synchronizes drawing shapes across all connected clients
-- Assigns each user a specific position on the screen
-- Handles connection and disconnection events gracefully
+- WebSocket server for real-time collaboration:
+  - Supports up to 4 users collaborating in real-time
+  - Users can see each other's cursor positions
+  - Synchronizes drawing shapes across all connected clients
+  - Assigns each user a specific position on the screen
+  - Handles connection and disconnection events gracefully
+
+- Flask API server for:
+  - Image processing and enhancement with Gemini AI
+  - Storyboard management
+  - Video generation from drawings
 
 ## Requirements
 
 - Node.js 14.x or higher
+- Python 3.8 or higher
 - npm or yarn package manager
 
 ## Installation
@@ -24,44 +31,61 @@ This WebSocket server enables real-time collaboration features for CoCo, allowin
 cd backend
 ```
 
-3. Install the dependencies:
+3. Run the setup script to install all dependencies:
 
 ```bash
-npm install
+./setup-all.sh
 ```
 
-## Running the Server
+This script will:
+- Install Node.js dependencies
+- Create a Python virtual environment
+- Install Python dependencies
+- Copy required files if needed
+- Create necessary directories
 
-### Development Mode
+## Running the Servers
 
-To run the server in development mode with automatic reloading:
+### Combined Server (Recommended)
+
+To run both the WebSocket server and Flask API together:
 
 ```bash
-npm run dev
+npm run start-all
 ```
 
-### Production Mode
-
-To run the server in production mode:
+For development mode with automatic reloading:
 
 ```bash
-npm start
+npm run dev-all
 ```
 
-By default, the server runs on port 8080. You can change this by setting the `PORT` environment variable:
+### Running Servers Separately
+
+If you need to run the servers separately:
+
+#### WebSocket Server Only
 
 ```bash
-PORT=9000 npm start
+npm run dev  # Development mode
+npm start    # Production mode
+```
+
+#### Flask API Server Only
+
+```bash
+npm run api
 ```
 
 ## Client Configuration
 
-The frontend is configured to connect to the WebSocket server at `ws://localhost:8080` by default. 
+The frontend is configured to connect to the WebSocket server at `ws://localhost:8080` by default and the Flask API at `http://localhost:5001`.
 
-If you need to change this, you can set the `VITE_WS_URL` environment variable in a `.env` file in the frontend directory:
+If you need to change this, you can set the environment variables in a `.env` file in the frontend directory:
 
 ```
-VITE_WS_URL=ws://your-server-address:port
+VITE_WS_URL=ws://your-server-address:8080
+VITE_API_URL=http://your-server-address:5001
 ```
 
 ## WebSocket Protocol

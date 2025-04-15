@@ -94,6 +94,7 @@ enhanced_drawings/
 story_videos/
 temp_processing/
 saved_drawings/
+img/
 *.png
 *.jpg
 *.jpeg
