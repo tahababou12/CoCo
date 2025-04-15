@@ -48,7 +48,8 @@ echo -e "${YELLOW}Setting up Python virtual environment...${NC}"
 if [ -d "venv" ]; then
   echo -e "${BLUE}Virtual environment already exists${NC}"
 else
-  python3.11 -m venv venv
+  # python3.11 -m venv venv
+  python -m venv venv
   echo -e "${GREEN}✓ Created Python virtual environment${NC}"
 fi
 

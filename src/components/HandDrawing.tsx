@@ -12,8 +12,8 @@ import { useHandGesture } from '../context/HandGestureContext';
 import { useWebSocket } from '../context/WebSocketContext';
 
 // Debug configuration
-const DEBUG = true;
-const DEBUG_FINGER_DRAWING = true;
+const DEBUG = false;
+const DEBUG_FINGER_DRAWING = false;
 const DEBUG_COLLAB = false;
 
 const HandDrawing: React.FC = () => {
