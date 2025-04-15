@@ -121,9 +121,9 @@ function ProtectedApp() {
         <Toolbar />
         <HandDrawing />
         <SimpleWebcam />
-        <CollaborationPanel />
-        <WebcamDisplays />
-        <CollaboratorCursors />
+        {/* <CollaborationPanel /> */}
+        {/* <WebcamDisplays /> */}
+        {/* <CollaboratorCursors /> */}
         
         {/* Video generation button - positioned in the middle-right */}
         <button
