@@ -89,6 +89,7 @@ enhanced_drawings/
 .env.production.local
 
 ##
+CoCo.pem
 # CoCo specific
 enhanced_drawings/
 story_videos/
