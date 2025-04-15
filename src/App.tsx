@@ -191,9 +191,9 @@ function App() {
           </div>
 
           {/* Login Button */}
-          <div className="pt-4">
+          {/* <div className="pt-4">
             <LoginButton />
-          </div>
+          </div> */}
 
           {/* Feature Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-2xl mx-auto pt-8">

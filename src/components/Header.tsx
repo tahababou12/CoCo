@@ -307,12 +307,12 @@ const Header: React.FC<HeaderProps> = () => {
           >
             <StoryboardIcon />
           </button>
-
+{/* 
           {isAuthenticated ? (
             <LogoutButton />
           ) : (
             <LoginButton />
-          )}
+          )} */}
           <button className="w-7 h-7 flex items-center justify-center rounded-md text-neutral-500 hover:bg-white hover:text-neutral-700 transition-colors">
             <User size={16} />
           </button>
