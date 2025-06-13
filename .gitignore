@@ -100,3 +100,5 @@ img/
 *.jpeg
 *.mp4
 *.mov
+
+pnpm-lock.yaml
