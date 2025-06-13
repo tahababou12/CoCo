@@ -11,6 +11,7 @@ from google.genai import types
 from PIL import Image
 import platform
 import subprocess
+import io
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -43,7 +44,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 GEMINI_MODEL = "gemini-2.0-flash-exp-image-generation"  # Using the specified image generation model
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../frontend-main/dist', static_url_path='/')
 CORS(app)
 
 # Ensure directories exist
@@ -644,5 +645,159 @@ def serve_enhanced_image(filename):
 def serve_video(filename):
     return send_from_directory(story_videos_dir, filename)
 
+@app.route('/')
+def serve_index():
+    # Serve the main index.html from the frontend build directory
+    # Adjust the path if your frontend build output is elsewhere
+    # This might conflict with frontend dev server, primarily for production builds
+    try:
+        return send_from_directory(app.static_folder, 'index.html')
+    except FileNotFoundError:
+        return jsonify({"error": "index.html not found. Ensure frontend is built and static_folder path is correct."}), 404
+
+@app.route('/api/placeholder')
+def placeholder():
+    return jsonify({"message": "Flask backend is running!"})
+
+# --- NEW Endpoint for Initial Image Generation ---
+@app.route('/api/generate-initial-image', methods=['POST'])
+def generate_initial_image():
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "Server is missing GOOGLE_API_KEY"}), 500
+    
+    data = request.get_json()
+    prompt = data.get('prompt')
+
+    if not prompt:
+        return jsonify({"error": "Prompt is required"}), 400
+
+    try:
+        print(f"Generating initial image with prompt: {prompt}")
+        # Simple text-to-image generation using the configured model
+        # Adjust based on the specific Gemini model's capabilities
+        # This example assumes the model can handle text prompts for image generation
+        # You might need to adjust parameters or model name
+        response = client.models.generate_content(prompt)
+        
+        # --- Process Gemini Response --- 
+        # The response structure depends heavily on the model used.
+        # Adapt this logic based on the actual response format for image generation.
+        # This is a placeholder assuming the response contains parts with text and inline_data
+        image_data_base64 = None
+        text_response = ""
+
+        # Check if response has parts (common for multimodal models)
+        if hasattr(response, 'parts') and response.parts:
+            for part in response.parts:
+                if hasattr(part, 'inline_data') and part.inline_data.data:
+                    mime_type = part.inline_data.mime_type
+                    image_data_base64 = f"data:{mime_type};base64,{part.inline_data.data}"
+                    print(f"Found image data (mime: {mime_type})")
+                elif hasattr(part, 'text'):
+                    text_response += part.text + " " 
+                    print(f"Found text part: {part.text[:50]}...")
+        elif hasattr(response, 'text'): # Handle simple text response
+             text_response = response.text
+             print(f"Found only text response: {response.text[:50]}...")
+        
+        # If no image found directly, try to access potential candidate parts (older API structure?)
+        # This part might be necessary depending on the exact model/API version
+        if not image_data_base64 and hasattr(response, 'candidates') and response.candidates:
+             print("Checking response candidates for image data...")
+             for candidate in response.candidates:
+                 if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts') and candidate.content.parts:
+                     for part in candidate.content.parts:
+                         if hasattr(part, 'inline_data') and part.inline_data.data:
+                             mime_type = part.inline_data.mime_type
+                             image_data_base64 = f"data:{mime_type};base64,{part.inline_data.data}"
+                             print(f"Found image data in candidate (mime: {mime_type})")
+                             break # Take the first image found
+                 if image_data_base64: break # Exit outer loop if image found
+        
+        # --- End Process Gemini Response --- 
+
+        if not image_data_base64:
+             print("No image data found in Gemini response.")
+             # Fallback or specific error handling
+             # return jsonify({"error": "Failed to generate image from the prompt"}), 500
+             # For now, let's return any text response we got
+             if text_response:
+                 return jsonify({"textResponse": text_response.strip()})
+             else:
+                 return jsonify({"error": "No image or text generated"}), 500
+
+        print(f"Successfully generated initial image. Text response length: {len(text_response)}")
+        return jsonify({
+            "imageData": image_data_base64,
+            "textResponse": text_response.strip()
+        })
+
+    except Exception as e:
+        print(f"Error during initial image generation: {e}")
+        # Log the full error for debugging
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+# --- NEW Endpoint for Image Refinement ---
+@app.route('/api/refine-image', methods=['POST'])
+def refine_image():
+    try:
+        data = request.json
+        if not data or 'imageData' not in data or 'prompt' not in data:
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        # Decode base64 image data
+        image_data = data['imageData'].split(',')[1] if ',' in data['imageData'] else data['imageData']
+        image_bytes = base64.b64decode(image_data)
+        
+        # Save the image temporarily
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_filename = f"temp_refine_{timestamp}.png"
+        temp_path = os.path.join(img_dir, temp_filename)
+        
+        with open(temp_path, 'wb') as f:
+            f.write(image_bytes)
+        
+        # Generate a unique request ID
+        request_id = f"refine_{timestamp}"
+        
+        # Start processing in a separate thread
+        processing_status[request_id] = {"status": "processing"}
+        
+        def process_refinement():
+            try:
+                # Use the same enhancement function but with the new prompt
+                result = enhance_drawing_with_gemini(temp_path, data['prompt'], request_id)
+                
+                # Clean up temporary file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                    
+            except Exception as e:
+                print(f"Error in refinement process: {str(e)}")
+                processing_status[request_id] = {
+                    "status": "error",
+                    "message": str(e)
+                }
+        
+        # Start the processing thread
+        thread = threading.Thread(target=process_refinement)
+        thread.start()
+        
+        return jsonify({
+            "success": True,
+            "requestId": request_id,
+            "message": "Refinement process started"
+        })
+        
+    except Exception as e:
+        print(f"Error in refine_image endpoint: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5001, debug=False) 
+    # Note: This runs the Flask development server.
+    # For production, use a proper WSGI server like Gunicorn or Waitress.
+    print("Starting Flask development server...")
+    # Consider adding host='0.0.0.0' if you need to access it from other devices on your network
+    app.run(port=5001, debug=True) 

@@ -1061,29 +1061,38 @@ const Canvas: React.FC = () => {
     const x = (viewWidth - displayWidth) / 2;
     const y = (viewHeight - displayHeight) / 2;
     
-    // Create a unique ID for this image
-    const id = `enhanced-${Date.now()}`;
-    
-    // Add the image to the state
-    setInteractiveEnhancedImages(prev => [
-      ...prev,
-      {
-        id,
-        url: `${API_URL}${result.path.startsWith('/') ? '' : '/'}${result.path}`, // Construct URL using API URL
-        x,
-        y,
-        width: displayWidth,
-        height: displayHeight,
-        prompt: result.prompt,
-        base64Data: result.base64Data,
-        isDragging: false,
-        isResizing: false,
-        resizeHandle: null
-      }
-    ]);
-    
-    // Show the preview image
-    setEnhancedImage(`${API_URL}${result.path.startsWith('/') ? '' : '/'}${result.path}`); // Construct URL using API URL
+    // Create a new enhanced image object
+    const newImage: EnhancedImage = {
+      id: `enhanced_${Date.now()}`,
+      url: result.path,
+      x,
+      y,
+      width: displayWidth,
+      height: displayHeight,
+      prompt: result.prompt,
+      base64Data: result.base64Data,
+      isDragging: false,
+      isResizing: false,
+      resizeHandle: null
+    };
+
+    // Add to the list of enhanced images
+    setInteractiveEnhancedImages(prev => [...prev, newImage]);
+  };
+
+  const handleImageUpdate = (newBase64Data: string) => {
+    // Update the most recently added enhanced image
+    setInteractiveEnhancedImages(prev => {
+      if (prev.length === 0) return prev;
+      const lastImage = prev[prev.length - 1];
+      return [
+        ...prev.slice(0, -1),
+        {
+          ...lastImage,
+          base64Data: newBase64Data
+        }
+      ];
+    });
   };
 
   // Add a function to render enhanced images on the canvas
@@ -1109,7 +1118,7 @@ const Canvas: React.FC = () => {
         onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index)}
       >
         <img
-          src={image.url}
+          src={`data:image/png;base64,${image.base64Data}`}
           alt={`Enhanced image generated from prompt: ${image.prompt}`}
           style={{
             width: '100%',
@@ -1138,6 +1147,7 @@ const Canvas: React.FC = () => {
             filename: image.id,
             base64Data: image.base64Data || ''
           }}
+          onImageUpdate={handleImageUpdate}
         />
 
         {/* Resize handles - all 8 directions */}
