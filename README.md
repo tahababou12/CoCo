@@ -1,6 +1,6 @@
 # CoCo - Collaborative Drawing Application
 
-CoCo is a collaborative drawing application that enables multiple users to draw together in real-time. The application features AI-powered image enhancement using Google's Gemini model and story generation capabilities.
+CoCo is a collaborative drawing application that enables multiple users to draw together in real-time. The application features AI-powered image enhancement using Google's Gemini model and story generation capabilities. Spring 2025 HackPrinceton Best Game.
 
 ![CoCo Banner](frontend-main/public/CoCo_banner.png)
 
