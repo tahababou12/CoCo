@@ -19,9 +19,10 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   const [currentGestureIndex, setCurrentGestureIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
 
   // Available gestures for the challenge
-  const availableGestures = ['Drawing', 'Erasing', 'Clear All'];
+  const availableGestures = ['Drawing', 'Clicking', 'Clearing'];
 
   // Generate random gestures for the challenge
   const generateTargetGestures = () => {
@@ -32,6 +33,27 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       selected.push(gestures[randomIndex]);
     }
     setTargetGestures(selected);
+  };
+
+  // Cleanup function
+  const cleanup = () => {
+    console.log('Cleaning up gesture auth resources...');
+    if (cameraRef.current) {
+      console.log('Stopping camera...');
+      cameraRef.current.stop();
+    }
+    if (mediapipeRef.current) {
+      console.log('Closing MediaPipe...');
+      mediapipeRef.current.close();
+    }
+    if (videoRef.current?.srcObject) {
+      console.log('Stopping video tracks...');
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => {
+        console.log('Stopping track:', track.kind);
+        track.stop();
+      });
+    }
   };
 
   useEffect(() => {
@@ -110,16 +132,40 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
         drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
 
         // Determine current gesture
-        const mode = determineHandMode(landmarks);
+        const { mode } = determineHandMode(landmarks);
         setCurrentGesture(mode);
 
         // Check if the current gesture matches the target
         if (mode === targetGestures[currentGestureIndex]) {
+          console.log('Gesture matched:', mode); // Debug log
           // Move to next gesture or complete
           if (currentGestureIndex < targetGestures.length - 1) {
+            console.log('Moving to next gesture'); // Debug log
             setCurrentGestureIndex(prev => prev + 1);
           } else {
+            console.log('All gestures completed'); // Debug log
+            // Call onSuccess first to trigger state changes
             onSuccess();
+            
+            // Then cleanup after a small delay to ensure state changes are processed
+            setTimeout(() => {
+              if (cameraRef.current) {
+                console.log('Stopping camera...');
+                cameraRef.current.stop();
+              }
+              if (mediapipeRef.current) {
+                console.log('Closing MediaPipe...');
+                mediapipeRef.current.close();
+              }
+              if (videoRef.current?.srcObject) {
+                console.log('Stopping video tracks...');
+                const stream = videoRef.current.srcObject as MediaStream;
+                stream.getTracks().forEach(track => {
+                  console.log('Stopping track:', track.kind);
+                  track.stop();
+                });
+              }
+            }, 100);
           }
         }
       }
@@ -128,17 +174,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
     initializeHandTracking();
 
     return () => {
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-      }
-      if (mediapipeRef.current) {
-        mediapipeRef.current.close();
-      }
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
+      if (!isCompleted) {
+        cleanup();
       }
     };
-  }, [targetGestures, currentGestureIndex, onSuccess]);
+  }, [targetGestures, currentGestureIndex, onSuccess, isCompleted]);
 
   if (isLoading) {
     return <div className="text-center">Loading gesture recognition...</div>;
@@ -146,6 +186,10 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
 
   if (error) {
     return <div className="text-red-500 text-center">{error}</div>;
+  }
+
+  if (isCompleted) {
+    return null;
   }
 
   return (
