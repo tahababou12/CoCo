@@ -491,6 +491,9 @@ const HandDrawing: React.FC = () => {
         // Update last drawing time
         lastDrawingUpdateRef.current = Date.now();
         
+        // Update local drawing state - this should always be true when in Drawing mode
+        setIsDrawing(true);
+        
         // Start drawing if not already doing so
         if (!state.currentShape) {
           // Switch to pencil tool
@@ -498,9 +501,6 @@ const HandDrawing: React.FC = () => {
             if (DEBUG_FINGER_DRAWING) console.log('Setting tool to pencil (during drawing)');
             dispatch({ type: 'SET_TOOL', payload: 'pencil' });
           }
-          
-          // Update local drawing state
-          setIsDrawing(true);
           
           if (DEBUG_FINGER_DRAWING) console.log('Starting drawing from previous point', prevPoint);
           
