@@ -106,7 +106,7 @@ const HandDrawing: React.FC = () => {
     if (!isHandTrackingActive) {
       return;
     }
-    
+
     // Otherwise, update the cursor positions based on handCursors state
     Object.entries(handCursors).forEach(([indexStr, point]) => {
       const index = parseInt(indexStr);
@@ -114,24 +114,42 @@ const HandDrawing: React.FC = () => {
       
       if (!cursorDiv || !point) return;
       
-      // Convert point to screen coordinates
-      const canvasPoint = videoToCanvasCoords(point);
+      // Use the same coordinate transformation as drawing operations
+      const canvasSpacePoint = videoToCanvasCoords(point);
+      const transformedPoint = canvasToDrawingCoords(
+        canvasSpacePoint,
+        state.viewTransform.scale,
+        state.viewTransform.offsetX,
+        state.viewTransform.offsetY
+      );
       
-      // Position and style cursor
-      const mode = activeHandModesRef.current[index] || 'None';
-      updateCursor(cursorDiv, canvasPoint.x, canvasPoint.y, mode);
+      // Convert the transformed drawing coordinates back to screen coordinates for cursor positioning
+      const screenX = transformedPoint.x * state.viewTransform.scale + state.viewTransform.offsetX;
+      const screenY = transformedPoint.y * state.viewTransform.scale + state.viewTransform.offsetY;
+      
+      // Get canvas position to add offset
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const finalX = screenX + rect.left;
+        const finalY = screenY + rect.top;
+        
+        // Position and style cursor
+        const mode = activeHandModesRef.current[index] || 'None';
+        updateCursor(cursorDiv, finalX, finalY, mode);
+      }
       
       // Send hand cursor position to collaborators if connected
       if (webSocket?.isConnected && webSocket?.sendCursorMove) {
         const cursorPoint = {
-          x: canvasPoint.x,
-          y: canvasPoint.y,
+          x: canvasSpacePoint.x,
+          y: canvasSpacePoint.y,
           isHandTracking: true
         };
         webSocket.sendCursorMove(cursorPoint);
       }
     });
-  }, [handCursors, isHandTrackingActive, webSocket]);
+  }, [handCursors, isHandTrackingActive, webSocket, state.viewTransform]);
   
   // Initialize MediaPipe Hands and add cursor styles
   useEffect(() => {
