@@ -10,7 +10,6 @@ import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/h
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
 import { useHandGesture } from '../context/HandGestureContext';
 import { useWebSocket } from '../context/WebSocketContext';
-import { hitTest } from '../utils/hitTest';
 
 // Debug configuration
 const DEBUG = true;
@@ -456,13 +455,13 @@ const HandDrawing: React.FC = () => {
     // Track previous mode to detect changes
     const prevMode = activeHandModesRef.current[handIndex];
     
-    // Handle mode change - always save drawing when switching from Drawing or ObjectErasing mode
-    if ((prevMode === 'Drawing' || prevMode === 'ObjectErasing') && mode !== prevMode && state.currentShape) {
+    // Handle mode change - always save drawing when switching from Drawing or PixelErasing mode
+    if ((prevMode === 'Drawing' || prevMode === 'PixelErasing') && mode !== prevMode && state.currentShape) {
       saveDrawing();
     }
 
-    // Reset style when switching from ObjectErasing to any other mode
-    if (prevMode === 'ObjectErasing' && mode !== 'ObjectErasing') {
+    // Reset style when switching from PixelErasing to any other mode
+    if (prevMode === 'PixelErasing' && mode !== 'PixelErasing') {
       // Reset only the composite operation to normal drawing
       dispatch({
         type: 'SET_STYLE',
@@ -640,25 +639,60 @@ const HandDrawing: React.FC = () => {
         break;
       }
       
-      case 'ObjectErasing': {
-        // Find if a shape is under the current point
-        const shapeToErase = [...state.shapes].reverse().find(shape => hitTest(shape, transformedPoint));
+      case 'PixelErasing': {
+        // Get previous point for this hand - if none, use current point
+        const prevPoint = prevPointsRef.current[handIndex] || transformedPoint;
         
-        if (shapeToErase) {
-          // Erase the shape by dispatching the delete action
-          dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
-
-          // To prevent accidental rapid-fire deletion, add a small cooldown.
-          // We can use the lastClearTimeRef for this, or a new dedicated ref.
-          // For now, the gesture stability itself should provide some debouncing.
-          if (DEBUG_FINGER_DRAWING) console.log('Erased shape:', shapeToErase.id);
+        // Filter out erratic movements (very large jumps)
+        const distance = Math.sqrt(
+          Math.pow(transformedPoint.x - prevPoint.x, 2) + 
+          Math.pow(transformedPoint.y - prevPoint.y, 2)
+        );
+        
+        // Skip if the movement is too large (likely tracking error)
+        if (distance > 200) {
+          if (DEBUG_FINGER_DRAWING) console.log('Skipping large jump during erasing:', distance);
+          return;
         }
         
-        // Ensure no drawing is active
-        if (state.currentShape) {
-          dispatch({ type: 'END_DRAWING' });
-          setIsDrawing(false);
-        }
+        // Update last drawing time
+        lastDrawingUpdateRef.current = Date.now();
+        
+        // Keep isDrawing as false for erasing since we're not creating content
+        setIsDrawing(false);
+        
+        // For erasing, we handle it differently to avoid creating persistent shapes
+        // We temporarily create a shape for visual feedback but discard it when done
+        if (!state.currentShape) {
+          if (DEBUG_FINGER_DRAWING) console.log('Starting pixel erasing from previous point', prevPoint);
+          
+          // Start erasing from the previous point for continuity
+          dispatch({
+            type: 'START_DRAWING',
+            payload: { 
+              point: prevPoint, 
+              type: 'pencil' // Use pencil type but will be discarded
+            }
+          });
+          
+          // Set stroke style for erasing
+          dispatch({
+            type: 'SET_STYLE',
+            payload: { 
+              strokeWidth: drawingThickness * 2.5, // Larger width for erasing
+              globalCompositeOperation: 'destination-out' // This makes it truly erase
+            }
+          });
+        } 
+        
+        // Continue erasing
+        dispatch({
+          type: 'CONTINUE_DRAWING', 
+          payload: transformedPoint
+        });
+        
+        // Store the current point for next frame
+        prevPointsRef.current[handIndex] = transformedPoint;
         break;
       }
       
@@ -835,7 +869,25 @@ const HandDrawing: React.FC = () => {
     const shapeId = state.currentShape.id;
     const shapePoints = [...state.currentShape.points]; // Make a copy of points
     
-    // First end the drawing in our local state
+    // Check if this is an eraser stroke based on the style
+    const isEraserStroke = state.currentShape.style.globalCompositeOperation === 'destination-out';
+    
+    if (isEraserStroke) {
+      // For eraser strokes, just discard the current shape without saving to shapes
+      if (DEBUG_FINGER_DRAWING) console.log('Discarding eraser stroke (not saving to shapes)');
+      dispatch({ type: 'DISCARD_CURRENT_SHAPE' });
+      
+      // Reset transformedPoint for all hands
+      Object.keys(prevPointsRef.current).forEach(indexStr => {
+        prevPointsRef.current[parseInt(indexStr)] = null;
+      });
+      
+      setIsDrawing(false);
+      lastDrawingUpdateRef.current = Date.now();
+      return;
+    }
+    
+    // For regular drawing strokes, save normally
     dispatch({ type: 'END_DRAWING' });
     
     // Reset transformedPoint for all hands
@@ -1009,7 +1061,7 @@ const HandDrawing: React.FC = () => {
             <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-2 flex items-center justify-center">
               <span className="text-purple-500 font-bold text-xs">⌽</span>
             </div>
-            <span>Index + Middle: Object Eraser</span>
+            <span>Index + Middle: Pixel Eraser</span>
           </div>
           <div className="flex items-center mb-1">
             <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>

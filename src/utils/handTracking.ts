@@ -64,15 +64,15 @@ export const determineHandMode = (landmarks: HandLandmark[]): { mode: HandMode, 
     handType: isRightHand ? 'Right' : 'Left'
   };
   
-  // Log finger states for debugging
-  console.log('Finger states:', {
-    thumb: thumbExtended ? 'Extended' : 'Closed',
-    index: indexExtended ? 'Extended' : 'Closed',
-    middle: middleExtended ? 'Extended' : 'Closed',
-    ring: ringExtended ? 'Extended' : 'Closed',
-    pinky: pinkyExtended ? 'Extended' : 'Closed',
-    handType: isRightHand ? 'Right hand' : 'Left hand'
-  });
+  // // Log finger states for debugging
+  // console.log('Finger states:', {
+  //   thumb: thumbExtended ? 'Extended' : 'Closed',
+  //   index: indexExtended ? 'Extended' : 'Closed',
+  //   middle: middleExtended ? 'Extended' : 'Closed',
+  //   ring: ringExtended ? 'Extended' : 'Closed',
+  //   pinky: pinkyExtended ? 'Extended' : 'Closed',
+  //   handType: isRightHand ? 'Right hand' : 'Left hand'
+  // });
   
   // FEATURE 1: DRAGGING MODE - Thumb, index, and middle fingers extended (ring and pinky closed)
   if (fingersExtended[0] && fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
@@ -81,8 +81,8 @@ export const determineHandMode = (landmarks: HandLandmark[]): { mode: HandMode, 
   }
   // FEATURE 2: PIXEL ERASING MODE - Index and middle fingers extended (thumb, ring, and pinky closed)
   else if (!fingersExtended[0] && fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
-    console.log('GESTURE DETECTED: Object Erasing mode');
-    return { mode: 'ObjectErasing', fingerState };
+    console.log('GESTURE DETECTED: Pixel Erasing mode');
+    return { mode: 'PixelErasing', fingerState };
   }
   // FEATURE 3: DRAWING MODE - Only index finger is extended
   // Allow thumb to be slightly extended for more reliable detection
@@ -166,7 +166,7 @@ export const getStableHandMode = (
   let clickingCount = 0;
   let draggingCount = 0;
   let clearingCount = 0;
-  let objectErasingCount = 0;
+  let pixelErasingCount = 0;
   let noneCount = 0;
   
   buffer.modeHistory.forEach(mode => {
@@ -174,7 +174,7 @@ export const getStableHandMode = (
     else if (mode === 'Clicking') clickingCount++;
     else if (mode === 'Dragging') draggingCount++;
     else if (mode === 'Clearing') clearingCount++;
-    else if (mode === 'ObjectErasing') objectErasingCount++;
+    else if (mode === 'PixelErasing') pixelErasingCount++;
     else if (mode === 'None') noneCount++;
   });
   
@@ -186,10 +186,10 @@ export const getStableHandMode = (
     return { mode: 'Clearing', newLastClearTime: now };
   }
   
-  // If object erasing mode is detected even just a few times, prioritize it
-  // This makes object erasing mode more responsive
-  if (objectErasingCount >= 2 && buffer.modeHistory.length >= 3) {
-    return { mode: 'ObjectErasing', newLastClearTime: lastClearTime };
+  // If pixel erasing mode is detected even just a few times, prioritize it
+  // This makes pixel erasing mode more responsive
+  if (pixelErasingCount >= 2 && buffer.modeHistory.length >= 3) {
+    return { mode: 'PixelErasing', newLastClearTime: lastClearTime };
   }
   
   // If drawing mode is detected even just a few times, prioritize it
@@ -212,9 +212,9 @@ export const getStableHandMode = (
     mostCommonMode = 'Drawing';
   }
   
-  if (objectErasingCount > maxCount) {
-    maxCount = objectErasingCount;
-    mostCommonMode = 'ObjectErasing';
+  if (pixelErasingCount > maxCount) {
+    maxCount = pixelErasingCount;
+    mostCommonMode = 'PixelErasing';
   }
   
   if (clickingCount > maxCount) {

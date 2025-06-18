@@ -38,8 +38,10 @@ interface EnhancedImageResult {
 
 const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
+  const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
+  const backgroundCanvasRef = useRef<HTMLCanvasElement>(null)
+  const drawingCtxRef = useRef<CanvasRenderingContext2D | null>(null)
+  const backgroundCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isPanning, setIsPanning] = useState(false)
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null)
@@ -61,191 +63,68 @@ const Canvas: React.FC = () => {
   const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
   const [initialImageState, setInitialImageState] = useState<EnhancedImage | null>(null)
 
-  // Define renderCanvas function before it's used in effects
-  const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const gridSize = 20 * state.viewTransform.scale
-    const offsetX = state.viewTransform.offsetX % gridSize
-    const offsetY = state.viewTransform.offsetY % gridSize
-    
-    // Draw dots at intersections
-    ctx.fillStyle = '#e5e5e5'
-    for (let x = offsetX; x < width; x += gridSize) {
-      for (let y = offsetY; y < height; y += gridSize) {
-        ctx.beginPath()
-        ctx.arc(x, y, 1, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
+  const renderBackground = () => {
+    const canvas = backgroundCanvasRef.current;
+    const context = backgroundCtxRef.current;
+    if (!canvas || !context) return;
+    context.fillStyle = '#fffbeb';
+    context.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  const renderCanvas = () => {
-    void (DEBUG && console.log('renderCanvas called'));
-    const canvas = canvasRef.current;
-    const context = ctxRef.current;
+  const renderDrawing = () => {
+    const canvas = drawingCanvasRef.current;
+    const context = drawingCtxRef.current;
+    if (!canvas || !context) return;
     
-    if (!canvas || !context) {
-      void (DEBUG && console.error('Cannot render: canvas or context not available'));
-      return;
-    }
-
-    // Make sure canvas has dimensions
-    if (canvas.width === 0 || canvas.height === 0) {
-      void (DEBUG && console.warn('Canvas has zero dimensions, setting defaults'));
-      canvas.width = 800;
-      canvas.height = 600;
-    }
-
-    void (DEBUG && console.log(`Rendering canvas ${canvas.width}x${canvas.height} with ${state.shapes.length} shapes`));
-    
-    // Clear canvas with background color
-    context.fillStyle = '#fffbeb'; // Light yellow for night shift mode
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw grid
-    drawGrid(context, canvas.width, canvas.height);
-    
-    // Apply view transform
+    context.clearRect(0, 0, canvas.width, canvas.height);
     context.save();
     context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
     context.scale(state.viewTransform.scale, state.viewTransform.scale);
 
-    // Draw all shapes
-    if (state.shapes.length > 0) {
-      state.shapes.forEach((shape, index) => {
-        void (DEBUG && console.log(`Rendering shape ${index}: ${shape.type}`));
-        renderShape(context, shape);
-      });
-    }
+    state.shapes.forEach(shape => renderShape(context, shape));
 
-    // Set current stroke color and width from defaultStyle
-    context.strokeStyle = state.defaultStyle.strokeColor;
-    context.lineWidth = state.defaultStyle.strokeWidth;
-    
-    // Draw current shape being created
     if (state.currentShape) {
-      void (DEBUG && console.log('Drawing current shape:', state.currentShape.type));
-      
-      // Make sure current shape uses current style
       const currentShapeWithStyle = {
         ...state.currentShape,
-        style: {
-          ...state.currentShape.style,
-          strokeColor: state.defaultStyle.strokeColor,
-          strokeWidth: state.defaultStyle.strokeWidth
-        }
+        style: { ...state.defaultStyle, ...state.currentShape.style }
       };
-      
       renderShape(context, currentShapeWithStyle);
-      
-      if (!isDrawing) {
-        setIsDrawing(true);
-      }
-    } else if (isDrawing) {
-      setIsDrawing(false);
     }
-
     context.restore();
   };
 
-  // Initialize canvas and context
   useEffect(() => {
-    void (DEBUG && console.log('Canvas initialization effect running'));
-    
-    // Ensure we have references to both canvas and container
-    if (!canvasRef.current) {
-      void (DEBUG && console.error('Canvas element not available during initialization'));
-      return;
+    const drawingCanvas = drawingCanvasRef.current;
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const container = containerRef.current;
+
+    if (!drawingCanvas || !backgroundCanvas || !container) return;
+
+    drawingCtxRef.current = drawingCanvas.getContext('2d');
+    backgroundCtxRef.current = backgroundCanvas.getContext('2d');
+    const drawingCtx = drawingCtxRef.current;
+    if (drawingCtx) {
+      drawingCtx.lineCap = 'round';
+      drawingCtx.lineJoin = 'round';
     }
-    
-    const canvas = canvasRef.current;
-    
-    // Set explicit dimensions - both via attributes and style
-    if (containerRef.current) {
-      const containerWidth = containerRef.current.clientWidth || 800;
-      const containerHeight = containerRef.current.clientHeight || 600;
-      
-      // Ensure non-zero dimensions
-      const width = Math.max(containerWidth, 800);
-      const height = Math.max(containerHeight, 600);
-      
-      // Set both the canvas attribute dimensions and CSS dimensions
-      canvas.width = width;
-      canvas.height = height;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-    } else {
-      canvas.width = 800;
-      canvas.height = 600;
-      canvas.style.width = '800px';
-      canvas.style.height = '600px';
-    }
-    
-    void (DEBUG && console.log(`Canvas dimensions set: ${canvas.width}x${canvas.height}`));
-    
-    // Use willReadFrequently for better performance with frequent reads
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    
-    if (!context) {
-      void (DEBUG && console.error('Failed to get canvas 2d context'));
-      return;
-    }
-    
-    // Set up context properties
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    context.strokeStyle = state.defaultStyle.strokeColor || '#000';
-    context.lineWidth = state.defaultStyle.strokeWidth || 2;
-    
-    ctxRef.current = context;
-    void (DEBUG && console.log('Canvas context initialized'));
-    
-    // Force an initial render after a short delay to ensure everything is set up
-    setTimeout(() => {
-      void (DEBUG && console.log('Triggering delayed initial render'));
-      renderCanvas();
-    }, 200);
-    
-    // Add extra debugging on the canvas element
-    canvas.addEventListener('pointerdown', () => {
-      void (DEBUG && console.log('Native pointerdown event fired'));
+
+    const resizeObserver = new ResizeObserver(() => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      drawingCanvas.width = width;
+      drawingCanvas.height = height;
+      backgroundCanvas.width = width;
+      backgroundCanvas.height = height;
+      renderBackground();
+      renderDrawing();
     });
-    
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
   }, []);
 
-  // Handle canvas resize
-  useEffect(() => {
-    const resizeCanvas = () => {
-      if (canvasRef.current && containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth || 800;
-        const containerHeight = containerRef.current.clientHeight || 600;
-        
-        // Ensure we never set zero dimensions
-        const width = Math.max(containerWidth, 1);
-        const height = Math.max(containerHeight, 1);
-        
-        void (DEBUG && console.log(`Resizing canvas to: ${width}x${height}`));
-        
-        canvasRef.current.width = width;
-        canvasRef.current.height = height;
-        
-        // Explicitly set the style as well to ensure visibility
-        canvasRef.current.style.width = `${width}px`;
-        canvasRef.current.style.height = `${height}px`;
-        
-        renderCanvas();
-      }
-    };
-
-    // Add a small delay to ensure container is properly sized
-    setTimeout(resizeCanvas, 100);
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, []);
-
-  // Render canvas whenever state changes
-  useLayoutEffect(() => {
-    renderCanvas();
-  }, [state.shapes, state.currentShape, state.viewTransform]);
+  useLayoutEffect(renderDrawing, [state.shapes, state.currentShape, state.viewTransform]);
+  useLayoutEffect(renderBackground, [state.viewTransform]);
 
   // Add specific effect to handle drawing state changes
   useEffect(() => {
@@ -264,24 +143,24 @@ const Canvas: React.FC = () => {
 
   // Update cursor when tool changes
   useEffect(() => {
-    if (canvasRef.current) {
-      canvasRef.current.style.cursor = getCursorForTool(state.tool)
+    if (drawingCanvasRef.current) {
+      drawingCanvasRef.current.style.cursor = getCursorForTool(state.tool)
     }
   }, [state.tool])
 
   const getCanvasPoint = (clientX: number, clientY: number): Point => {
-    if (!canvasRef.current) return { x: 0, y: 0 }
-
-    const rect = canvasRef.current.getBoundingClientRect()
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
     const x = (clientX - rect.left - state.viewTransform.offsetX) / state.viewTransform.scale
     const y = (clientY - rect.top - state.viewTransform.offsetY) / state.viewTransform.scale
-    return { x, y }
-  }
+    return { x, y };
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     void (DEBUG && console.log('React handlePointerDown triggered', e.type, e.clientX, e.clientY));
     
-    if (!canvasRef.current) {
+    if (!drawingCanvasRef.current) {
       void (DEBUG && console.error('Canvas ref not available in handlePointerDown'));
       return;
     }
@@ -303,7 +182,7 @@ const Canvas: React.FC = () => {
     
     try {
       // Capture pointer to ensure all events go to this element
-      canvasRef.current.setPointerCapture(e.pointerId);
+      drawingCanvasRef.current.setPointerCapture(e.pointerId);
       void (DEBUG && console.log('Pointer captured successfully', e.pointerId));
     } catch (err) {
       void (DEBUG && console.error('Failed to capture pointer', err));
@@ -378,7 +257,7 @@ const Canvas: React.FC = () => {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!canvasRef.current) {
+    if (!drawingCanvasRef.current) {
       void (DEBUG && console.warn('Canvas ref not available in handlePointerMove'));
       return;
     }
@@ -464,6 +343,12 @@ const Canvas: React.FC = () => {
     if (state.tool === 'eraser' && isPrimaryButtonPressed) {
       // Object eraser - continuously erase whole shapes
       const shapeToErase = findShapeAtPoint(point);
+      
+      if (DEBUG) {
+        console.log('Mouse eraser at point:', point);
+        console.log('Mouse eraser found shape:', shapeToErase ? `${shapeToErase.id} (${shapeToErase.type})` : 'none');
+      }
+      
       if (shapeToErase) {
         dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
       }
@@ -477,7 +362,7 @@ const Canvas: React.FC = () => {
       // Continue drawing with current point
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
       
-      // No need to re-dispatch SET_STYLE here since renderCanvas will handle it
+      // No need to re-dispatch SET_STYLE here since renderDrawing will handle it
     }
 
     // Add this to the section handling image resizing
@@ -549,7 +434,7 @@ const Canvas: React.FC = () => {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (!canvasRef.current) return;
+    if (!drawingCanvasRef.current) return;
     
     // Check if the target is a button or div with role="button"
     // If so, don't handle canvas pointer events
@@ -567,7 +452,7 @@ const Canvas: React.FC = () => {
     
     // Release pointer capture
     try {
-      canvasRef.current.releasePointerCapture(e.pointerId);
+      drawingCanvasRef.current.releasePointerCapture(e.pointerId);
     } catch (err) {
       void (DEBUG && console.error('Failed to release pointer capture', err));
     }
@@ -683,93 +568,46 @@ const Canvas: React.FC = () => {
   }
 
   const saveCanvasAsPNG = async () => {
-    if (!canvasRef.current || state.shapes.length === 0) return;
-    
-    // Create a temporary canvas for rendering just the drawings
+    const drawingCanvas = drawingCanvasRef.current;
+    const backgroundCanvas = backgroundCanvasRef.current;
+    if (!drawingCanvas || !backgroundCanvas || state.shapes.length === 0) return;
+  
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return;
+  
+    tempCanvas.width = drawingCanvas.width;
+    tempCanvas.height = drawingCanvas.height;
+  
+    // 1. Draw the background color
+    tempCtx.fillStyle = '#fffbeb'; // Same as background canvas
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     
-    // Find the bounding box of all shapes
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    // 2. Apply the view transform to match the current view
+    tempCtx.save();
+    tempCtx.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
+    tempCtx.scale(state.viewTransform.scale, state.viewTransform.scale);
     
-    // Calculate the bounds for all shapes
-    state.shapes.forEach(shape => {
-      shape.points.forEach(point => {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
-      });
-      
-      // For text, estimate the bounds based on the text and font size
-      if (shape.type === 'text' && shape.text) {
-        const fontSize = shape.style.fontSize || 16;
-        const textWidth = shape.text.length * fontSize * 0.6; // Rough estimate
-        const textHeight = fontSize * 1.2; // Rough estimate
-        
-        minX = Math.min(minX, shape.points[0].x);
-        minY = Math.min(minY, shape.points[0].y);
-        maxX = Math.max(maxX, shape.points[0].x + textWidth);
-        maxY = Math.max(maxY, shape.points[0].y + textHeight);
-      }
-    });
-    
-    // Add padding
-    const padding = 20;
-    minX -= padding;
-    minY -= padding;
-    maxX += padding;
-    maxY += padding;
-    
-    // Set canvas size to fit the bounding box
-    const width = Math.max(maxX - minX, 1);
-    const height = Math.max(maxY - minY, 1);
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    
-    // Fill with a white background
-    tempCtx.fillStyle = '#FFFFFF';
-    tempCtx.fillRect(0, 0, width, height);
-    
-    // Apply transform to center the drawings
-    tempCtx.translate(-minX, -minY);
-    
-    // Draw all shapes
+    // 3. Re-render all shapes (this will properly handle composite operations like erasing)
     state.shapes.forEach(shape => {
       renderShape(tempCtx, shape);
     });
     
-    // Convert to image
+    // 4. Restore the transform
+    tempCtx.restore();
+  
     try {
       const dataUrl = tempCanvas.toDataURL('image/png');
-      
-      // Send image data to server
       const response = await fetch('http://localhost:5001/api/save-image', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageData: dataUrl }),
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Server error: ${errorData.error || 'Unknown error'}`);
-      }
-      
+      if (!response.ok) throw new Error('Failed to save image');
       const result = await response.json();
-      void (DEBUG && console.log(`Image saved successfully to: ${result.absolutePath}`));
-      
-      // Show success message with toast instead of alert
       window.showToast(`Image saved as: ${result.filename}`, 'success', 3000);
-      
-    } catch (err) {
-      void (DEBUG && console.error('Error saving canvas:', err));
-      window.showToast(`Error saving image: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    } catch {
+      window.showToast(`Error saving image`, 'error', 3000);
     }
   }
 
@@ -999,8 +837,8 @@ const Canvas: React.FC = () => {
     setInitialImageState({...updatedImages[imageIndex]});
 
     // Ensure the pointer events are captured
-    if (canvasRef.current) {
-      canvasRef.current.setPointerCapture(e.pointerId);
+    if (drawingCanvasRef.current) {
+      drawingCanvasRef.current.setPointerCapture(e.pointerId);
     }
   };
 
@@ -1169,16 +1007,7 @@ const Canvas: React.FC = () => {
   };
 
   return (
-    <div 
-      ref={containerRef}
-      className="flex-1 overflow-hidden bg-stone-50 relative select-none"
-      style={{ 
-        touchAction: 'none',
-        minHeight: '600px',
-        height: '100%',
-        width: '100%'
-      }}
-    >
+    <div ref={containerRef} className="absolute inset-0 bg-stone-50 select-none" style={{ touchAction: 'none' }}>
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
@@ -1253,20 +1082,11 @@ const Canvas: React.FC = () => {
       {/* Render interactive enhanced images */}
       {renderEnhancedImages()}
       
+      <canvas ref={backgroundCanvasRef} className="absolute top-0 left-0" style={{ zIndex: 0, pointerEvents: 'none' }} />
       <canvas
-        ref={canvasRef}
-        width={800}
-        height={600}
-        className="absolute top-0 left-0 w-full h-full touch-none"
-        style={{ 
-          cursor: getCursorForTool(state.tool),
-          pointerEvents: 'auto',
-          touchAction: 'none',
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTapHighlightColor: 'rgba(0,0,0,0)',
-          zIndex: 1
-        }}
+        ref={drawingCanvasRef}
+        className="absolute top-0 left-0 touch-none"
+        style={{ zIndex: 1, cursor: getCursorForTool(state.tool) }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

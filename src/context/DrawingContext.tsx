@@ -21,8 +21,8 @@ interface DrawingState {
     offsetY: number
   }
   history: {
-    past: DrawingState[]
-    future: DrawingState[]
+    past: Shape[][]
+    future: Shape[][]
   }
 }
 
@@ -31,6 +31,7 @@ type DrawingAction =
   | { type: 'START_DRAWING'; payload: { point: Point; type: Shape['type'] } }
   | { type: 'CONTINUE_DRAWING'; payload: Point }
   | { type: 'END_DRAWING' }
+  | { type: 'DISCARD_CURRENT_SHAPE' }
   | { type: 'ADD_SHAPE'; payload: Shape }
   | { type: 'UPDATE_SHAPE'; payload: { id: string; updates: Partial<Shape> } }
   | { type: 'DELETE_SHAPES'; payload: string[] }
@@ -225,6 +226,12 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         },
       }
     }
+
+    case 'DISCARD_CURRENT_SHAPE':
+      return {
+        ...state,
+        currentShape: null,
+      }
 
     case 'ADD_SHAPE':
       return {
@@ -538,7 +545,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         }
       }
       
-    case 'END_SELECTION_BOX':
+    case 'END_SELECTION_BOX': {
       if (!state.selectionBox || !state.selectionBox.start || !state.selectionBox.end) {
         return {
           ...state,
@@ -559,7 +566,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
           switch (shape.type) {
             case 'rectangle':
             case 'ellipse':
-            case 'image':
+            case 'image': {
               // Check if any corner of the shape is inside the selection box
               const [start, end] = shape.points
               const shapeMinX = Math.min(start.x, end.x)
@@ -574,6 +581,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
                 shapeMaxY < startY ||
                 shapeMinY > endY
               )
+            }
               
             case 'line':
             case 'pencil':
@@ -601,6 +609,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         selectionBox: null,
         selectedShapeIds
       }
+    }
 
     default:
       return state

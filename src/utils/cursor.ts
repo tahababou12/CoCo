@@ -112,7 +112,7 @@ export const addCursorStyles = (): HTMLStyleElement => {
       animation: pulse-red 0.5s ease-in-out !important;
       box-shadow: 0 0 20px rgba(255,0,0,0.8) !important;
     }
-    .objecterasing-mode {
+    .pixelerasing-mode {
       background-color: rgba(128,0,128,0.6) !important;
       width: 25px !important;
       height: 25px !important;
@@ -121,7 +121,7 @@ export const addCursorStyles = (): HTMLStyleElement => {
       transition: transform 0.1s ease-out !important;
       cursor: crosshair !important;
     }
-    .objecterasing-mode:before {
+    .pixelerasing-mode:before {
       content: "⌽" !important;
       position: absolute !important;
       left: 50% !important;
