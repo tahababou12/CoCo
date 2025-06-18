@@ -81,30 +81,12 @@ const Canvas: React.FC = () => {
   const renderCanvas = () => {
     void (DEBUG && console.log('renderCanvas called'));
     const canvas = canvasRef.current;
-    let ctx = ctxRef.current;
+    const context = ctxRef.current;
     
-    if (!canvas) {
-      void (DEBUG && console.error('Cannot render: canvas not available'));
+    if (!canvas || !context) {
+      void (DEBUG && console.error('Cannot render: canvas or context not available'));
       return;
     }
-    
-    if (!ctx) {
-      void (DEBUG && console.error('Cannot render: context not available'));
-      
-      // Try to reinitialize the context
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (context) {
-        void (DEBUG && console.log('Successfully reinitialized context'));
-        ctxRef.current = context;
-        ctx = context;
-      } else {
-        void (DEBUG && console.error('Failed to reinitialize context'));
-        return;
-      }
-    }
-
-    // At this point, we know ctx is not null
-    const context = ctx;
 
     // Make sure canvas has dimensions
     if (canvas.width === 0 || canvas.height === 0) {
@@ -116,13 +98,12 @@ const Canvas: React.FC = () => {
     void (DEBUG && console.log(`Rendering canvas ${canvas.width}x${canvas.height} with ${state.shapes.length} shapes`));
     
     // Clear canvas with background color
-    // context.fillStyle = '#fafaf9'; // Dim white
     context.fillStyle = '#fffbeb'; // Light yellow for night shift mode
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw grid
     drawGrid(context, canvas.width, canvas.height);
-
+    
     // Apply view transform
     context.save();
     context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
@@ -143,13 +124,6 @@ const Canvas: React.FC = () => {
     // Draw current shape being created
     if (state.currentShape) {
       void (DEBUG && console.log('Drawing current shape:', state.currentShape.type));
-      void (DEBUG && console.log('Current shape has points:', state.currentShape.points.length));
-      void (DEBUG && console.log('Using color:', state.defaultStyle.strokeColor));
-      
-      // Extra validation to help debugging
-      if (state.currentShape.points.length === 0) {
-        void (DEBUG && console.warn('Current shape has no points!'));
-      }
       
       // Make sure current shape uses current style
       const currentShapeWithStyle = {
@@ -163,14 +137,10 @@ const Canvas: React.FC = () => {
       
       renderShape(context, currentShapeWithStyle);
       
-      // If we have a current shape, we should be in drawing mode
       if (!isDrawing) {
-        void (DEBUG && console.log('Syncing drawing state to true'));
         setIsDrawing(true);
       }
     } else if (isDrawing) {
-      // No current shape but drawing flag is true - sync state
-      void (DEBUG && console.log('No current shape but isDrawing=true, syncing state'));
       setIsDrawing(false);
     }
 

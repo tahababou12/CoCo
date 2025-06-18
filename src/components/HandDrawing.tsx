@@ -10,6 +10,7 @@ import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/h
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
 import { useHandGesture } from '../context/HandGestureContext';
 import { useWebSocket } from '../context/WebSocketContext';
+import { hitTest } from '../utils/hitTest';
 
 // Debug configuration
 const DEBUG = true;
@@ -455,9 +456,20 @@ const HandDrawing: React.FC = () => {
     // Track previous mode to detect changes
     const prevMode = activeHandModesRef.current[handIndex];
     
-    // Handle mode change - always save drawing when switching from Drawing mode
-    if (prevMode === 'Drawing' && mode !== 'Drawing' && state.currentShape) {
+    // Handle mode change - always save drawing when switching from Drawing or ObjectErasing mode
+    if ((prevMode === 'Drawing' || prevMode === 'ObjectErasing') && mode !== prevMode && state.currentShape) {
       saveDrawing();
+    }
+
+    // Reset style when switching from ObjectErasing to any other mode
+    if (prevMode === 'ObjectErasing' && mode !== 'ObjectErasing') {
+      // Reset only the composite operation to normal drawing
+      dispatch({
+        type: 'SET_STYLE',
+        payload: { 
+          globalCompositeOperation: 'source-over' // Reset to normal drawing
+        }
+      });
     }
 
     // Debug finger drawing issues
@@ -503,6 +515,7 @@ const HandDrawing: React.FC = () => {
           }
           
           if (DEBUG_FINGER_DRAWING) console.log('Starting drawing from previous point', prevPoint);
+          if (DEBUG_FINGER_DRAWING) console.log('Current defaultStyle:', state.defaultStyle);
           
           // Start drawing from the previous point for continuity
           dispatch({
@@ -518,9 +531,12 @@ const HandDrawing: React.FC = () => {
             type: 'SET_STYLE',
             payload: { 
               strokeColor: drawingColorsRef.current[handIndex],
-              strokeWidth: drawingThickness
+              strokeWidth: drawingThickness,
+              globalCompositeOperation: 'source-over' // Ensure normal drawing mode
             }
           });
+          
+          if (DEBUG_FINGER_DRAWING) console.log('After setting style, defaultStyle:', state.defaultStyle);
           
           // Notify other users about the drawing start via WebSocket
           if (webSocket?.isConnected && webSocket?.startDrawing) {
@@ -621,6 +637,28 @@ const HandDrawing: React.FC = () => {
           }, 500);
         }
         
+        break;
+      }
+      
+      case 'ObjectErasing': {
+        // Find if a shape is under the current point
+        const shapeToErase = [...state.shapes].reverse().find(shape => hitTest(shape, transformedPoint));
+        
+        if (shapeToErase) {
+          // Erase the shape by dispatching the delete action
+          dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
+
+          // To prevent accidental rapid-fire deletion, add a small cooldown.
+          // We can use the lastClearTimeRef for this, or a new dedicated ref.
+          // For now, the gesture stability itself should provide some debouncing.
+          if (DEBUG_FINGER_DRAWING) console.log('Erased shape:', shapeToErase.id);
+        }
+        
+        // Ensure no drawing is active
+        if (state.currentShape) {
+          dispatch({ type: 'END_DRAWING' });
+          setIsDrawing(false);
+        }
         break;
       }
       
@@ -968,6 +1006,12 @@ const HandDrawing: React.FC = () => {
             <span>Index Finger Only: Draw</span>
           </div>
           <div className="flex items-center mb-1">
+            <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-2 flex items-center justify-center">
+              <span className="text-purple-500 font-bold text-xs">⌽</span>
+            </div>
+            <span>Index + Middle: Object Eraser</span>
+          </div>
+          <div className="flex items-center mb-1">
             <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
             <span>Closed Fist: Click Buttons</span>
           </div>
@@ -1077,4 +1121,4 @@ const HandDrawing: React.FC = () => {
   );
 };
 
-export default HandDrawing; 
+export default HandDrawing;

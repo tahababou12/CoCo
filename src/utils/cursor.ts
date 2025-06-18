@@ -112,6 +112,25 @@ export const addCursorStyles = (): HTMLStyleElement => {
       animation: pulse-red 0.5s ease-in-out !important;
       box-shadow: 0 0 20px rgba(255,0,0,0.8) !important;
     }
+    .objecterasing-mode {
+      background-color: rgba(128,0,128,0.6) !important;
+      width: 25px !important;
+      height: 25px !important;
+      border: 3px solid #8B008B !important;
+      border-radius: 50% !important;
+      transition: transform 0.1s ease-out !important;
+      cursor: crosshair !important;
+    }
+    .objecterasing-mode:before {
+      content: "⌽" !important;
+      position: absolute !important;
+      left: 50% !important;
+      top: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      color: white !important;
+      font-weight: bold !important;
+      font-size: 14px !important;
+    }
     @keyframes pulse-red {
       0% { transform: translate(-50%, -50%) scale(1); }
       50% { transform: translate(-50%, -50%) scale(1.5); box-shadow: 0 0 30px rgba(255,0,0,0.9); }

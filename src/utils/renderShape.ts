@@ -15,6 +15,11 @@ export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape): void =
   if (shape.style.opacity !== undefined) {
     ctx.globalAlpha = shape.style.opacity
   }
+  
+  // Set global composite operation if available (for erasing)
+  if (shape.style.globalCompositeOperation) {
+    ctx.globalCompositeOperation = shape.style.globalCompositeOperation
+  }
 
   // Draw based on shape type
   switch (shape.type) {

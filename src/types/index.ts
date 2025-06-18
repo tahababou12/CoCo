@@ -11,6 +11,7 @@ export type ShapeStyle = {
   strokeWidth: number
   opacity: number
   fontSize?: number
+  globalCompositeOperation?: GlobalCompositeOperation
 }
 
 export type Shape = {
