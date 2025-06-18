@@ -102,3 +102,4 @@ img/
 *.mov
 
 pnpm-lock.yaml
+.DS_Store

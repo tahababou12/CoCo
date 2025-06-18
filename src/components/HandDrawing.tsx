@@ -10,6 +10,12 @@ import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/h
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
 import { useHandGesture } from '../context/HandGestureContext';
 import { useWebSocket } from '../context/WebSocketContext';
+import { 
+  analyzeFingerSeparation, 
+  detectPeaceSign, 
+  getFingerTipDistances,
+  FingerSeparationAnalysis
+} from '../utils/fingerDistance';
 
 // Debug configuration
 const DEBUG = true;
@@ -99,6 +105,11 @@ const HandDrawing: React.FC = () => {
   
   // Add a state to track if we're in the process of toggling modes
   const [isToggling, setIsToggling] = useState(false);
+  
+  // Add finger distance tracking state
+  const [fingerDistances, setFingerDistances] = useState<{ [key: string]: number }>({});
+  const [peaceSignDetected, setPeaceSignDetected] = useState(false);
+  const [fingerSeparationAnalysis, setFingerSeparationAnalysis] = useState<FingerSeparationAnalysis | null>(null);
   
   // Update cursor positions
   useEffect(() => {
@@ -337,6 +348,30 @@ const HandDrawing: React.FC = () => {
           
           // Determine hand mode based on finger positions
           const { mode, fingerState } = determineHandMode(landmarks);
+          
+          // Add finger distance tracking for the first hand
+          if (index === 0) {
+            // Calculate finger distances
+            const distances = getFingerTipDistances(landmarks);
+            setFingerDistances(distances);
+            
+            // Detect peace sign gesture
+            const isPeaceSign = detectPeaceSign(landmarks);
+            setPeaceSignDetected(isPeaceSign);
+            
+            // Analyze finger separation
+            const separationAnalysis = analyzeFingerSeparation(landmarks);
+            setFingerSeparationAnalysis(separationAnalysis);
+            
+            // Log finger distance information for debugging
+            if (DEBUG) {
+              console.log('Finger distances:', distances);
+              console.log('Peace sign detected:', isPeaceSign);
+              console.log('Index-Middle distance:', distances.index_middle?.toFixed(4));
+              console.log('Fingers stuck together:', separationAnalysis.peaceStuckTogether);
+              console.log('Fingers separated (peace):', separationAnalysis.peaceSeparated);
+            }
+          }
           
           // Update finger states for the debug display
           if (index === 0) {
@@ -1167,6 +1202,68 @@ const HandDrawing: React.FC = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+      
+      {/* Finger Distance Tracking Panel */}
+      {isHandTrackingActive && (
+        <div className="absolute left-4 top-4 bg-white p-2 rounded shadow-md text-xs z-10 max-w-xs">
+          <div className="text-sm font-bold mb-1">Finger Distance Tracking 🤏</div>
+          
+          {/* Peace Sign Detection */}
+          <div className={`mb-2 p-2 rounded ${peaceSignDetected ? 'bg-green-100 border border-green-400' : 'bg-gray-100 border border-gray-300'}`}>
+            <div className="font-bold text-center">
+              {peaceSignDetected ? '✌️ Peace Sign Detected!' : '✌️ Peace Sign: Not Detected'}
+            </div>
+          </div>
+          
+          {/* Finger Separation Analysis */}
+          {fingerSeparationAnalysis && (
+            <div className="mb-2">
+              <div className="font-bold">Finger Analysis:</div>
+              <div className={`text-xs ${fingerSeparationAnalysis.peaceSeparated ? 'text-green-600' : 'text-gray-500'}`}>
+                • Peace (Separated): {fingerSeparationAnalysis.peaceSeparated ? 'Yes ✓' : 'No'}
+              </div>
+              <div className={`text-xs ${fingerSeparationAnalysis.peaceStuckTogether ? 'text-orange-600' : 'text-gray-500'}`}>
+                • Peace (Stuck Together): {fingerSeparationAnalysis.peaceStuckTogether ? 'Yes ⚠️' : 'No'}
+              </div>
+            </div>
+          )}
+          
+          {/* Finger Distances */}
+          <div className="mb-2">
+            <div className="font-bold">Finger Distances:</div>
+            <div className="max-h-32 overflow-y-auto">
+              {Object.entries(fingerDistances).map(([pair, distance]) => {
+                const isStuck = distance < 0.03;
+                const isSeparated = distance > 0.05;
+                
+                return (
+                  <div key={pair} className="text-xs flex justify-between items-center py-0.5">
+                    <span className="flex-1">
+                      • {pair.replace('_', ' ↔ ')}: 
+                      <span className="font-mono ml-1">{distance.toFixed(4)}</span>
+                    </span>
+                    <span className={`ml-2 px-1 rounded text-xs font-bold ${
+                      isStuck ? 'bg-orange-200 text-orange-800' : 
+                      isSeparated ? 'bg-green-200 text-green-800' : 
+                      'bg-gray-200 text-gray-700'
+                    }`}>
+                      {isStuck ? '🤏 Stuck' : isSeparated ? '✋ Apart' : '👌 Normal'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          
+          {/* Instructions */}
+          <div className="text-xs text-gray-600 mt-2 border-t pt-1">
+            <div className="font-bold">Try these gestures:</div>
+            <div>• ✌️ Peace sign (separated fingers)</div>
+            <div>• 🤏 Index + middle stuck together</div>
+            <div>• 👆 Single finger pointing</div>
+          </div>
         </div>
       )}
     </div>
