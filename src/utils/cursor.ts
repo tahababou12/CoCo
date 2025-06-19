@@ -1,9 +1,30 @@
 import { HandMode } from '../types/handTracking';
 
+// Update cursor thickness based on stroke width
+const updateCursorThickness = (cursor: HTMLElement, thickness: number): void => {
+  // Check if this is an eraser cursor by looking at the mode class
+  const isEraser = cursor.classList.contains('pixelerasing-mode');
+  
+  // Calculate cursor size based on thickness and mode
+  // For eraser: use larger multiplier since eraser stroke is typically 2.5x larger
+  const multiplier = isEraser ? 2.5 : 1;
+  const baseSize = thickness * multiplier;
+  
+  // Apply size constraints (minimum 8px, maximum 60px)
+  const cursorSize = Math.max(8, Math.min(60, baseSize + 5));
+  
+  cursor.style.width = `${cursorSize}px`;
+  cursor.style.height = `${cursorSize}px`;
+  
+  // Store thickness as a data attribute for mode-specific styling
+  cursor.setAttribute('data-thickness', thickness.toString());
+};
+
 // Ensure cursor element exists and is properly styled
 export const ensureCursorExists = (
   index: number, 
-  color: string
+  color: string,
+  thickness?: number
 ): HTMLElement => {
   let cursor = document.getElementById(`hand-cursor-${index}`);
   
@@ -27,6 +48,11 @@ export const ensureCursorExists = (
     document.body.appendChild(cursor);
   }
   
+  // Update thickness if provided
+  if (thickness !== undefined) {
+    updateCursorThickness(cursor, thickness);
+  }
+  
   return cursor;
 };
 
@@ -46,8 +72,6 @@ export const addCursorStyles = (): HTMLStyleElement => {
     }
     .drawing-mode {
       background-color: rgba(255,255,255,0.8) !important;
-      width: 15px !important;
-      height: 15px !important;
       border: 3px solid #FF0000 !important;
     }
     .clicking-mode {
@@ -114,8 +138,6 @@ export const addCursorStyles = (): HTMLStyleElement => {
     }
     .pixelerasing-mode {
       background-color: rgba(128,0,128,0.6) !important;
-      width: 25px !important;
-      height: 25px !important;
       border: 3px solid #8B008B !important;
       border-radius: 50% !important;
       transition: transform 0.1s ease-out !important;
@@ -150,12 +172,18 @@ export const updateCursor = (
   cursorElement: HTMLElement, 
   x: number, 
   y: number, 
-  mode: HandMode
+  mode: HandMode,
+  thickness?: number
 ): void => {
   // Position cursor
   cursorElement.style.left = `${x}px`;
   cursorElement.style.top = `${y}px`;
   cursorElement.style.display = 'block';
+  
+  // Update thickness if provided
+  if (thickness !== undefined) {
+    updateCursorThickness(cursorElement, thickness);
+  }
   
   // Style based on hand mode
   cursorElement.className = `hand-cursor hand-cursor-0 ${mode.toLowerCase()}-mode`;
