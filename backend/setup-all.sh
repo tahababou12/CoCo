@@ -91,6 +91,25 @@ echo -e "${GREEN}✓ Created required directories${NC}"
 
 echo ""
 echo -e "${GREEN}✓ Setup complete!${NC}"
-echo -e "${YELLOW}To start all backend services, run:${NC} npm run start-all"
-echo -e "${YELLOW}For development mode with auto-restart:${NC} npm run dev-all"
-echo "" 
+
+# Ask user if they want to start the server automatically
+echo -e "${YELLOW}Do you want to start the backend server now? (y/n)${NC}"
+read -r response
+
+if [[ "$response" =~ ^[Yy]$ ]]; then
+  echo -e "${YELLOW}Starting backend server...${NC}"
+  echo -e "${BLUE}Server will be available at: http://localhost:5001${NC}"
+  echo -e "${BLUE}Press Ctrl+C to stop the server${NC}"
+  echo ""
+  
+  # Start the Flask server
+  source venv/bin/activate
+  python app.py
+else
+  echo -e "${YELLOW}To start the backend server manually, run:${NC}"
+  echo -e "${BLUE}cd backend && source venv/bin/activate && python app.py${NC}"
+  echo ""
+  echo -e "${YELLOW}To start all backend services, run:${NC} npm run start-all"
+  echo -e "${YELLOW}For development mode with auto-restart:${NC} npm run dev-all"
+  echo ""
+fi 

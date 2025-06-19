@@ -8,11 +8,18 @@ const PostLoginAuth: React.FC = () => {
   const [showGestureAuth, setShowGestureAuth] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isGestureVerified, setIsGestureVerified] = useState(false);
+  const [gestureKey, setGestureKey] = useState(0); // Add key to force re-render
 
   const resetGestureAuth = () => {
     console.log('Resetting gesture authentication...');
     setIsGestureVerified(false);
-    setShowGestureAuth(true);
+    setShowGestureAuth(false);
+    
+    // Force a complete re-render of the GestureAuth component
+    setTimeout(() => {
+      setGestureKey(prev => prev + 1);
+      setShowGestureAuth(true);
+    }, 100);
   };
 
   useEffect(() => {
@@ -89,6 +96,7 @@ const PostLoginAuth: React.FC = () => {
           {showGestureAuth && (
             <div className="relative">
               <GestureAuth
+                key={gestureKey} // Force re-render when key changes
                 onSuccess={handleGestureSuccess}
                 onFailure={handleGestureFailure}
               />
