@@ -1,9 +1,13 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
+import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { useDrawing } from '../context/DrawingContext'
+import { useHandGesture } from '../context/HandGestureContext'
+import { useWebSocket } from '../context/WebSocketContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
 import EnhancedImageActions from './EnhancedImageActions'
+import { Mic, MicOff, Volume2 } from 'lucide-react'
+import { useShapes } from '../ShapesContext'
 
 // Debug flag to control console logging
 const DEBUG = false;
@@ -36,8 +40,11 @@ interface EnhancedImageResult {
   prompt: string;
 }
 
-const Canvas: React.FC = () => {
+interface CanvasProps {}
+
+const Canvas: React.FC<CanvasProps> = () => {
   const { state, dispatch } = useDrawing()
+  const { setCanvas } = useShapes()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -53,13 +60,34 @@ const Canvas: React.FC = () => {
     position: { x: 0, y: 0 },
     value: '',
   })
+  const [enhancementStatus, setEnhancementStatus] = useState<'idle' | 'processing' | 'complete' | 'error'>('idle')
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null)
-  const [enhancementStatus, setEnhancementStatus] = useState<string>('idle')
 
   // Add state for interactive enhanced images
   const [interactiveEnhancedImages, setInteractiveEnhancedImages] = useState<EnhancedImage[]>([])
   const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
   const [initialImageState, setInitialImageState] = useState<EnhancedImage | null>(null)
+
+  // Multimodal AI state
+  const [isMultimodalConnected, setIsMultimodalConnected] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
+  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  const [multimodalError, setMultimodalError] = useState<string | null>(null)
+  
+  // Multimodal refs
+  const multimodalWebSocketRef = useRef<WebSocket | null>(null)
+  const multimodalAudioContextRef = useRef<AudioContext | null>(null)
+  const multimodalMediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const multimodalPcmDataRef = useRef<number[]>([])
+  const multimodalCurrentFrameRef = useRef<string | null>(null)
+  const multimodalAudioQueueRef = useRef<string[]>([])
+  const multimodalIsPlayingRef = useRef(false)
+  const multimodalStreamingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Real-time canvas streaming to Gemini
+  const [isLiveStreaming, setIsLiveStreaming] = useState(false);
+  const lastCanvasHashRef = useRef<string>('');
 
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -175,6 +203,28 @@ const Canvas: React.FC = () => {
     }
 
     context.restore();
+    
+    // Trigger immediate canvas capture after rendering is complete
+    if ((window as any).triggerImmediateCanvasCapture && (isDrawing || state.currentShape)) {
+      console.log('🎨 Rendering complete, triggering canvas capture...');
+      // Small delay to ensure rendering is fully complete
+      setTimeout(() => {
+        if ((window as any).triggerImmediateCanvasCapture) {
+          console.log('⚡ Triggering canvas capture after render...');
+          (window as any).triggerImmediateCanvasCapture();
+        }
+      }, 10);
+    }
+    
+    // Also trigger capture during drawing for more frequent updates
+    if ((window as any).triggerImmediateCanvasCapture && isDrawing && state.currentShape) {
+      // Trigger additional captures during drawing for smoother streaming
+      setTimeout(() => {
+        if ((window as any).triggerImmediateCanvasCapture && isDrawing) {
+          (window as any).triggerImmediateCanvasCapture();
+        }
+      }, 100);
+    }
   };
 
   // Initialize canvas and context
@@ -405,6 +455,27 @@ const Canvas: React.FC = () => {
         void (DEBUG && console.warn('Unknown tool:', state.tool));
         break;
     }
+    
+    // Capture canvas during drawing for real-time streaming
+    if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        console.log('📷 [DRAWING] Drawing detected - capturing canvas...');
+        
+        const payload = {
+          realtime_input: {
+            media_chunks: [{
+              mime_type: "image/jpeg",
+              data: imageData,
+            }],
+          },
+        };
+        
+        multimodalWebSocketRef.current.send(JSON.stringify(payload));
+        console.log('📷 [DRAWING] Canvas frame sent to Gemini');
+      }
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -617,13 +688,33 @@ const Canvas: React.FC = () => {
     if (isPanning) {
       setIsPanning(false);
       setLastPanPoint(null);
-      return;
     }
-
+    
     if (isDrawing && state.currentShape) {
       void (DEBUG && console.log('Ending drawing', state.currentShape.type));
       setIsDrawing(false);
       dispatch({ type: 'END_DRAWING' });
+      
+      // Immediately send canvas update to Gemini when drawing stops
+      if (isLiveStreaming && multimodalWebSocketRef.current) {
+        setTimeout(() => {
+          const currentCanvas = getCanvasHash();
+          if (currentCanvas) {
+            const payload = {
+              realtime_input: {
+                media_chunks: [
+                  {
+                    mime_type: "image/jpeg",
+                    data: currentCanvas.split(',')[1],
+                  },
+                ],
+              },
+            };
+            multimodalWebSocketRef.current?.send(JSON.stringify(payload));
+            console.log('📡 Sent immediate canvas update after drawing');
+          }
+        }, 100); // Small delay to ensure canvas is fully rendered
+      }
     }
   };
 
@@ -1198,6 +1289,254 @@ const Canvas: React.FC = () => {
     ));
   };
 
+  // Multimodal AI functions
+  const connectMultimodal = () => {
+    console.log('Attempting to connect to multimodal server...');
+    try {
+      multimodalWebSocketRef.current = new WebSocket('ws://localhost:9083');
+      
+      multimodalWebSocketRef.current.onopen = () => {
+        console.log('✅ Connected to multimodal server');
+        setIsMultimodalConnected(true);
+        setMultimodalError(null);
+        sendMultimodalSetup();
+      };
+
+      multimodalWebSocketRef.current.onmessage = handleMultimodalMessage;
+      
+      multimodalWebSocketRef.current.onclose = () => {
+        console.log('❌ Disconnected from multimodal server');
+        setIsMultimodalConnected(false);
+        setIsRecording(false);
+      };
+
+      multimodalWebSocketRef.current.onerror = (error) => {
+        console.error('❌ WebSocket error:', error);
+        setMultimodalError('Failed to connect to AI assistant');
+        setIsMultimodalConnected(false);
+      };
+    } catch (err) {
+      console.error('❌ Failed to connect:', err);
+      setMultimodalError('Failed to connect to AI assistant');
+    }
+  };
+
+  const sendMultimodalSetup = () => {
+    if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      const setupMessage = {
+        setup: {
+          response_modalities: ["AUDIO", "TEXT"]
+        },
+      };
+      multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+    }
+  };
+
+  const handleMultimodalMessage = (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      
+      if (data.text) {
+        const newMessage = {
+          type: 'assistant' as const,
+          content: data.text,
+          timestamp: new Date(),
+        };
+        setMultimodalMessages(prev => [...prev, newMessage]);
+        
+        // Show a subtle notification for Gemini's response
+        if (window.showToast) {
+          window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
+        }
+      }
+      
+      if (data.audio) {
+        multimodalAudioQueueRef.current.push(data.audio);
+        playNextMultimodalAudio();
+      }
+    } catch (err) {
+      console.error('Error parsing WebSocket message:', err);
+    }
+  };
+
+  const initializeMultimodalAudio = async () => {
+    try {
+      multimodalAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
+        sampleRate: 24000 
+      });
+      
+      await multimodalAudioContextRef.current.audioWorklet.addModule('/pcm-processor.js');
+    } catch (err) {
+      console.error('Failed to initialize audio context:', err);
+      setMultimodalError('Failed to initialize audio system');
+    }
+  };
+
+  const startMultimodalRecording = async () => {
+    console.log('🎤 Starting multimodal recording...');
+    console.log('Connection status:', isMultimodalConnected);
+    console.log('Audio context:', multimodalAudioContextRef.current);
+    
+    if (!isMultimodalConnected || !multimodalAudioContextRef.current) {
+      console.log('❌ Cannot start recording - not connected or no audio context');
+      setMultimodalError('Not connected to AI assistant');
+      return;
+    }
+
+    try {
+      console.log('🎤 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted');
+      
+      multimodalMediaRecorderRef.current = new MediaRecorder(stream);
+      multimodalPcmDataRef.current = [];
+
+      multimodalMediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const arrayBuffer = reader.result as ArrayBuffer;
+            const pcmData = new Int16Array(arrayBuffer);
+            multimodalPcmDataRef.current.push(...Array.from(pcmData));
+          };
+          reader.readAsArrayBuffer(event.data);
+        }
+      };
+
+      multimodalMediaRecorderRef.current.onstop = () => {
+        console.log('🎤 Recording stopped, sending voice message...');
+        sendMultimodalVoiceMessage();
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      multimodalMediaRecorderRef.current.start(100);
+      setIsRecording(true);
+      setMultimodalError(null);
+      console.log('✅ Recording started successfully');
+    } catch (err) {
+      console.error('❌ Failed to start recording:', err);
+      setMultimodalError('Failed to access microphone');
+    }
+  };
+
+  const stopMultimodalRecording = () => {
+    if (multimodalMediaRecorderRef.current && isRecording) {
+      multimodalMediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const sendMultimodalVoiceMessage = () => {
+    if (!multimodalWebSocketRef.current) return;
+
+    // Convert PCM data to base64
+    const buffer = new ArrayBuffer(multimodalPcmDataRef.current.length * 2);
+    const view = new DataView(buffer);
+    multimodalPcmDataRef.current.forEach((value, index) => {
+      view.setInt16(index * 2, value, true);
+    });
+
+    const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+
+    // Since we're live streaming the canvas, we can just send audio
+    // Gemini already has the latest canvas state
+    const payload = {
+      realtime_input: {
+        media_chunks: [
+          {
+            mime_type: "audio/pcm",
+            data: base64Audio,
+          },
+        ],
+      },
+    };
+
+    console.log('🎤 Sending voice message to Gemini (canvas already live-streamed)');
+    multimodalWebSocketRef.current.send(JSON.stringify(payload));
+    multimodalPcmDataRef.current = [];
+  };
+
+  // Disable browser audio playback
+  const playNextMultimodalAudio = async () => {
+    // No-op: audio playback disabled in browser
+    multimodalIsPlayingRef.current = false;
+    setIsPlayingAudio(false);
+  };
+
+  // Auto-start streaming when connected
+  useEffect(() => {
+    if (isMultimodalConnected && !isLiveStreaming) {
+      startLiveStreaming();
+    } else if (!isMultimodalConnected && isLiveStreaming) {
+      stopLiveStreaming();
+    }
+  }, [isMultimodalConnected]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopLiveStreaming();
+    };
+  }, []);
+
+  // Start continuous canvas streaming
+  const startLiveStreaming = () => {
+    console.log('📷 Starting continuous canvas streaming...');
+    setIsLiveStreaming(true);
+    
+    // Capture canvas every 500ms
+    const streamingInterval = setInterval(() => {
+      if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+          console.log('📷 [STREAMING] Capturing canvas...');
+          
+          const payload = {
+            realtime_input: {
+              media_chunks: [{
+                mime_type: "image/jpeg",
+                data: imageData,
+              }],
+            },
+          };
+          
+          multimodalWebSocketRef.current.send(JSON.stringify(payload));
+          console.log('📷 [STREAMING] Canvas frame sent to Gemini');
+        }
+      }
+    }, 500);
+    
+    // Store interval for cleanup
+    multimodalStreamingIntervalRef.current = streamingInterval;
+    console.log('📷 Canvas streaming interval started - will capture every 500ms');
+  };
+
+  // Stop continuous canvas streaming
+  const stopLiveStreaming = () => {
+    console.log('📷 Stopping continuous canvas streaming...');
+    setIsLiveStreaming(false);
+    
+    if (multimodalStreamingIntervalRef.current) {
+      clearInterval(multimodalStreamingIntervalRef.current);
+      multimodalStreamingIntervalRef.current = null;
+      console.log('📷 Canvas streaming interval stopped');
+    }
+  };
+
+  // Connect canvas to shapes context
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvas(canvasRef.current);
+    }
+  }, [canvasRef.current, setCanvas]);
+
+  // Function to get canvas hash for change detection
+  const getCanvasHash = () => {
+    if (!canvasRef.current) return '';
+    return canvasRef.current.toDataURL('image/jpeg', 0.8);
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -1241,6 +1580,54 @@ const Canvas: React.FC = () => {
         >
           {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
         </button>
+      )}
+
+      {/* Multimodal AI Assistant Button */}
+      <button
+        className={`absolute right-4 top-16 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
+          isMultimodalConnected 
+            ? 'bg-green-600 hover:bg-green-700 text-white' 
+            : 'bg-blue-600 hover:bg-blue-700 text-white'
+        }`}
+        onClick={isRecording ? stopMultimodalRecording : startMultimodalRecording}
+        disabled={!isMultimodalConnected}
+        title={isMultimodalConnected ? (isRecording ? "Stop Recording" : "Start Recording") : "Connect AI Assistant"}
+      >
+        {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+      </button>
+
+      {/* Live Streaming Status Indicator */}
+      {isLiveStreaming && (
+        <div className="absolute right-4 top-28 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+          <span>Gemini sees live canvas</span>
+        </div>
+      )}
+
+      {/* Connection Status Indicator */}
+      {!isMultimodalConnected && (
+        <button
+          className="absolute right-4 top-28 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs transition-colors duration-200"
+          onClick={connectMultimodal}
+          title="Connect to AI Assistant - Gemini will see your canvas live"
+        >
+          Connect AI
+        </button>
+      )}
+
+      {/* Audio Playback Indicator */}
+      {isPlayingAudio && (
+        <div className="absolute right-4 top-40 bg-blue-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+          <Volume2 size={12} className="animate-pulse" />
+          <span>Gemini speaking...</span>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {multimodalError && (
+        <div className="absolute right-4 top-52 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
+          {multimodalError}
+        </div>
       )}
 
       {/* Enhanced image display - replaced by interactive images */}

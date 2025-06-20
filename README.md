@@ -4,36 +4,76 @@ CoCo is a collaborative drawing application that enables multiple users to draw 
 
 ![CoCo Banner](frontend-main/public/CoCo_banner.png)
 
-## Features
+## 🎨 Features
 
-- **Real-time Collaboration**: Draw with multiple users simultaneously
-- **Live Cursor Tracking**: See other users' cursor positions in real-time
-- **AI-Enhanced Images**: Transform simple sketches into detailed images with Gemini AI
-- **Storyboard Creation**: Build visual narratives by combining enhanced drawings
-- **Video Generation**: Generate engaging videos from your storyboards with AI narration
-- **Multi-User Support**: Each user is assigned a specific drawing position
+- **Real-time Collaborative Drawing**: Draw together with others in real-time
+- **Hand Gesture Recognition**: Control the canvas with hand gestures
+- **AI-Powered Enhancement**: Enhance your sketches with Gemini AI
+- **Voice-Controlled AI Assistant**: Talk to an AI assistant about your drawings
+- **Storyboard Generation**: Create storyboards from your drawings
+- **Video Generation**: Generate videos from your storyboards
+- **Multi-modal Interaction**: Combine drawing, voice, and text for AI interaction
+
+## 🤖 Multimodal AI Assistant
+
+The new **Multimodal AI Assistant** allows you to have real-time conversations with Gemini about your drawings:
+
+### **Voice Commands**
+- **"Make this drawing more detailed"** - Ask for enhancements
+- **"Change the colors to blue and green"** - Modify existing images
+- **"What do you think about this drawing?"** - Get feedback
+- **"Add a background to this scene"** - Request modifications
+
+### **Text Chat**
+- Type messages to ask questions about your drawings
+- Get suggestions for improvements
+- Request specific modifications
+
+### **Real-time Drawing Analysis**
+- The AI can see your drawing as you create it
+- Get instant feedback and suggestions
+- Ask for help with drawing techniques
+
+### **How to Use**
+1. Click the **💬 AI Assistant** button in the top-right corner
+2. **Draw something** on the canvas
+3. **Talk to the AI** using voice or text
+4. **Get real-time assistance** and modifications
 
 ## Quick Start
 
-The easiest way to run the application is with our provided scripts:
-
+### **Option 1: Complete Setup (Recommended)**
 ```bash
-# Clone the repository
-git clone https://github.com/tahababou12/CoCo.git
-cd CoCo
+# Start all servers including multimodal AI assistant
+chmod +x start-multimodal.sh
+./start-multimodal.sh
 
-# Start all services
-./start.sh
-
-# To stop all services when finished
-./stop.sh
+# In a new terminal, start the frontend
+npm install
+npm run dev
 ```
 
-This will:
-1. Set up required environment files
-2. Install dependencies for frontend and backend
-3. Start all services
-4. Provide URLs to access the application
+### **Option 2: Manual Setup**
+```bash
+# Backend setup
+cd backend
+chmod +x setup-all.sh
+./setup-all.sh
+
+# Start multimodal server (in new terminal)
+cd multimodal
+source ../backend/venv/bin/activate
+python main.py
+
+# Start backend server (in new terminal)
+cd backend
+source venv/bin/activate
+python app.py
+
+# Frontend setup (in new terminal)
+npm install
+npm run dev
+```
 
 ## Project Architecture
 

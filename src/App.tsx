@@ -7,7 +7,6 @@ import ToastContainer from './components/ToastContainer'
 import Storyboard from './components/Storyboard'
 import { DrawingProvider } from './context/DrawingContext'
 import { HandGestureProvider } from './context/HandGestureContext'
-import AIAssistant from './components/AIAssistant'
 import CollaborationPanel from './components/CollaborationPanel'
 import UserWebcam from './components/UserWebcam'
 import SimpleWebcam from './components/SimpleWebcam'
@@ -79,13 +78,8 @@ const CollaboratorCursors: React.FC = () => {
 };
 
 function ProtectedApp() {
-  const [showCocoify, setShowCocoify] = useState(false);
   const [showStoryboard, setShowStoryboard] = useState(false);
   const webSocket = useWebSocket();
-
-  const toggleCocoify = () => {
-    setShowCocoify(!showCocoify);
-  };
 
   const toggleStoryboard = () => {
     setShowStoryboard(!showStoryboard);
@@ -112,10 +106,7 @@ function ProtectedApp() {
       style={{ touchAction: 'none' }}
       onMouseMove={handleMouseMove}
     >
-      <Header 
-        onToggleAI={toggleCocoify}
-        showAIAssistant={showCocoify}
-      />
+      <Header />
       <div className="flex-1 overflow-hidden relative">
         <Canvas />
         <Toolbar />
@@ -136,9 +127,6 @@ function ProtectedApp() {
           </svg>
           Storyboard
         </button>
-        
-        {/* Using AIAssistant component instead of inline implementation */}
-        {showCocoify && <AIAssistant isOpen={showCocoify} onClose={toggleCocoify} />}
         
         {/* Storyboard modal */}
         <Storyboard isOpen={showStoryboard} onClose={() => setShowStoryboard(false)} />

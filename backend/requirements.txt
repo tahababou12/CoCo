@@ -4,9 +4,10 @@ pillow
 opencv-python
 numpy
 python-dotenv
-google-generativeai
+google-genai
 mediapipe
-google
-google.genai
 elevenlabs
 moviepy
+websockets
+pydub
+pyaudio
