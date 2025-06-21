@@ -21,6 +21,14 @@ from story_video_generator import StoryVideoGenerator
 # Load environment variables
 load_dotenv()
 
+# Debug: Print current working directory and environment variables when the Flask app starts
+print(f"=== FLASK APP STARTUP DEBUG ===")
+print(f"Current working directory: {os.getcwd()}")
+print(f"GOOGLE_API_KEY available: {bool(os.getenv('GOOGLE_API_KEY'))}")
+print(f"GEMINI_API_KEY available: {bool(os.getenv('GEMINI_API_KEY'))}")
+print(f"Environment variables loaded from: {os.path.abspath('.env') if os.path.exists('.env') else 'No .env file found'}")
+print(f"=== END DEBUG ===")
+
 # Initialize MediaPipe Hand solution
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
@@ -34,7 +42,7 @@ hands = mp_hands.Hands(
 # Setup Google Generative AI
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GEMINI_API_KEY:
-    raise EnvironmentError("GOOGLE_API_KEY not found in environment variables")
+    print("Warning: GOOGLE_API_KEY not found in environment variables")
 
 # Configure the Gemini client
 client = genai.Client(api_key=GEMINI_API_KEY)
@@ -111,6 +119,8 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                     prompt_text = "Enhance this sketch into an image with more detail."
                 
                 print(f"Processing with prompt: {prompt_text}")
+                print(f"Using model: {GEMINI_MODEL}")
+                print(f"API Key available: {bool(GEMINI_API_KEY)}")
                 
                 # Prepare the prompt and image data
                 contents = [
@@ -121,18 +131,32 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                     }}
                 ]
                 
+                print(f"Contents structure: {contents}")
+                
                 # Set the configuration
                 config = types.GenerateContentConfig(response_modalities=['Text', 'Image'])
                 
+                print(f"Config: {config}")
+                
                 # Generate the enhanced image
                 # client = genai.Client(api_key=GEMINI_API_KEY)
-                response = client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=contents,
-                    config=config
-                )
-                
-                print("RESPONSE: ", response)
+                try:
+                    response = client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=contents,
+                        config=config
+                    )
+                    
+                    print("RESPONSE: ", response)
+                    
+                except Exception as api_error:
+                    error_msg = f"Gemini API error: {str(api_error)}"
+                    print(error_msg)
+                    print(f"Error type: {type(api_error)}")
+                    print(f"Error details: {api_error}")
+                    processing_status[request_id] = {"status": "error", "message": error_msg}
+                    is_processing = False
+                    return
                 
                 # Process the response
                 success = False
@@ -208,6 +232,9 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
             except Exception as e:
                 error_msg = f"Error enhancing drawing with Gemini: {str(e)}"
                 print(error_msg)
+                print(f"Full error details: {e}")
+                import traceback
+                traceback.print_exc()
                 processing_status[request_id] = {"status": "error", "message": error_msg}
             
             finally:

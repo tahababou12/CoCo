@@ -44,17 +44,28 @@ echo -e "${YELLOW}Installing requirements.txt...${NC}"
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Start Flask backend
+# Load environment variables from .env file
+echo -e "${YELLOW}Loading environment variables...${NC}"
+if [ -f ".env" ]; then
+    export $(cat .env | grep -v '^#' | xargs)
+    echo -e "${GREEN}Environment variables loaded from .env${NC}"
+else
+    echo -e "${RED}Warning: .env file not found in backend directory${NC}"
+fi
+
+# Start Flask backend with environment variables (run from backend directory)
 echo -e "${BLUE}Starting Flask backend on port 5001...${NC}"
+cd /Users/sakethpoori/Documents/hacks/CoCo/backend
 python app.py &
 BACKEND_PID=$!
 
-# Start multimodal server
+# Start multimodal server with environment variables (run from backend directory)
 echo -e "${BLUE}Starting multimodal server on port 9083...${NC}"
+cd /Users/sakethpoori/Documents/hacks/CoCo/backend
 python multimodal_server.py &
 MULTIMODAL_PID=$!
 
-cd ..
+cd /Users/sakethpoori/Documents/hacks/CoCo
 
 echo -e "${GREEN}✅ Both servers started!${NC}"
 echo -e "${BLUE}   - Flask backend: http://localhost:5001 (PID: $BACKEND_PID)${NC}"
@@ -62,5 +73,5 @@ echo -e "${BLUE}   - Multimodal server: ws://localhost:9083 (PID: $MULTIMODAL_PI
 echo -e "\n${YELLOW}To start the frontend, run: npm run dev${NC}"
 echo -e "\n${BLUE}Press Ctrl+C to stop all servers${NC}"
 
-# Wait for user to stop
-wait 
+# Keep script alive to hold background processes
+wait

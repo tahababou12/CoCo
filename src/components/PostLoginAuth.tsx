@@ -18,7 +18,7 @@ const PostLoginAuth: React.FC = () => {
     // Force a complete re-render of the GestureAuth component
     setTimeout(() => {
       setGestureKey(prev => prev + 1);
-      setShowGestureAuth(true);
+    setShowGestureAuth(true);
     }, 100);
   };
 

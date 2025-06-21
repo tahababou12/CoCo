@@ -17,6 +17,9 @@ import wave
 from dotenv import load_dotenv
 import pyaudio
 from collections import deque
+import numpy as np
+from google.genai import live
+from google.genai import types
 
 # Load environment variables
 load_dotenv()
@@ -192,7 +195,9 @@ async def gemini_session_handler(websocket):
                 print("📤 Starting to send audio to Gemini...")
                 while True:
                     data = await audio_queue.get()
-                    await session.send({"mime_type": "audio/pcm", "data": data})
+                    # Use new API with Blob object
+                    blob = types.Blob(data=data, mime_type="audio/pcm;rate=24000")
+                    await session.send_realtime_input(media=blob)
                     audio_queue.task_done()
 
             async def handle_frontend_messages():
@@ -223,7 +228,9 @@ async def gemini_session_handler(websocket):
                                         # Decode base64 image data before sending to Gemini
                                         image_data = base64.b64decode(chunk["data"])
                                         print(f"Sending image to Gemini: {len(image_data)} bytes")
-                                        await session.send({"mime_type": "image/jpeg", "data": image_data})
+                                        # Use new API with Blob object
+                                        blob = types.Blob(data=image_data, mime_type="image/jpeg")
+                                        await session.send_realtime_input(media=blob)
                                         print(f"Image sent successfully to Gemini")
                                         
                         except Exception as e:
