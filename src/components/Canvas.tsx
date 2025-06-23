@@ -227,6 +227,15 @@ const Canvas: React.FC = () => {
           type: 'START_DRAWING',
           payload: { point, type: 'pencil' },
         });
+        // Set erasing style with destination-out composite operation
+        dispatch({
+          type: 'SET_STYLE',
+          payload: { 
+            strokeColor: '#000000', // Color doesn't matter for erasing, but we need one
+            strokeWidth: (state.defaultStyle.strokeWidth || 2) * 2.5, // Larger width for erasing
+            globalCompositeOperation: 'destination-out' // This makes it erase
+          }
+        });
         break;
 
       case 'text':
@@ -280,8 +289,8 @@ const Canvas: React.FC = () => {
 
     // Handle enhanced image dragging and resizing
     if (dragStartPos && initialImageState) {
-      const dx = e.clientX - dragStartPos.x;
-      const dy = e.clientY - dragStartPos.y;
+      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
+      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
 
       setInteractiveEnhancedImages(images => images.map(img => {
         if (img.isDragging) {
@@ -300,17 +309,17 @@ const Canvas: React.FC = () => {
 
           // Handle different resize positions
           if (img.resizeHandle.includes('e')) {
-            newWidth = Math.max(50, initialImageState.width + dx);
+            newWidth = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
           }
           if (img.resizeHandle.includes('s')) {
-            newHeight = Math.max(50, initialImageState.height + dy);
+            newHeight = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
           }
           if (img.resizeHandle.includes('w')) {
-            newWidth = Math.max(50, initialImageState.width - dx);
+            newWidth = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
             newX = initialImageState.x + dx;
           }
           if (img.resizeHandle.includes('n')) {
-            newHeight = Math.max(50, initialImageState.height - dy);
+            newHeight = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
             newY = initialImageState.y + dy;
           }
 
@@ -369,8 +378,8 @@ const Canvas: React.FC = () => {
     const draggedImage = interactiveEnhancedImages.find(img => img.isDragging || img.isResizing);
     
     if (draggedImage && initialImageState && dragStartPos) {
-      const dx = e.clientX - dragStartPos.x;
-      const dy = e.clientY - dragStartPos.y;
+      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
+      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
       
       const draggedIndex = interactiveEnhancedImages.findIndex(img => 
         img.isDragging || img.isResizing
@@ -384,37 +393,37 @@ const Canvas: React.FC = () => {
           // Handle resizing based on which handle was grabbed
           switch (draggedImage.resizeHandle) {
             case 'bottom-right':
-              image.width = Math.max(50, initialImageState.width + dx);
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'bottom-left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'top-right':
-              image.width = Math.max(50, initialImageState.width + dx);
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
             case 'top-left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
             case 'right':
-              image.width = Math.max(50, initialImageState.width + dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
               break;
             case 'left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
               break;
             case 'bottom':
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'top':
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
           }
@@ -552,19 +561,7 @@ const Canvas: React.FC = () => {
   }
 
   const handleClearAll = () => {
-    if (state.shapes.length > 0) {
-      // End any current drawing first
-      if (state.currentShape) {
-        dispatch({ type: 'END_DRAWING' });
-        setIsDrawing(false);
-      }
-      
-      // Get all shape IDs
-      const shapeIds = state.shapes.map(shape => shape.id);
-      
-      // Delete all shapes
-      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-    }
+    dispatch({ type: 'CLEAR_ALL' });
   }
 
   const saveCanvasAsPNG = async () => {
@@ -898,10 +895,10 @@ const Canvas: React.FC = () => {
         key={image.id}
         className="absolute"
         style={{
-          left: `${image.x}px`,
-          top: `${image.y}px`,
-          width: `${image.width}px`,
-          height: `${image.height}px`,
+          left: `${image.x * state.viewTransform.scale + state.viewTransform.offsetX}px`,
+          top: `${image.y * state.viewTransform.scale + state.viewTransform.offsetY}px`,
+          width: `${image.width * state.viewTransform.scale}px`,
+          height: `${image.height * state.viewTransform.scale}px`,
           border: '2px solid #9333ea',
           borderRadius: '4px',
           overflow: 'hidden',

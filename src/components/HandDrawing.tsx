@@ -98,9 +98,6 @@ const HandDrawing: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<Point | null>(null);
   
-  // Add a state to track if we're in the process of toggling modes
-  const [isToggling, setIsToggling] = useState(false);
-  
   // Add finger distance tracking state
   const [fingerDistances, setFingerDistances] = useState<{ [key: string]: number }>({});
   const [peaceSignDetected, setPeaceSignDetected] = useState(false);
@@ -110,6 +107,12 @@ const HandDrawing: React.FC = () => {
   const [currentStrokeWidth, setCurrentStrokeWidth] = useState(5);
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const colorPalette = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#000000', '#FFFFFF'];
+  
+  // Use a ref to track the latest stroke width to avoid stale closures in callbacks
+  const strokeWidthRef = useRef(currentStrokeWidth);
+  useEffect(() => {
+    strokeWidthRef.current = currentStrokeWidth;
+  }, [currentStrokeWidth]);
   
   // Toolset visibility toggle state
   const [isToolsetVisible, setIsToolsetVisible] = useState(false);
@@ -248,7 +251,7 @@ const HandDrawing: React.FC = () => {
         
         // Position and style cursor
         const mode = activeHandModesRef.current[index] || 'None';
-        updateCursor(cursorDiv, finalX, finalY, mode, currentStrokeWidth);
+        updateCursor(cursorDiv, finalX, finalY, mode, strokeWidthRef.current);
       }
       
       // Send hand cursor position to collaborators if connected
@@ -261,7 +264,7 @@ const HandDrawing: React.FC = () => {
         webSocket.sendCursorMove(cursorPoint);
       }
     });
-  }, [handCursors, isHandTrackingActive, webSocket, state.viewTransform, currentStrokeWidth]);
+  }, [handCursors, isHandTrackingActive, webSocket, state.viewTransform, strokeWidthRef.current]);
   
   // Reference to style element for cursor
   const styleElementRef = useRef<HTMLStyleElement | null>(null);
@@ -279,23 +282,18 @@ const HandDrawing: React.FC = () => {
     styleElementRef.current = addCursorStyles();
     
     // Create initial cursor
-    ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', currentStrokeWidth);
+    ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', strokeWidthRef.current);
     
     // Clean up on unmount
     return () => {
       // Remove cursor elements and styles
       cleanupCursors([0], styleElementRef.current || undefined);
     };
-  }, [currentStrokeWidth]);
+  }, [strokeWidthRef.current]);
 
   // Initialize MediaPipe Hands
   useEffect(() => {
     if (!isWebcamSupported || !isHandTrackingActive) {
-      return;
-    }
-    
-    // Skip reinitializing while toggling to prevent race conditions
-    if (isToggling) {
       return;
     }
     
@@ -314,8 +312,8 @@ const HandDrawing: React.FC = () => {
         };
         
         // Make sure cursor elements exist for both hands
-        ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', currentStrokeWidth);
-        ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00', currentStrokeWidth);
+        ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', strokeWidthRef.current);
+        ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00', strokeWidthRef.current);
         
         // Make sure any previous instances are properly cleaned up
         if (cameraRef.current) {
@@ -570,7 +568,7 @@ const HandDrawing: React.FC = () => {
       // Start the safe cleanup process
       safeCleanup();
     };
-  }, [isHandTrackingActive, isWebcamSupported, dualHandMode, isToggling]);
+  }, [isHandTrackingActive, isWebcamSupported, dualHandMode]);
 
   // Handle different hand modes
   const handleHandMode = (
@@ -672,7 +670,7 @@ const HandDrawing: React.FC = () => {
             type: 'SET_STYLE',
             payload: { 
               strokeColor: drawingColorsRef.current[handIndex],
-              strokeWidth: currentStrokeWidth,
+              strokeWidth: strokeWidthRef.current,
               globalCompositeOperation: 'source-over' // Ensure normal drawing mode
             }
           });
@@ -707,11 +705,13 @@ const HandDrawing: React.FC = () => {
         
         // Periodically save drawing even while in drawing mode
         // This ensures strokes persist even if hand tracking is lost
+        /*
         const now = Date.now();
         if (now - lastDrawingUpdateRef.current > 200 && state.currentShape && state.currentShape.points.length > 5) {
           if (DEBUG_FINGER_DRAWING) console.log('Periodic save of drawing with', state.currentShape.points.length, 'points');
           saveDrawing();
         }
+        */
         break;
       }
       
@@ -782,6 +782,9 @@ const HandDrawing: React.FC = () => {
       }
       
       case 'PixelErasing': {
+        // Set drawing state immediately when PixelErasing mode is detected
+        setIsDrawing(true);
+        
         // Get previous point for this hand - if none, use current point
         const prevPoint = prevPointsRef.current[handIndex] || transformedPoint;
         
@@ -800,49 +803,70 @@ const HandDrawing: React.FC = () => {
         // Update last drawing time
         lastDrawingUpdateRef.current = Date.now();
         
-        // Keep isDrawing as false for erasing since we're not creating content
-        setIsDrawing(false);
+        // Start erasing if not already doing so
+        if (!state.currentShape) {
+          // Switch to pencil tool for erasing strokes
+          if (state.tool !== 'pencil') {
+            if (DEBUG_FINGER_DRAWING) console.log('Setting tool to pencil (during erasing)');
+            dispatch({ type: 'SET_TOOL', payload: 'pencil' });
+          }
+          
+          if (DEBUG_FINGER_DRAWING) console.log('Starting erasing from previous point', prevPoint);
+          
+          // Start erasing from the previous point for continuity
+          dispatch({
+            type: 'START_DRAWING',
+            payload: { 
+              point: prevPoint, 
+              type: 'pencil' 
+            }
+          });
+          
+          // Set erasing style with destination-out composite operation
+          dispatch({
+            type: 'SET_STYLE',
+            payload: { 
+              strokeColor: '#000000', // Color doesn't matter for erasing, but we need one
+              strokeWidth: strokeWidthRef.current * 2.5, // Larger width for erasing
+              globalCompositeOperation: 'destination-out' // This makes it erase
+            }
+          });
+          
+          // Notify other users about the erasing start via WebSocket
+          if (webSocket?.isConnected && webSocket?.startDrawing) {
+            if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand erasing start', prevPoint);
+            webSocket.startDrawing(prevPoint, 'pencil');
+          } else if (DEBUG_COLLAB) {
+            console.warn('[COLLAB] WebSocket not connected for erasing start');
+          }
+        } 
         
-        // Apply erasing directly to the canvas
-        const canvases = document.querySelectorAll('canvas');
-        const drawingCanvas = Array.from(canvases).find(canvas => {
-          const style = window.getComputedStyle(canvas);
-          return style.zIndex === '1' || canvas.style.zIndex === '1';
+        if (DEBUG_FINGER_DRAWING) console.log('Continuing erasing at', transformedPoint);
+        
+        // Continue erasing - always update with new point
+        dispatch({
+          type: 'CONTINUE_DRAWING', 
+          payload: transformedPoint
         });
         
-        if (drawingCanvas) {
-          const ctx = drawingCanvas.getContext('2d');
-          if (ctx) {
-            // Save current context state
-            ctx.save();
-            
-            // Apply view transform
-            ctx.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
-            ctx.scale(state.viewTransform.scale, state.viewTransform.scale);
-            
-            // Set up erasing
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.lineWidth = currentStrokeWidth * 2.5; // Larger width for erasing
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            
-            // Draw erasing stroke from previous point to current point
-            ctx.beginPath();
-            ctx.moveTo(prevPoint.x, prevPoint.y);
-            ctx.lineTo(transformedPoint.x, transformedPoint.y);
-            ctx.stroke();
-            
-            // Restore context state
-            ctx.restore();
-            
-            if (DEBUG_FINGER_DRAWING) {
-              console.log('Applied erasing stroke from', prevPoint, 'to', transformedPoint);
-            }
-          }
+        // Notify other users about the erasing continuation
+        if (webSocket?.isConnected && webSocket?.continueDrawing) {
+          if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand erasing update');
+          webSocket.continueDrawing(transformedPoint);
         }
         
         // Store the current point for next frame
         prevPointsRef.current[handIndex] = transformedPoint;
+        
+        // Periodically save erasing even while in erasing mode
+        // This ensures erasing strokes persist even if hand tracking is lost
+        /*
+        const now = Date.now();
+        if (now - lastDrawingUpdateRef.current > 200 && state.currentShape && state.currentShape.points.length > 5) {
+          if (DEBUG_FINGER_DRAWING) console.log('Periodic save of erasing with', state.currentShape.points.length, 'points');
+          saveDrawing();
+        }
+        */
         break;
       }
       
@@ -909,8 +933,8 @@ const HandDrawing: React.FC = () => {
     
     // If turning on, make sure cursor exists
     if (newActiveState) {
-      ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', currentStrokeWidth);
-      ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00', currentStrokeWidth);
+      ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', strokeWidthRef.current);
+      ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00', strokeWidthRef.current);
     } else {
       // Hide cursor when turning off
       const cursor0 = document.getElementById('hand-cursor-0');
@@ -929,50 +953,7 @@ const HandDrawing: React.FC = () => {
 
   // Toggle dual hand mode
   const toggleDualHandMode = () => {
-    // If already toggling, prevent multiple calls
-    if (isToggling) return;
-    
-    // Set toggling state to prevent effect from firing early
-    setIsToggling(true);
-    
-    // End any active drawing
-    if (state.currentShape) {
-      dispatch({ type: 'END_DRAWING' });
-      setIsDrawing(false);
-    }
-
-    // Toggle the state
-    const newDualHandMode = !dualHandMode;
-    setDualHandMode(newDualHandMode);
-    
-    console.log(`Toggling dual hand mode: ${newDualHandMode ? 'ON' : 'OFF'}`);
-    
-    // Clear any active cursors
-    const cursor0 = document.getElementById('hand-cursor-0');
-    const cursor1 = document.getElementById('hand-cursor-1');
-    if (cursor0) cursor0.style.display = 'none';
-    if (cursor1) cursor1.style.display = 'none';
-    
-    // If hand tracking is active, we need to restart it with new settings
-    if (isHandTrackingActive) {
-      // Temporarily disable hand tracking
-      setIsHandTrackingActive(false);
-      
-      // Wait for a short time to ensure cleanup, then re-enable
-      setTimeout(() => {
-        setIsHandTrackingActive(true);
-        
-        // Reset toggling flag after a delay to ensure new effect has started
-        setTimeout(() => {
-          setIsToggling(false);
-        }, 200);
-      }, 1000); // Longer timeout to ensure proper cleanup
-    } else {
-      // If hand tracking is not active, just reset the toggling flag
-      setTimeout(() => {
-        setIsToggling(false);
-      }, 200);
-    }
+    setDualHandMode(prev => !prev);
   };
 
   // Add synchronization effect for drawing state
@@ -1045,7 +1026,7 @@ const HandDrawing: React.FC = () => {
             points: shapePoints,
             style: { 
               strokeColor: drawingColorsRef.current[0],
-              strokeWidth: currentStrokeWidth,
+              strokeWidth: strokeWidthRef.current,
               fillColor: 'transparent',
               opacity: 1,
               fontSize: 16,
@@ -1067,49 +1048,7 @@ const HandDrawing: React.FC = () => {
   // Force clear all drawings
   const forceClearAll = () => {
     console.log('Force clearing all drawings');
-    
-    // Try to find and click the Clear All button in the Canvas component
-    const clearAllButton = document.querySelector('button[title="Clear All Drawings"]');
-    if (clearAllButton) {
-      console.log('Found Clear All button, clicking it');
-      (clearAllButton as HTMLButtonElement).click();
-      return;
-    }
-    
-    // Fallback: First make sure any current drawing is ended and saved
-    if (state.currentShape) {
-      console.log('Ending current drawing before clearing');
-      dispatch({ type: 'END_DRAWING' });
-      setIsDrawing(false);
-    }
-    
-    // Get all shape IDs
-    const shapeIds = state.shapes.map(shape => shape.id);
-    console.log('Shape IDs to delete:', shapeIds);
-    
-    // Delete all shapes if there are any
-    if (shapeIds.length > 0) {
-      console.log('Dispatching DELETE_SHAPES action with payload:', shapeIds);
-      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-      
-      // Verify the shapes were cleared after a short delay
-      setTimeout(() => {
-        console.log('After clearing, shapes count:', state.shapes.length);
-        
-        // If shapes weren't cleared, try again using a different approach
-        if (state.shapes.length > 0) {
-          console.log('Shapes not cleared on first attempt, trying individual deletion');
-          state.shapes.forEach(shape => {
-            dispatch({ 
-              type: 'DELETE_SHAPES', 
-              payload: [shape.id] 
-            });
-          });
-        }
-      }, 100);
-    } else {
-      console.log('No shapes to clear');
-    }
+    dispatch({ type: 'CLEAR_ALL' });
   };
 
   // Update drawing colors based on selected color
@@ -1123,37 +1062,21 @@ const HandDrawing: React.FC = () => {
     // Make sure cursor elements have the right colors
     Object.entries(drawingColorsRef.current).forEach(([indexStr, color]) => {
       const index = parseInt(indexStr);
-      ensureCursorExists(index, color, currentStrokeWidth);
+      ensureCursorExists(index, color, strokeWidthRef.current);
     });
-  }, [selectedColorIndex, colorPalette, currentStrokeWidth]);
+  }, [selectedColorIndex, colorPalette, strokeWidthRef.current]);
 
   // Update stroke width in drawing context when currentStrokeWidth changes
   useEffect(() => {
-    // Update the default style with the new stroke width
+    // Update the default style with the new stroke width from the toolset
     dispatch({
       type: 'SET_STYLE',
       payload: { 
-        strokeWidth: currentStrokeWidth,
+        strokeWidth: strokeWidthRef.current,
         strokeColor: drawingColorsRef.current[0] // Also update color to ensure consistency
       }
     });
-    
-    // If there's an active drawing (but not erasing), update its style immediately
-    if (state.currentShape && state.currentShape.style.globalCompositeOperation !== 'destination-out') {
-      dispatch({
-        type: 'SET_STYLE',
-        payload: { 
-          strokeWidth: currentStrokeWidth,
-          strokeColor: drawingColorsRef.current[0],
-          globalCompositeOperation: 'source-over'
-        }
-      });
-      
-      if (DEBUG_FINGER_DRAWING) {
-        console.log('Updated active drawing stroke width to:', currentStrokeWidth);
-      }
-    }
-  }, [currentStrokeWidth, selectedColorIndex, state.currentShape]);
+  }, [strokeWidthRef.current, selectedColorIndex]);
 
   return (
     <div className="hand-tracking-container">
@@ -1429,7 +1352,7 @@ const HandDrawing: React.FC = () => {
           {/* Stroke Width Slider */}
           <div className="mb-3">
             <div className="text-xs text-gray-600 mb-1">
-              Stroke Width: {currentStrokeWidth}px
+              Stroke Width: {strokeWidthRef.current}px
             </div>
             <input
               id="thickness-slider"
@@ -1437,11 +1360,11 @@ const HandDrawing: React.FC = () => {
               min="1"
               max="100"
               step="1"
-              value={currentStrokeWidth}
+              value={strokeWidthRef.current}
               onChange={(e) => setCurrentStrokeWidth(parseInt(e.target.value))}
               className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
               style={{
-                background: `linear-gradient(to right, #4F46E5 0%, #4F46E5 ${((currentStrokeWidth - 1) / 99) * 100}%, #D1D5DB ${((currentStrokeWidth - 1) / 99) * 100}%, #D1D5DB 100%)`
+                background: `linear-gradient(to right, #4F46E5 0%, #4F46E5 ${((strokeWidthRef.current - 1) / 99) * 100}%, #D1D5DB ${((strokeWidthRef.current - 1) / 99) * 100}%, #D1D5DB 100%)`
               }}
             />
           </div>

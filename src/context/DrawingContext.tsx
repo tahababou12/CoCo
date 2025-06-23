@@ -60,6 +60,7 @@ type DrawingAction =
   | { type: 'START_SELECTION_BOX'; payload: Point }
   | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
   | { type: 'END_SELECTION_BOX' }
+  | { type: 'CLEAR_ALL' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -338,14 +339,27 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       }
     }
 
-    case 'SET_STYLE':
+    case 'SET_STYLE': {
+      const newDefaultStyle = {
+        ...state.defaultStyle,
+        ...action.payload,
+      };
+      
+      // Also update the current shape's style if there's an active drawing
+      const updatedCurrentShape = state.currentShape ? {
+        ...state.currentShape,
+        style: {
+          ...state.currentShape.style,
+          ...action.payload,
+        }
+      } : null;
+      
       return {
         ...state,
-        defaultStyle: {
-          ...state.defaultStyle,
-          ...action.payload,
-        },
-      }
+        defaultStyle: newDefaultStyle,
+        currentShape: updatedCurrentShape,
+      };
+    }
 
     case 'SET_FILL_COLOR':
       return {
@@ -608,6 +622,23 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         ...state,
         selectionBox: null,
         selectedShapeIds
+      }
+    }
+
+    case 'CLEAR_ALL': {
+      // End any current drawing first
+      if (state.currentShape) {
+        // We don't save the current drawing, just discard it.
+      }
+      return {
+        ...state,
+        shapes: [],
+        currentShape: null,
+        selectedShapeIds: [],
+        history: {
+          past: [...state.history.past, state.shapes],
+          future: [],
+        },
       }
     }
 
