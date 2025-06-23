@@ -131,7 +131,7 @@ if ! kill -0 $FLASK_PID 2>/dev/null; then
     echo "❌ Error: Flask server failed to start"
     exit 1
 fi
-echo "✅ Flask backend running on http://localhost:5000"
+echo "✅ Flask backend running on http://localhost:5001"
 
 # Start multimodal server
 echo "🎤 Starting multimodal AI server..."
@@ -172,7 +172,7 @@ echo ""
 echo "🎉 All servers are running!"
 echo ""
 echo "📱 Frontend: http://localhost:5174"
-echo "🔧 Backend API: http://localhost:5000"
+echo "🔧 Backend API: http://localhost:5001"
 echo "🎤 Multimodal AI: ws://localhost:9083"
 echo ""
 echo "🎨 How to use voice enhancement:"

@@ -946,22 +946,16 @@ const HandDrawing: React.FC = () => {
         <div className="absolute left-4 bottom-4 bg-white p-2 rounded shadow-md text-xs z-10">
           <div className="text-sm font-bold mb-1">Hand Gestures:</div>
           <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
-            <span>Index Finger Only: Draw</span>
+            <span className="text-lg mr-2">🖐️</span>
+            <span>Open palm - all fingers extended: Draw</span>
           </div>
           <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
-            <span>Closed Fist: Click Buttons</span>
+            <span className="text-lg mr-2">🤙</span>
+            <span>Thumb + pinky extended: Clear</span>
           </div>
           <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
-            <span>Thumb + Index + Middle: Drag Canvas</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
-              <span className="text-red-500 font-bold text-xs">✕</span>
-            </div>
-            <span>Thumb + Pinky: Clear All Drawings</span>
+            <span className="text-lg mr-2">✊</span>
+            <span>Closed fist - all fingers curled: Click</span>
           </div>
           <div className="text-xs text-gray-600 mt-1">
             Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}

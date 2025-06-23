@@ -231,13 +231,13 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
           console.log('❌ [DEBUG] Enhancement error message added to chat');
         } else {
           // Regular text message
-          const newMessage: ChatMessage = {
-            id: Date.now().toString(),
-            type: 'assistant',
-            content: data.text,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, newMessage]);
+        const newMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: data.text,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, newMessage]);
           console.log('✅ [DEBUG] Regular text message added to chat');
         }
       }

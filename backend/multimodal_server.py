@@ -69,11 +69,26 @@ def is_enhance_command(text):
             return True
     return False
 
+async def process_user_speech_for_commands(audio_data):
+    """Process user speech to detect enhancement commands before sending to Gemini"""
+    try:
+        # For now, we'll use a simple approach - send the audio to Gemini
+        # and then check the response for enhancement commands
+        # In a more sophisticated implementation, you could use a separate speech-to-text service
+        
+        # This is a placeholder - in practice, you might want to use a separate STT service
+        # to get the text before sending to Gemini, or handle this differently
+        
+        return None  # No command detected for now
+    except Exception as e:
+        print(f"Error processing user speech: {e}")
+        return None
+
 async def call_enhancement_api(prompt=""):
     """Call the Flask enhancement API"""
     try:
         async with aiohttp.ClientSession() as session:
-            url = "http://localhost:5000/api/enhance-image-voice"
+            url = "http://localhost:5001/api/enhance-image-voice"
             data = {"prompt": prompt}
             
             async with session.post(url, json=data) as response:
@@ -209,6 +224,21 @@ async def gemini_session_handler(websocket):
                         prebuilt_voice_config=PrebuiltVoiceConfig(voice_name="Puck")
                     )
                 ),
+                system_instruction="""You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
+
+Your role:
+- Give encouraging, helpful advice about their drawings
+- Suggest ways to improve composition, colors, or technique
+- When they ask for help making their drawing better, you can suggest using the 'Enhance with Gemini' feature as one option
+- Be casual and supportive, like you're hanging out with a friend who's drawing
+- Keep your responses conversational and not too technical
+
+Example responses:
+- "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
+- "I love the colors you're using! If you want to make it even more awesome, you could try the 'Enhance with Gemini' button - it'll add some really cool effects to your drawing."
+- "That's a great start! What if you added some more details in the background?"
+
+Just be helpful and encouraging!"""
             )
             
             print(f"Final config for Gemini: {live_config}")
@@ -313,6 +343,15 @@ async def gemini_session_handler(websocket):
                             print(f"❌ Error sending audio to Gemini: {e}")
                             break
 
+                async def send_text_to_gemini(text):
+                    """Send text input to Gemini to get both text and audio responses"""
+                    try:
+                        text_blob = types.Blob(data=text.encode('utf-8'), mime_type="text/plain")
+                        await session.send_realtime_input(media=text_blob)
+                        print(f"📝 Sent text to Gemini: {text}")
+                    except Exception as e:
+                        print(f"❌ Error sending text to Gemini: {e}")
+
                 async def handle_frontend_messages():
                     """Handles messages from frontend (canvas + buffered audio)"""
                     try:
@@ -387,8 +426,7 @@ async def gemini_session_handler(websocket):
                                                         confirmation_text = "Sorry, I couldn't start the enhancement. Please try again."
                                                     
                                                     # Send the confirmation text to Gemini to get it spoken
-                                                    text_blob = types.Blob(data=confirmation_text.encode('utf-8'), mime_type="text/plain")
-                                                    await session.send_realtime_input(media=text_blob)
+                                                    await send_text_to_gemini(confirmation_text)
                                                     
                                                     # Also send to frontend for immediate display
                                                     await websocket.send(json.dumps({
