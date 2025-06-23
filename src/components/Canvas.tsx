@@ -1355,19 +1355,6 @@ const Canvas: React.FC = () => {
     }
   };
 
-  const initializeMultimodalAudio = async () => {
-    try {
-      multimodalAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
-        sampleRate: 24000 
-      });
-      
-      await multimodalAudioContextRef.current.audioWorklet.addModule('/pcm-processor.js');
-    } catch (err) {
-      console.error('Failed to initialize audio context:', err);
-      setMultimodalError('Failed to initialize audio system');
-    }
-  };
-
   const startMultimodalRecording = async () => {
     console.log('🎤 Starting multimodal recording...');
     console.log('Connection status:', isMultimodalConnected);
