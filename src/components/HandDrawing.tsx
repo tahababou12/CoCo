@@ -2,9 +2,6 @@ import React, { useRef, useEffect, useState } from 'react';
 import { useDrawing } from '../context/DrawingContext';
 import { Point, Shape } from '../types';
 import { HandMode, SmoothingBuffer } from '../types/handTracking';
-import { Camera } from '@mediapipe/camera_utils';
-import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
 import { videoToCanvasCoords, canvasToDrawingCoords } from '../utils/coordinates';
 import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/handTracking';
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
@@ -17,6 +14,7 @@ import {
   FingerSeparationAnalysis
 } from '../utils/fingerDistance';
 import DraggableDebugPanel from './DraggableDebugPanel';
+import { loadMediaPipe } from '../utils/mediapipeLoader';
 
 // Debug configuration
 const DEBUG = true;
@@ -30,8 +28,8 @@ const HandDrawing: React.FC = () => {
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mediapipeRef = useRef<Hands | null>(null);
-  const cameraRef = useRef<Camera | null>(null);
+  const mediapipeRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
   const [currentHandCount, setCurrentHandCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -340,9 +338,12 @@ const HandDrawing: React.FC = () => {
           if (cleanupCompleted) return;
           
           try {
+            // Load MediaPipe from CDN first
+            await loadMediaPipe();
+
             // Initialize MediaPipe Hands
-            const hands = new Hands({
-              locateFile: (file) => {
+            const hands = new window.Hands({
+              locateFile: (file: string) => {
                 return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
               }
             });
@@ -370,7 +371,7 @@ const HandDrawing: React.FC = () => {
               videoRef.current.srcObject = videoStream;
               
               // Set up MediaPipe camera utility
-              const camera = new Camera(videoRef.current, {
+              const camera = new window.Camera(videoRef.current, {
                 onFrame: async () => {
                   if (videoRef.current && hands && !cleanupCompleted) {
                     await hands.send({ image: videoRef.current });
@@ -388,7 +389,7 @@ const HandDrawing: React.FC = () => {
               cameraRef.current = camera;
               
               // Start the camera
-              camera.start();
+              await camera.start();
             }
             
             setIsLoading(false);
@@ -406,7 +407,7 @@ const HandDrawing: React.FC = () => {
     };
     
     // Handle results from MediaPipe Hands
-    const onHandResults = (results: Results) => {
+    const onHandResults = (results: any) => {
       if (!canvasRef.current || cleanupCompleted) return;
       
       const ctx = canvasRef.current.getContext('2d');
@@ -422,13 +423,13 @@ const HandDrawing: React.FC = () => {
         // Process all detected hands
         const newHandCursors: { [key: number]: Point | null } = { ...handCursors };
         
-        results.multiHandLandmarks.forEach((landmarks, index) => {
+        results.multiHandLandmarks.forEach((landmarks: any, index: number) => {
           // Only process up to 2 hands
           if (index > 1) return;
           
           // Draw hand landmarks on canvas for debugging
-          drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: index === 0 ? '#00FF00' : '#0000FF', lineWidth: 2 });
-          drawLandmarks(ctx, landmarks, { color: index === 0 ? '#FF0000' : '#FF00FF', lineWidth: 1 });
+          window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, { color: index === 0 ? '#00FF00' : '#0000FF', lineWidth: 2 });
+          window.drawLandmarks(ctx, landmarks, { color: index === 0 ? '#FF0000' : '#FF00FF', lineWidth: 1 });
           
           // Get index finger tip position
           const indexFinger = landmarks[8];
@@ -1164,7 +1165,7 @@ const HandDrawing: React.FC = () => {
               <span>Thumb + Pinky: Clear All Drawings</span>
             </div>
             <div className="text-xs text-gray-600 mt-1">
-              Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
+              Tracking Mode: {dualHandMode ? "Dual Hands ��" : "Single Hand 👋"}
             </div>
           </div>
         </DraggableDebugPanel>

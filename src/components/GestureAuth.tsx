@@ -1,8 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Camera } from '@mediapipe/camera_utils';
-import { Hands, Results, HAND_CONNECTIONS } from '@mediapipe/hands';
-import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
 import { determineHandMode } from '../utils/handTracking';
+import { loadMediaPipe } from '../utils/mediapipeLoader';
 
 interface GestureAuthProps {
   onSuccess: () => void;
@@ -12,8 +10,8 @@ interface GestureAuthProps {
 const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mediapipeRef = useRef<Hands | null>(null);
-  const cameraRef = useRef<Camera | null>(null);
+  const mediapipeRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
   const [currentGesture, setCurrentGesture] = useState<string>('');
   const [targetGestures, setTargetGestures] = useState<string[]>([]);
   const [currentGestureIndex, setCurrentGestureIndex] = useState(0);
@@ -82,9 +80,12 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
 
     const initializeHandTracking = async () => {
       try {
+        // Load MediaPipe from CDN first
+        await loadMediaPipe();
+
         // Initialize MediaPipe Hands
-        const hands = new Hands({
-          locateFile: (file) => {
+        const hands = new window.Hands({
+          locateFile: (file: string) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
           }
         });
@@ -108,7 +109,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
 
           videoRef.current.srcObject = videoStream;
 
-          const camera = new Camera(videoRef.current, {
+          const camera = new window.Camera(videoRef.current, {
             onFrame: async () => {
               if (videoRef.current && hands) {
                 await hands.send({ image: videoRef.current });
@@ -131,7 +132,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       }
     };
 
-    const onHandResults = (results: Results) => {
+    const onHandResults = (results: any) => {
       if (!canvasRef.current) return;
 
       const ctx = canvasRef.current.getContext('2d');
@@ -145,8 +146,8 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
         const landmarks = results.multiHandLandmarks[0];
 
         // Draw hand landmarks
-        drawConnectors(ctx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
-        drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
+        window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 2 });
+        window.drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
 
         // Determine current gesture
         const { mode } = determineHandMode(landmarks);
