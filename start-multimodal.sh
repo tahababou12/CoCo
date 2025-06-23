@@ -57,7 +57,7 @@ fi
 
 echo ""
 echo -e "${GREEN}✓ All servers started!${NC}"
-echo -e "${BLUE}Multimodal server: http://localhost:9083${NC}"
+echo -e "${BLUE}Multimodal server: http://localhost:1212${NC}"
 echo -e "${BLUE}Backend API: http://localhost:5001${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5174${NC}"
 echo ""

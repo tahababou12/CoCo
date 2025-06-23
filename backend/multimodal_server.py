@@ -335,9 +335,9 @@ async def main() -> None:
         await gemini_session_handler(websocket)
     
     # Start the server
-    server = await websockets.serve(websocket_handler, "localhost", 9083)
+    server = await websockets.serve(websocket_handler, "localhost", 1212)
     
-    print("Running websocket server localhost:9083...")
+    print("Running websocket server localhost:1212...")
     print("Server is ready to accept connections!")
     
     # Keep running

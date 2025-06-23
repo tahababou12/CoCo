@@ -1,0 +1,15 @@
+[Unit]
+Description=CoCo Collaborative Drawing Application
+After=network.target
+
+[Service]
+Type=forking
+User=ubuntu
+WorkingDirectory=/home/ubuntu/CoCo
+ExecStart=/home/ubuntu/CoCo/ec2-start.sh
+ExecStop=/home/ubuntu/CoCo/ec2-stop.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

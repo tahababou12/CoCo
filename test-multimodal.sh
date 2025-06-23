@@ -90,12 +90,12 @@ SERVER_PID=$!
 sleep 5
 
 # Check if server is listening
-if lsof -i :9083 >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ Multimodal server started successfully and is listening on port 9083${NC}"
+if lsof -i :1212 >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Multimodal server started successfully and is listening on port 1212${NC}"
     kill $SERVER_PID 2>/dev/null || true
     echo -e "${GREEN}✅ Test completed successfully!${NC}"
 else
-    echo -e "${RED}❌ Multimodal server failed to start or listen on port 9083${NC}"
+    echo -e "${RED}❌ Multimodal server failed to start or listen on port 1212${NC}"
     echo -e "${YELLOW}Server output:${NC}"
     cat "$TEMP_LOG"
     kill $SERVER_PID 2>/dev/null || true

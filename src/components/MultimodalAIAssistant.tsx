@@ -78,7 +78,7 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
   const connectWebSocket = () => {
     try {
       console.log('Attempting to connect to multimodal server...');
-      webSocketRef.current = new WebSocket('ws://localhost:9083');
+      webSocketRef.current = new WebSocket('ws://localhost:1212');
       
       webSocketRef.current.onopen = () => {
         console.log('✅ Connected to multimodal server');

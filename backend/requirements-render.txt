@@ -1,0 +1,13 @@
+flask
+flask-cors
+pillow
+opencv-python-headless
+numpy
+python-dotenv
+google-genai
+mediapipe
+elevenlabs
+moviepy
+websockets
+pydub
+# pyaudio removed for deployment - audio features will be handled client-side 

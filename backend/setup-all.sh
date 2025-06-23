@@ -22,9 +22,9 @@ trap cleanup SIGINT SIGTERM EXIT
 echo -e "${BLUE}Starting CoCo backend and multimodal servers...${NC}"
 
 # Kill any existing processes on the ports
-echo -e "${YELLOW}Killing existing processes on ports 5001 and 9083...${NC}"
+echo -e "${YELLOW}Killing existing processes on ports 5001 and 1212...${NC}"
 lsof -ti:5001 | xargs kill -9 2>/dev/null || true
-lsof -ti:9083 | xargs kill -9 2>/dev/null || true
+lsof -ti:1212 | xargs kill -9 2>/dev/null || true
 
 # Wait a moment for ports to be freed
 sleep 1
@@ -60,7 +60,7 @@ python app.py &
 BACKEND_PID=$!
 
 # Start multimodal server with environment variables (run from backend directory)
-echo -e "${BLUE}Starting multimodal server on port 9083...${NC}"
+echo -e "${BLUE}Starting multimodal server on port 1212...${NC}"
 cd /Users/sakethpoori/Documents/hacks/CoCo/backend
 python multimodal_server.py &
 MULTIMODAL_PID=$!
@@ -69,7 +69,7 @@ cd /Users/sakethpoori/Documents/hacks/CoCo
 
 echo -e "${GREEN}✅ Both servers started!${NC}"
 echo -e "${BLUE}   - Flask backend: http://localhost:5001 (PID: $BACKEND_PID)${NC}"
-echo -e "${BLUE}   - Multimodal server: ws://localhost:9083 (PID: $MULTIMODAL_PID)${NC}"
+echo -e "${BLUE}   - Multimodal server: ws://localhost:1212 (PID: $MULTIMODAL_PID)${NC}"
 echo -e "\n${YELLOW}To start the frontend, run: npm run dev${NC}"
 echo -e "\n${BLUE}Press Ctrl+C to stop all servers${NC}"
 

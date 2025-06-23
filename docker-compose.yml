@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:4173"
+    environment:
+      - VITE_WS_URL=ws://backend:8080
+      - VITE_API_URL=http://backend:5001
+      - VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
+      - VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+      - "5001:5001"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - NODE_ENV=production
+    volumes:
+      - ./backend/enhanced_drawings:/app/enhanced_drawings
+      - ./backend/story_videos:/app/story_videos
+      - ./backend/temp_processing:/app/temp_processing 

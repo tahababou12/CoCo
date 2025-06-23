@@ -54,7 +54,7 @@ kill_processes_by_name() {
 
 # Kill specific ports used by CoCo
 kill_port 5001 "Flask API"
-kill_port 9083 "Multimodal WebSocket"
+kill_port 1212 "Multimodal WebSocket"
 kill_port 3000 "Node.js Server"
 kill_port 5174 "Vite Frontend"
 
@@ -71,4 +71,4 @@ pkill -f "CoCo" 2>/dev/null
 
 echo ""
 echo -e "${GREEN}✓ All CoCo ports and processes killed!${NC}"
-echo -e "${BLUE}Ports cleared: 5001, 9083, 3000, 5174${NC}" 
+echo -e "${BLUE}Ports cleared: 5001, 1212, 3000, 5174${NC}" 
