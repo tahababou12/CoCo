@@ -1,7 +1,6 @@
-import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { useHandGesture } from '../context/HandGestureContext'
-import { useWebSocket } from '../context/WebSocketContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
@@ -40,9 +39,7 @@ interface EnhancedImageResult {
   prompt: string;
 }
 
-interface CanvasProps {}
-
-const Canvas: React.FC<CanvasProps> = () => {
+const Canvas: React.FC = () => {
   const { state, dispatch } = useDrawing()
   const { setCanvas } = useShapes()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -72,7 +69,8 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [isMultimodalConnected, setIsMultimodalConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isPlayingAudio, setIsPlayingAudio] = useState(false)
-  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
   const [multimodalError, setMultimodalError] = useState<string | null>(null)
   
   // Multimodal refs
@@ -80,14 +78,12 @@ const Canvas: React.FC<CanvasProps> = () => {
   const multimodalAudioContextRef = useRef<AudioContext | null>(null)
   const multimodalMediaRecorderRef = useRef<MediaRecorder | null>(null)
   const multimodalPcmDataRef = useRef<number[]>([])
-  const multimodalCurrentFrameRef = useRef<string | null>(null)
   const multimodalAudioQueueRef = useRef<string[]>([])
   const multimodalIsPlayingRef = useRef(false)
   const multimodalStreamingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Real-time canvas streaming to Gemini
   const [isLiveStreaming, setIsLiveStreaming] = useState(false);
-  const lastCanvasHashRef = useRef<string>('');
 
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {

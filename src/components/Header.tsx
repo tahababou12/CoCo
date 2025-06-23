@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { Clock, User, History, ImageIcon } from 'lucide-react'
+import { Clock, User, History, ImageIcon, Bug } from 'lucide-react'
 import { renderShape } from '../utils/renderShape'
 import { Shape } from '../types'
 import LoginButton from './LoginButton'
 import LogoutButton from './LogoutButton'  
 import { useAuth0 } from "@auth0/auth0-react"
+import { useHandGesture } from '../context/HandGestureContext'
 
 interface HeaderProps {
   onToggleAI?: () => void;
@@ -25,6 +26,7 @@ interface StoryboardFrame {
 const Header: React.FC<HeaderProps> = () => {
   const { state, dispatch } = useDrawing()
   const { isAuthenticated } = useAuth0()
+  const { showDebugPanels, setShowDebugPanels } = useHandGesture()
   const [documentName, setDocumentName] = useState('Untitled')
   const [showStoryboard, setShowStoryboard] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -262,6 +264,19 @@ const Header: React.FC<HeaderProps> = () => {
   return (
     <header className="bg-white border-b border-neutral-100 px-2 py-1.5 flex items-center justify-between shadow-sm">
       <div className="flex items-center">
+        {/* Debug Toggle Button */}
+        <button 
+          className={`w-8 h-8 rounded-md flex items-center justify-center mr-2 transition-colors ${
+            showDebugPanels 
+              ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' 
+              : 'text-neutral-500 hover:bg-neutral-100'
+          }`}
+          onClick={() => setShowDebugPanels(!showDebugPanels)}
+          title={showDebugPanels ? "Hide Debug Panels" : "Show Debug Panels"}
+        >
+          <Bug size={16} />
+        </button>
+        
         <button className="w-8 h-8 rounded-md hover:bg-neutral-100 flex items-center justify-center mr-1">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
