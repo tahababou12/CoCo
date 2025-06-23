@@ -9,7 +9,8 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0', // Expose to all network interfaces
-    port: 5174,
+    port: 3000,
     strictPort: true, // Allow fallback to another port if 5173 is in use
+    allowedHosts: ['coco.bragai.tech'],
   }
 })

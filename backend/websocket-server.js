@@ -387,7 +387,7 @@ function getRandomColor() {
 }
 
 // Start server
-const PORT = process.env.PORT || 8008;
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`WebSocket server and Express API are running on port ${PORT}`);
 }); 
