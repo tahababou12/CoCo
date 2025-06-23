@@ -3,8 +3,8 @@ import { useDrawing } from './DrawingContext';
 import { WebSocketMessage, Shape, User, UserPosition, Point } from '../types';
 import { v4 as uuidv4 } from '../utils/uuid';
 
-// URL of the WebSocket server
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080';
+// Use the domain with the proxy path for WebSocket connections
+const WS_URL = import.meta.env.VITE_WS_URL || 'wss://coco.bragai.tech/ws/';
 
 // Array of colors for different users
 const USER_COLORS = [

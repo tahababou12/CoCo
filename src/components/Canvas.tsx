@@ -1289,7 +1289,7 @@ const Canvas: React.FC = () => {
   const connectMultimodal = () => {
     console.log('Attempting to connect to multimodal server...');
     try {
-      const wsUrl = import.meta.env.VITE_MULTIMODAL_WS_URL || 'ws://localhost:1212';
+      const wsUrl = import.meta.env.VITE_MULTIMODAL_WS_URL || 'wss://coco.bragai.tech/multimodal/';
       console.log('Connecting to multimodal server:', wsUrl);
       multimodalWebSocketRef.current = new WebSocket(wsUrl);
       
