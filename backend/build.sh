@@ -5,7 +5,6 @@ echo "🚀 Starting CoCo Backend Build..."
 
 # Install Node.js dependencies
 echo "📦 Installing Node.js dependencies..."
-cd backend
 pnpm install
 
 # Install Python dependencies
