@@ -8,6 +8,7 @@ import { hitTest } from '../utils/hitTest'
 import EnhancedImageActions from './EnhancedImageActions'
 import { Mic, MicOff, Volume2 } from 'lucide-react'
 import { useShapes } from '../ShapesContext'
+import html2canvas from 'html2canvas'
 
 // Debug flag to control console logging
 const DEBUG = false;
@@ -74,6 +75,7 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false)
   const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
   const [multimodalError, setMultimodalError] = useState<string | null>(null)
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening'>('idle')
   
   // Multimodal refs
   const multimodalWebSocketRef = useRef<WebSocket | null>(null)
@@ -458,10 +460,17 @@ const Canvas: React.FC<CanvasProps> = () => {
     
     // Capture canvas during drawing for real-time streaming
     if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
+      const canvasContainer = document.querySelector('[data-canvas-container]');
+      if (canvasContainer) {
+        html2canvas(canvasContainer as HTMLElement, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#fafaf9',
+          scale: 1,
+          logging: false
+        }).then(canvas => {
         const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-        console.log('📷 [DRAWING] Drawing detected - capturing canvas...');
+          console.log('📷 [DRAWING] Drawing detected - capturing canvas container...');
         
         const payload = {
           realtime_input: {
@@ -473,7 +482,10 @@ const Canvas: React.FC<CanvasProps> = () => {
         };
         
         multimodalWebSocketRef.current.send(JSON.stringify(payload));
-        console.log('📷 [DRAWING] Canvas frame sent to Gemini');
+          console.log('📷 [DRAWING] Canvas container frame sent to Gemini');
+        }).catch(err => {
+          console.error('❌ [DRAWING] Failed to capture canvas container:', err);
+        });
       }
     }
   };
@@ -1354,6 +1366,11 @@ const Canvas: React.FC<CanvasProps> = () => {
         multimodalAudioQueueRef.current.push(data.audio);
         playNextMultimodalAudio();
       }
+      
+      if (data.voice_status) {
+        console.log('Voice status update:', data.voice_status);
+        setVoiceStatus(data.voice_status);
+      }
     } catch (err) {
       console.error('Error parsing WebSocket message:', err);
     }
@@ -1484,13 +1501,20 @@ const Canvas: React.FC<CanvasProps> = () => {
     console.log('📷 Starting continuous canvas streaming...');
     setIsLiveStreaming(true);
     
-    // Capture canvas every 500ms
+    // Capture canvas container every 500ms
     const streamingInterval = setInterval(() => {
       if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
+        const canvasContainer = document.querySelector('[data-canvas-container]');
+        if (canvasContainer) {
+          html2canvas(canvasContainer as HTMLElement, {
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#fafaf9',
+            scale: 1,
+            logging: false
+          }).then(canvas => {
           const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-          console.log('📷 [STREAMING] Capturing canvas...');
+            console.log('📷 [STREAMING] Capturing canvas container...');
           
           const payload = {
             realtime_input: {
@@ -1502,14 +1526,17 @@ const Canvas: React.FC<CanvasProps> = () => {
           };
           
           multimodalWebSocketRef.current.send(JSON.stringify(payload));
-          console.log('📷 [STREAMING] Canvas frame sent to Gemini');
+            console.log('📷 [STREAMING] Canvas container frame sent to Gemini');
+          }).catch(err => {
+            console.error('❌ [STREAMING] Failed to capture canvas container:', err);
+          });
         }
       }
     }, 500);
     
     // Store interval for cleanup
     multimodalStreamingIntervalRef.current = streamingInterval;
-    console.log('📷 Canvas streaming interval started - will capture every 500ms');
+    console.log('📷 Canvas container streaming interval started - will capture every 500ms');
   };
 
   // Stop continuous canvas streaming
@@ -1520,7 +1547,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     if (multimodalStreamingIntervalRef.current) {
       clearInterval(multimodalStreamingIntervalRef.current);
       multimodalStreamingIntervalRef.current = null;
-      console.log('📷 Canvas streaming interval stopped');
+      console.log('📷 Canvas container streaming interval stopped');
     }
   };
 
@@ -1533,13 +1560,29 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   // Function to get canvas hash for change detection
   const getCanvasHash = () => {
-    if (!canvasRef.current) return '';
-    return canvasRef.current.toDataURL('image/jpeg', 0.8);
+    const canvasContainer = document.querySelector('[data-canvas-container]');
+    if (!canvasContainer) return '';
+    
+    // For change detection, we'll use a simpler approach that captures the container
+    return new Promise<string>((resolve) => {
+      html2canvas(canvasContainer as HTMLElement, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#fafaf9',
+        scale: 0.5, // Lower scale for faster processing
+        logging: false
+      }).then(canvas => {
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      }).catch(() => {
+        resolve('');
+      });
+    });
   };
 
   return (
     <div 
       ref={containerRef}
+      data-canvas-container
       className="flex-1 overflow-hidden bg-stone-50 relative select-none"
       style={{ 
         touchAction: 'none',
@@ -1623,9 +1666,17 @@ const Canvas: React.FC<CanvasProps> = () => {
         </div>
       )}
 
+      {/* Voice Activity Indicator */}
+      {voiceStatus === 'listening' && (
+        <div className="absolute right-4 top-52 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+          <span>Listening...</span>
+        </div>
+      )}
+
       {/* Error Display */}
       {multimodalError && (
-        <div className="absolute right-4 top-52 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
+        <div className="absolute right-4 top-64 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
           {multimodalError}
         </div>
       )}

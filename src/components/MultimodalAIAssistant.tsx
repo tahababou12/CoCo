@@ -3,6 +3,7 @@ import { useDrawing } from '../context/DrawingContext';
 import { useShapes } from '../ShapesContext';
 import { Mic, MicOff, Send, Volume2, X, Minimize2, Maximize2, MessageCircle } from 'lucide-react';
 import { renderShape } from '../utils/renderShape';
+import html2canvas from 'html2canvas';
 
 interface MultimodalAIAssistantProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef(false);
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening'>('idle');
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -69,6 +71,49 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
       disconnectWebSocket();
     };
   }, [isOpen]);
+
+  // Add cleanup on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log('🚨 PAGE UNLOADING - CLEANING UP WEBSOCKET!');
+      disconnectWebSocket();
+      
+      // Send browser close signal to backend
+      try {
+        // Use sendBeacon for reliable delivery during page unload
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('http://localhost:5001/api/browser-closed', JSON.stringify({}));
+          console.log('📡 Browser close signal sent via sendBeacon');
+        } else {
+          // Fallback to fetch if sendBeacon not available
+          fetch('http://localhost:5001/api/browser-closed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+            keepalive: true
+          }).catch(err => console.log('📡 Browser close signal sent via fetch'));
+        }
+      } catch (err) {
+        console.log('📡 Browser close signal failed:', err);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('🚨 PAGE HIDDEN - CLEANING UP WEBSOCKET!');
+        disconnectWebSocket();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      disconnectWebSocket();
+    };
+  }, []);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -108,11 +153,25 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
 
   const disconnectWebSocket = () => {
     if (webSocketRef.current) {
-      webSocketRef.current.close();
+      console.log('🔌 Disconnecting WebSocket...');
+      
+      // Remove all event listeners to prevent memory leaks
+      webSocketRef.current.onopen = null;
+      webSocketRef.current.onmessage = null;
+      webSocketRef.current.onclose = null;
+      webSocketRef.current.onerror = null;
+      
+      // Close the connection properly
+      if (webSocketRef.current.readyState === WebSocket.OPEN) {
+        webSocketRef.current.close(1000, 'User disconnected');
+      }
+      
       webSocketRef.current = null;
     }
     setIsConnected(false);
     setIsRecording(false);
+    setVoiceStatus('idle');
+    console.log('✅ WebSocket disconnected and cleaned up');
   };
 
   const sendInitialSetup = () => {
@@ -136,15 +195,51 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
       
       if (data.text) {
         console.log('🔍 [DEBUG] Text message received:', data.text);
-        // Add text message to chat
-        const newMessage: ChatMessage = {
-          id: Date.now().toString(),
-          type: 'assistant',
-          content: data.text,
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, newMessage]);
-        console.log('✅ [DEBUG] Text message added to chat');
+        
+        // Check if this is an enhancement command response
+        if (data.command_detected === 'enhance') {
+          // Add special enhancement message to chat
+          const newMessage: ChatMessage = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: data.text,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, newMessage]);
+          console.log('✅ [DEBUG] Enhancement command message added to chat');
+        } else if (data.enhancement_started) {
+          // Add enhancement started message
+          const newMessage: ChatMessage = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: data.text,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, newMessage]);
+          console.log('✅ [DEBUG] Enhancement started message added to chat');
+          
+          // TODO: Could add polling for enhancement status here
+        } else if (data.enhancement_error) {
+          // Add enhancement error message
+          const newMessage: ChatMessage = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: data.text,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, newMessage]);
+          console.log('❌ [DEBUG] Enhancement error message added to chat');
+        } else {
+          // Regular text message
+          const newMessage: ChatMessage = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: data.text,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, newMessage]);
+          console.log('✅ [DEBUG] Regular text message added to chat');
+        }
       }
       
       if (data.audio) {
@@ -153,6 +248,11 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
         audioQueueRef.current.push(data.audio);
         playNextAudio();
         console.log('✅ [DEBUG] Audio queued for playback');
+      }
+      
+      if (data.voice_status) {
+        console.log('🔍 [DEBUG] Voice status update:', data.voice_status);
+        setVoiceStatus(data.voice_status);
       }
       
       console.log('🔍 [DEBUG] === WEBSOCKET MESSAGE PROCESSED ===');
@@ -185,13 +285,21 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
     const captureAndSend = () => {
       console.log('🚨 CAPTURE CYCLE RUNNING - EVERY SECOND!');
       
-      // Simple approach: just get the main canvas directly
-      const canvas = document.querySelector('canvas');
-      console.log('🚨 Canvas found:', !!canvas);
+      // Capture the entire canvas container (includes enhanced images)
+      const canvasContainer = document.querySelector('[data-canvas-container]');
+      console.log('🚨 Canvas container found:', !!canvasContainer);
       
-      if (canvas && webSocketRef.current?.readyState === WebSocket.OPEN) {
-        console.log('🚨 Canvas and WebSocket ready, taking screenshot...');
+      if (canvasContainer && webSocketRef.current?.readyState === WebSocket.OPEN) {
+        console.log('🚨 Canvas container and WebSocket ready, taking screenshot...');
         
+        // Use html2canvas to capture the entire container
+        html2canvas(canvasContainer as HTMLElement, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#fafaf9', // stone-50 background
+          scale: 1,
+          logging: false
+        }).then(canvas => {
         // Take screenshot
         const imageData = canvas.toDataURL('image/png', 1.0).split(',')[1];
         
@@ -207,9 +315,12 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
         
         webSocketRef.current.send(JSON.stringify(payload));
         console.log('🚨 SCREENSHOT SENT TO GEMINI, size:', imageData.length);
+        }).catch(err => {
+          console.error('❌ Failed to capture canvas container:', err);
+        });
       } else {
-        console.log('🚨 CANNOT CAPTURE - Canvas or WebSocket not ready');
-        console.log('🚨 Canvas exists:', !!canvas);
+        console.log('🚨 CANNOT CAPTURE - Canvas container or WebSocket not ready');
+        console.log('🚨 Canvas container exists:', !!canvasContainer);
         console.log('🚨 WebSocket ready:', webSocketRef.current?.readyState === WebSocket.OPEN);
       }
     };
@@ -229,9 +340,16 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
 
   // Manual canvas capture for testing
   const manualCaptureCanvas = () => {
-    const canvas = document.querySelector('canvas');
+    const canvasContainer = document.querySelector('[data-canvas-container]');
     
-    if (canvas && webSocketRef.current?.readyState === WebSocket.OPEN) {
+    if (canvasContainer && webSocketRef.current?.readyState === WebSocket.OPEN) {
+      html2canvas(canvasContainer as HTMLElement, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#fafaf9',
+        scale: 1,
+        logging: false
+      }).then(canvas => {
       const imageData = canvas.toDataURL('image/png', 1.0).split(',')[1];
       
       const payload = {
@@ -245,8 +363,11 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
       
       webSocketRef.current.send(JSON.stringify(payload));
       console.log('📷 Manual screenshot sent to Gemini, size:', imageData.length);
+      }).catch(err => {
+        console.error('❌ Manual capture failed:', err);
+      });
     } else {
-      console.log('❌ Manual capture failed - Canvas or WebSocket not ready');
+      console.log('❌ Manual capture failed - Canvas container or WebSocket not ready');
     }
   };
 
@@ -259,10 +380,17 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
       window.triggerImmediateCanvasCapture = manualCaptureCanvas;
       // @ts-ignore
       window.testCanvasScreenshot = () => {
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
+        const canvasContainer = document.querySelector('[data-canvas-container]');
+        if (canvasContainer) {
+          html2canvas(canvasContainer as HTMLElement, {
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#fafaf9',
+            scale: 1,
+            logging: false
+          }).then(canvas => {
           const dataUrl = canvas.toDataURL('image/png', 1.0);
-          console.log('📷 TEST: Canvas screenshot taken');
+            console.log('📷 TEST: Canvas container screenshot taken');
           console.log('📷 TEST: Data URL length:', dataUrl.length);
           console.log('📷 TEST: Canvas size:', canvas.width + 'x' + canvas.height);
           
@@ -274,12 +402,15 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
             const newWindow = window.open();
             if (newWindow) {
               newWindow.document.write('<img src="' + dataUrl + '" style="border: 2px solid red;" />');
-              newWindow.document.title = 'Canvas Screenshot Test';
+                newWindow.document.title = 'Canvas Container Screenshot Test';
             }
           };
           img.src = dataUrl;
+          }).catch(err => {
+            console.error('❌ TEST: Failed to capture canvas container:', err);
+          });
         } else {
-          console.log('❌ TEST: No canvas found');
+          console.log('❌ TEST: No canvas container found');
         }
       };
       console.log('🔧 Test function available: window.testCanvasCapture()');
@@ -538,6 +669,12 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
               <div className="text-center text-gray-500 text-sm mt-8">
                 <p className="font-medium">Start a conversation!</p>
                 <p className="text-xs mt-1">Draw something and ask questions</p>
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-xs font-medium text-blue-800 mb-2">💡 Voice Commands:</p>
+                  <p className="text-xs text-blue-700">
+                    Try saying: "Enhance this drawing with Gemini" or "Make this better with AI"
+                  </p>
+                </div>
               </div>
             ) : (
               messages.map((message) => (
@@ -612,6 +749,14 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
               {isPlayingAudio && (
                 <div className="flex items-center text-blue-600">
                   <Volume2 size={14} className="animate-pulse" />
+                </div>
+              )}
+
+              {/* Voice Activity Indicator */}
+              {voiceStatus === 'listening' && (
+                <div className="flex items-center text-green-600">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
+                  <span className="text-xs">Listening...</span>
                 </div>
               )}
 

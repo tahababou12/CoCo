@@ -148,7 +148,7 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                     )
                     
                     print("RESPONSE: ", response)
-                    
+                        
                 except Exception as api_error:
                     error_msg = f"Gemini API error: {str(api_error)}"
                     print(error_msg)
@@ -658,6 +658,59 @@ def play_video(video_filename):
         print(error_msg)
         return jsonify({"error": error_msg}), 500
 
+# API endpoint to enhance image via voice command
+@app.route('/api/enhance-image-voice', methods=['POST'])
+def enhance_image_voice():
+    global is_processing
+    
+    try:
+        data = request.json
+        prompt = data.get('prompt', 'Enhance this drawing with more detail and artistic flair')
+        
+        print(f"Received voice-triggered enhancement request with prompt: {prompt}")
+        
+        # Check if another enhancement is already in progress
+        if is_processing:
+            print("Voice enhancement request rejected: Another enhancement is already in progress")
+            return jsonify({
+                "error": "Another enhancement is already in progress", 
+                "status": "busy"
+            }), 429  # Too Many Requests
+        
+        # Find the most recent image in the img directory
+        img_files = [f for f in os.listdir(img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if not img_files:
+            return jsonify({"error": "No images found to enhance"}), 404
+        
+        # Sort by modification time and get the most recent
+        img_files.sort(key=lambda x: os.path.getmtime(os.path.join(img_dir, x)), reverse=True)
+        latest_image = img_files[0]
+        filepath = os.path.join(img_dir, latest_image)
+        
+        print(f"Using latest image for voice enhancement: {latest_image}")
+        
+        # Generate a unique request ID
+        request_id = f"voice_req_{datetime.now().timestamp()}"
+        print(f"Starting voice-triggered enhancement with request ID: {request_id}")
+        
+        # Trigger the enhancement in a background thread
+        enhance_drawing_with_gemini(filepath, prompt, request_id)
+        
+        # Return immediately with the request ID for status polling
+        return jsonify({
+            "success": True,
+            "requestId": request_id,
+            "message": "Voice-triggered enhancement started",
+            "imageUsed": latest_image
+        })
+    except Exception as e:
+        error_msg = f"Error requesting voice-triggered image enhancement: {str(e)}"
+        print(error_msg)
+        # Log detailed error information for debugging
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Failed to process voice enhancement request", "details": str(e)}), 500
+
 # Serve static files from the various directories
 @app.route('/img/<path:filename>')
 def serve_image(filename):
@@ -670,6 +723,27 @@ def serve_enhanced_image(filename):
 @app.route('/videos/<path:filename>')
 def serve_video(filename):
     return send_from_directory(story_videos_dir, filename)
+
+# Test endpoint to verify connection
+@app.route('/api/test', methods=['GET'])
+def test_connection():
+    """Test endpoint to verify frontend can reach backend"""
+    return jsonify({"success": True, "message": "Backend connection working", "timestamp": datetime.now().isoformat()})
+
+# API endpoint to handle browser close
+@app.route('/api/browser-closed', methods=['POST'])
+def browser_closed():
+    """Handle browser close event and trigger server shutdown"""
+    try:
+        print("🚨 Browser close detected via HTTP endpoint")
+        # Create the browser closed signal file
+        with open("/tmp/browser_closed", "w") as f:
+            f.write("browser_closed")
+        print("✅ Browser closed signal file created")
+        return jsonify({"success": True, "message": "Browser close signal sent"})
+    except Exception as e:
+        print(f"❌ Error handling browser close: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True) 
