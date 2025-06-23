@@ -5,8 +5,8 @@ echo "🚀 Starting CoCo Backend Build..."
 
 # Install system dependencies
 echo "🔧 Installing system dependencies..."
-sudo apt-get update
-sudo apt-get install -y portaudio19-dev python3-dev build-essential
+apt-get update
+apt-get install -y portaudio19-dev python3-dev build-essential
 
 # Install Node.js dependencies
 echo "📦 Installing Node.js dependencies..."
