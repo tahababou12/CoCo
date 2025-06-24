@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDrawing } from '../context/DrawingContext';
 import { useShapes } from '../ShapesContext';
-import { Mic, MicOff, Send, Volume2, X, Minimize2, Maximize2, MessageCircle } from 'lucide-react';
+import { Mic, MicOff, Send, Volume2, X, Minimize2, Maximize2, MessageCircle, Sparkles, Wand2 } from 'lucide-react';
 import { renderShape } from '../utils/renderShape';
 import html2canvas from 'html2canvas';
 
@@ -43,6 +43,244 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
   const isPlayingRef = useRef(false);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening'>('idle');
 
+  // Speech Recognition for voice commands
+  const [isListeningForCommands, setIsListeningForCommands] = useState(false);
+  const [recognizedText, setRecognizedText] = useState('');
+  const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
+  const [enhancementStatus, setEnhancementStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+
+  // Voice command patterns for enhancement
+  const enhanceCommands = [
+    /enhance\s+(?:this\s+)?(?:drawing|image|sketch|picture)\s+(?:with\s+)?(?:gemini|ai|artificial intelligence)/i,
+    /enhance\s+(?:with\s+)?(?:gemini|ai|artificial intelligence)/i,
+    /(?:gemini|ai|artificial intelligence)\s+enhance\s+(?:this\s+)?(?:drawing|image|sketch|picture)/i,
+    /enhance\s+(?:drawing|image|sketch|picture)/i,
+    /enhance\s+(?:this\s+)?(?:drawing|image|sketch|picture)/i,
+    /enhance\s+(?:with\s+)?(?:more\s+)?(?:detail|artistic|style)/i
+  ];
+
+  const isEnhanceCommand = (text: string): boolean => {
+    return enhanceCommands.some(pattern => pattern.test(text));
+  };
+
+  const callEnhancementAPI = async (prompt: string = '') => {
+    try {
+      setEnhancementStatus('processing');
+      
+      const response = await fetch('http://localhost:5001/api/enhance-image-voice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Enhancement started:', result);
+        
+        // Add success message to chat
+        const successMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: `🎨 Enhancement started! I'm processing your drawing with Gemini AI. This may take a few moments...`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, successMessage]);
+        
+        setEnhancementStatus('success');
+        
+        // Poll for completion status
+        if (result.requestId) {
+          pollEnhancementStatus(result.requestId);
+        }
+        
+        return result;
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Enhancement failed:', errorData);
+        
+        const errorMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: `❌ Sorry, I couldn't start the enhancement. Please try again.`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        
+        setEnhancementStatus('error');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error calling enhancement API:', error);
+      
+      const errorMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'assistant',
+        content: `❌ Sorry, there was an error starting the enhancement. Please try again.`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      
+      setEnhancementStatus('error');
+      return null;
+    }
+  };
+
+  const pollEnhancementStatus = async (requestId: string) => {
+    try {
+      const response = await fetch(`http://localhost:5001/api/enhancement-status/${requestId}`);
+      if (response.ok) {
+        const status = await response.json();
+        
+        if (status.status === 'complete') {
+          const successMessage: ChatMessage = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: `🎉 Enhancement complete! Your drawing has been enhanced with Gemini AI. Check the enhanced images section!`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, successMessage]);
+          setEnhancementStatus('success');
+        } else if (status.status === 'error') {
+          const errorMessage: ChatMessage = {
+            id: Date.now().toString(),
+            type: 'assistant',
+            content: `❌ Enhancement failed: ${status.message || 'Unknown error'}`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, errorMessage]);
+          setEnhancementStatus('error');
+        } else if (status.status === 'processing') {
+          // Continue polling
+          setTimeout(() => pollEnhancementStatus(requestId), 2000);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error polling enhancement status:', error);
+    }
+  };
+
+  const triggerManualEnhancement = () => {
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: 'Enhance with Gemini',
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+    callEnhancementAPI('Enhance this drawing with more detail and artistic flair');
+  };
+
+  // Separate speech recognition for voice commands (independent of multimodal)
+  const initializeVoiceCommandRecognition = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      console.error('❌ Speech recognition not supported in this browser');
+      setError('Speech recognition not supported in this browser');
+      return false;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const voiceCommandRecognition = new SpeechRecognition();
+    
+    voiceCommandRecognition.continuous = false; // Only listen for one command at a time
+    voiceCommandRecognition.interimResults = false; // Only final results
+    voiceCommandRecognition.lang = 'en-US';
+    voiceCommandRecognition.maxAlternatives = 1;
+
+    voiceCommandRecognition.onstart = () => {
+      console.log('🎤 Voice command recognition started');
+      setRecognizedText('Listening for commands...');
+    };
+
+    voiceCommandRecognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript.toLowerCase();
+      console.log('🎤 Voice command recognized:', transcript);
+      setRecognizedText(transcript);
+
+      // Check for enhance commands
+      if (isEnhanceCommand(transcript)) {
+        console.log('🎯 Enhance command detected:', transcript);
+        
+        // Add user message to chat
+        const userMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'user',
+          content: transcript,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, userMessage]);
+        
+        // Call enhancement API
+        callEnhancementAPI(transcript);
+        
+        // Clear recognized text
+        setTimeout(() => setRecognizedText(''), 2000);
+      }
+    };
+
+    voiceCommandRecognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('❌ Voice command recognition error:', event.error);
+      setRecognizedText('');
+      if (event.error === 'no-speech') {
+        // Restart if no speech detected
+        setTimeout(() => {
+          if (isListeningForCommands) {
+            voiceCommandRecognition.start();
+          }
+        }, 1000);
+      }
+    };
+
+    voiceCommandRecognition.onend = () => {
+      console.log('🎤 Voice command recognition ended');
+      // Restart if we're supposed to be listening
+      if (isListeningForCommands) {
+        setTimeout(() => voiceCommandRecognition.start(), 100);
+      }
+    };
+
+    // Store the recognition instance
+    speechRecognitionRef.current = voiceCommandRecognition;
+    return true;
+  };
+
+  const startVoiceCommandRecognition = () => {
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.start();
+      } catch (error) {
+        console.error('❌ Error starting voice command recognition:', error);
+      }
+    }
+  };
+
+  const stopVoiceCommandRecognition = () => {
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (error) {
+        console.error('❌ Error stopping voice command recognition:', error);
+      }
+    }
+  };
+
+  const toggleVoiceCommands = () => {
+    if (isListeningForCommands) {
+      setIsListeningForCommands(false);
+      stopVoiceCommandRecognition();
+      setRecognizedText('');
+    } else {
+      setIsListeningForCommands(true);
+      if (!speechRecognitionRef.current) {
+        if (!initializeVoiceCommandRecognition()) {
+          return;
+        }
+      }
+      startVoiceCommandRecognition();
+    }
+  };
+
   // Initialize WebSocket connection
   useEffect(() => {
     console.log('🚨 MULTIMODAL ASSISTANT USEEFFECT TRIGGERED!');
@@ -57,6 +295,7 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
       return () => {
         console.log('🚨 COMPONENT UNMOUNTING - CLEANING UP!');
         disconnectWebSocket();
+        stopVoiceCommandRecognition();
         if (cleanupCanvasCapture) {
           cleanupCanvasCapture();
         }
@@ -64,11 +303,13 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
     } else {
       console.log('🚨 COMPONENT IS CLOSED - DISCONNECTING!');
       disconnectWebSocket();
+      stopVoiceCommandRecognition();
     }
 
     return () => {
       console.log('🚨 COMPONENT UNMOUNTING - CLEANING UP!');
       disconnectWebSocket();
+      stopVoiceCommandRecognition();
     };
   }, [isOpen]);
 
@@ -671,8 +912,26 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
                 <p className="text-xs mt-1">Draw something and ask questions</p>
                 <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <p className="text-xs font-medium text-blue-800 mb-2">💡 Voice Commands:</p>
+                  <p className="text-xs text-blue-700 mb-1">
+                    • Click the sparkles button to enable voice commands
+                  </p>
+                  <p className="text-xs text-blue-700 mb-1">
+                    • Say: "Enhance with Gemini" or "Enhance this drawing"
+                  </p>
                   <p className="text-xs text-blue-700">
-                    Try saying: "Enhance this drawing with Gemini" or "Make this better with AI"
+                    • Your drawing will be automatically enhanced with AI!
+                  </p>
+                </div>
+                <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  <p className="text-xs font-medium text-orange-800 mb-2">✨ Manual Enhancement:</p>
+                  <p className="text-xs text-orange-700">
+                    Click the wand button to instantly enhance your drawing with Gemini AI
+                  </p>
+                </div>
+                <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <p className="text-xs font-medium text-purple-800 mb-2">🎤 Multimodal Chat:</p>
+                  <p className="text-xs text-purple-700">
+                    Use the microphone button to chat with the AI assistant about your drawings
                   </p>
                 </div>
               </div>
@@ -735,6 +994,35 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
                 {isRecording ? <MicOff size={16} /> : <Mic size={16} />}
               </button>
 
+              {/* Voice Commands Button */}
+              <button
+                onClick={toggleVoiceCommands}
+                disabled={!isConnected}
+                className={`relative p-2 rounded-full transition-colors ${
+                  isListeningForCommands
+                    ? 'bg-purple-500 text-white hover:bg-purple-600'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                } ${!isConnected && 'opacity-50 cursor-not-allowed'}`}
+                title={isListeningForCommands ? 'Stop Voice Commands' : 'Start Voice Commands'}
+              >
+                {/* Voice commands status indicator */}
+                <div className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
+                  isListeningForCommands ? 'bg-purple-500 animate-pulse' : 'bg-blue-500'
+                }`}></div>
+                
+                <Sparkles size={16} />
+              </button>
+
+              {/* Manual Enhancement Button */}
+              <button
+                onClick={triggerManualEnhancement}
+                disabled={!isConnected || enhancementStatus === 'processing'}
+                className="p-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Enhance with Gemini"
+              >
+                <Wand2 size={16} />
+              </button>
+
               {/* Manual Capture Button for Testing */}
               <button
                 onClick={manualCaptureCanvas}
@@ -757,6 +1045,22 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
                 <div className="flex items-center text-green-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></div>
                   <span className="text-xs">Listening...</span>
+                </div>
+              )}
+
+              {/* Voice Commands Indicator */}
+              {isListeningForCommands && (
+                <div className="flex items-center text-purple-600">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse mr-1"></div>
+                  <span className="text-xs">Voice Commands Active</span>
+                </div>
+              )}
+
+              {/* Enhancement Status Indicator */}
+              {enhancementStatus === 'processing' && (
+                <div className="flex items-center text-orange-600">
+                  <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse mr-1"></div>
+                  <span className="text-xs">Enhancing...</span>
                 </div>
               )}
 
@@ -783,6 +1087,24 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
                 <Send size={16} />
               </button>
             </div>
+
+            {/* Recognized Text Display */}
+            {recognizedText && (
+              <div className="mt-2 p-2 bg-purple-50 border border-purple-200 rounded-lg">
+                <p className="text-xs text-purple-700 font-medium">Recognized:</p>
+                <p className="text-sm text-purple-800">{recognizedText}</p>
+              </div>
+            )}
+
+            {/* Voice Commands Help */}
+            {isListeningForCommands && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-700 font-medium">💡 Voice Commands:</p>
+                <p className="text-xs text-blue-800">
+                  Try saying: "Enhance with Gemini" or "Enhance this drawing"
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

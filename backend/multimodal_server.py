@@ -464,9 +464,9 @@ Just be helpful and encouraging!"""
                                 break 
 
                     except Exception as e:
-                          print(f"Error receiving from Gemini: {e}")
+                        print(f"Error receiving from Gemini: {e}")
                     finally:
-                          print("Gemini connection closed (receive)")
+                        print("Gemini connection closed (receive)")
 
                 # Start all tasks
                 async with asyncio.TaskGroup() as tg:

@@ -145,7 +145,7 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                         model=GEMINI_MODEL,
                         contents=contents,
                         config=config
-                    )
+                    
                     
                     print("RESPONSE: ", response)
                         
