@@ -26,7 +26,7 @@ export type Shape = {
   createdBy?: string // User ID who created the shape
 }
 
-export type Tool = 'select' | 'rectangle' | 'ellipse' | 'line' | 'pencil' | 'text' | 'pan' | 'eraser' | 'pixel_eraser'
+export type Tool = 'select' | 'rectangle' | 'ellipse' | 'line' | 'pencil' | 'text' | 'pan' | 'eraser' | 'pixel_eraser' | 'brush' | 'stamp'
 
 export type ViewTransform = {
   scale: number
@@ -119,6 +119,34 @@ export type WebSocketMessageType =
   | 'WEBCAM_ANSWER'
   | 'WEBCAM_ICE_CANDIDATE';
 
+export interface BrushSettings {
+  size: number
+  opacity: number
+  pressure: number
+  texture: 'smooth' | 'rough' | 'watercolor' | 'marker'
+}
+
+export interface VoiceChatState {
+  isEnabled: boolean
+  isMuted: boolean
+  isDeafened: boolean
+  participants: string[]
+  localStream?: MediaStream
+}
+
+export interface AdvancedGestureSettings {
+  twoHandMode: boolean
+  pressureSensitivity: boolean
+  gestureToolSelection: boolean
+  airWriting: boolean
+}
+
+export interface SelectionBox {
+  startPoint: Point
+  endPoint: Point
+  isVisible: boolean
+}
+
 export type DrawingState = {
   shapes: Shape[]
   currentShape: Shape | null
@@ -130,6 +158,10 @@ export type DrawingState = {
   }
   viewTransform: ViewTransform
   defaultStyle: ShapeStyle
+  // Enhanced drawing features
+  brushSettings: BrushSettings
+  voiceChat: VoiceChatState
+  advancedGestures: AdvancedGestureSettings
   // Collaboration properties
   currentUser?: User
   collaborators: User[]
@@ -138,7 +170,45 @@ export type DrawingState = {
   isConnected: boolean
   peerConnections: Record<string, RTCPeerConnection>
   remoteStreams: Record<string, MediaStream>
+  selectionBox?: SelectionBox
 }
+
+export type DrawingAction =
+  | { type: 'SET_TOOL'; payload: Tool }
+  | { type: 'START_DRAWING'; payload: { point: Point; type: Tool } }
+  | { type: 'CONTINUE_DRAWING'; payload: Point }
+  | { type: 'END_DRAWING' }
+  | { type: 'ADD_SHAPE'; payload: Shape }
+  | { type: 'UPDATE_SHAPE'; payload: { id: string; updates: Partial<Shape> } }
+  | { type: 'DELETE_SHAPES'; payload: string[] }
+  | { type: 'SELECT_SHAPES'; payload: string[] }
+  | { type: 'CLEAR_SELECTION' }
+  | { type: 'SET_STYLE'; payload: Partial<ShapeStyle> }
+  | { type: 'SET_FILL_COLOR'; payload: string }
+  | { type: 'UNDO' }
+  | { type: 'REDO' }
+  | { type: 'CLEAR_ALL' }
+  | { type: 'ZOOM'; payload: number }
+  | { type: 'PAN'; payload: { x: number; y: number } }
+  | { type: 'RESET_VIEW' }
+  | { type: 'SYNC_ALL_SHAPES'; payload: Shape[] }
+  // Enhanced features actions
+  | { type: 'SET_BRUSH_SETTINGS'; payload: Partial<BrushSettings> }
+  | { type: 'TOGGLE_VOICE_CHAT'; payload?: boolean }
+  | { type: 'SET_VOICE_MUTE'; payload: boolean }
+  | { type: 'SET_ADVANCED_GESTURES'; payload: Partial<AdvancedGestureSettings> }
+  // Collaboration actions
+  | { type: 'SET_CURRENT_USER'; payload: User }
+  | { type: 'ADD_COLLABORATOR'; payload: User }
+  | { type: 'REMOVE_COLLABORATOR'; payload: string }
+  | { type: 'UPDATE_COLLABORATOR'; payload: { userId: string; updates: Partial<User> } }
+  | { type: 'SET_CONNECTION_STATUS'; payload: boolean }
+  | { type: 'ADD_PEER_CONNECTION'; payload: { userId: string; peerConnection: RTCPeerConnection } }
+  | { type: 'REMOVE_PEER_CONNECTION'; payload: { userId: string } }
+  | { type: 'ADD_REMOTE_STREAM'; payload: { userId: string; stream: MediaStream } }
+  | { type: 'REMOVE_REMOTE_STREAM'; payload: { userId: string } }
+  | { type: 'UPDATE_HAND_TRACKING_STATUS'; payload: { userId: string; isEnabled: boolean } }
+  | { type: 'SET_SELECTION_BOX'; payload: SelectionBox | null }
 
 // Export all types from handTracking file
 export * from './handTracking';

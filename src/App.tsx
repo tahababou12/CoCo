@@ -12,6 +12,8 @@ import CollaborationPanel from './components/CollaborationPanel'
 import UserWebcam from './components/UserWebcam'
 import SimpleWebcam from './components/SimpleWebcam'
 import UserCursor from './components/UserCursor'
+import BrushTool from './components/BrushTool'
+import VoiceChat from './components/VoiceChat'
 import { WebSocketProvider } from './context/WebSocketContext'
 import { useDrawing } from './context/DrawingContext'
 import { useWebSocket } from './context/WebSocketContext'
@@ -129,6 +131,8 @@ function ProtectedApp() {
         <CollaborationPanel />
         <WebcamDisplays />
         <CollaboratorCursors />
+        <BrushTool />
+        <VoiceChat />
         
 
         

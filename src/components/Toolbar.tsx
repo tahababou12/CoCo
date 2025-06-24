@@ -13,7 +13,9 @@ import {
   Plus,
   Minus,
   Palette,
-  RotateCcw
+  RotateCcw,
+  Paintbrush,
+  Star
 } from 'lucide-react'
 
 const Toolbar: React.FC = () => {
@@ -46,9 +48,11 @@ const Toolbar: React.FC = () => {
     switch (primaryGesture) {
       case 'Drawing':
         return 'Drawing ✍️'
-      case 'Erasing':
+      case 'Clicking':
         return 'Clicking 👆'
-      case 'Clear All':
+      case 'Dragging':
+        return 'Dragging 🤏'
+      case 'Clearing':
         return 'Clear All ✌️🗑️'
       case 'None':
         // When a hand is detected but no specific gesture is recognized
@@ -132,7 +136,7 @@ const Toolbar: React.FC = () => {
           <span className={`${
             !isHandTrackingActive 
               ? 'text-gray-400' 
-              : primaryGesture === 'Clear All' 
+              : primaryGesture === 'Clearing' 
                 ? 'text-red-600' 
                 : 'text-purple-600'
           }`}>
@@ -161,6 +165,28 @@ const Toolbar: React.FC = () => {
             title="Pencil"
           >
             <Pencil size={20} />
+          </button>
+          
+          {/* Brush tool */}
+          <button
+            className={`p-2 rounded-lg ${
+              state.tool === 'brush' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+            onClick={() => handleToolClick('brush')}
+            title="Advanced Brush"
+          >
+            <Paintbrush size={20} />
+          </button>
+          
+          {/* Stamp tool */}
+          <button
+            className={`p-2 rounded-lg ${
+              state.tool === 'stamp' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            }`}
+            onClick={() => handleToolClick('stamp')}
+            title="Shape Stamp"
+          >
+            <Star size={20} />
           </button>
           
           {/* Circle tool */}

@@ -84,17 +84,36 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onClose, onJoinRoom }) => {
           console.log('Pending join data:', pendingJoin);
           
           const room = message.payload.room;
-          if (room.code) {
+          if (room.type === 'private' && room.code) {
             console.log('Showing room code modal with code:', room.code);
-            // Show the room code modal instead of auto-joining
+            // Show the room code modal for private rooms
             setCreatedRoomData({
               name: room.name,
               code: room.code
             });
             setShowRoomCodeModal(true);
+          } else if (room.type === 'public') {
+            console.log('Public room created, auto-joining...', room);
+            // Auto-join public rooms
+            onJoinRoom(pendingJoin.username, pendingJoin.position, room.id);
+            setPendingJoin(null);
+            onClose();
           } else {
             console.log('Room created but no code provided:', room);
           }
+        }
+
+        if (message.type === 'PUBLIC_ROOM_ADDED') {
+          console.log('New public room added:', message.payload.room);
+          const newRoom = message.payload.room;
+          setAvailableRooms(prevRooms => {
+            // Check if room already exists
+            const roomExists = prevRooms.some(room => room.id === newRoom.id);
+            if (!roomExists) {
+              return [...prevRooms, newRoom];
+            }
+            return prevRooms;
+          });
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
@@ -213,6 +232,77 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onClose, onJoinRoom }) => {
     }
   };
 
+  const handleCreatePublicRoom = () => {
+    if (!username.trim() || !newRoomName.trim()) return;
+    
+    console.log('=== CREATING PUBLIC ROOM ===');
+    console.log('Room name:', newRoomName.trim());
+    console.log('Username:', username.trim());
+    console.log('WebSocket state:', {
+      isConnected: webSocket?.isConnected,
+      isConnecting: webSocket?.isConnecting,
+      socket: !!webSocket?.socket,
+      socketReadyState: webSocket?.socket?.readyState,
+      sendMessage: !!webSocket?.sendMessage
+    });
+    
+    // Check if WebSocket is available and connected
+    if (!webSocket) {
+      console.error('WebSocket context not available');
+      alert('Connection error. Please refresh the page and try again.');
+      return;
+    }
+    
+    if (!webSocket.isConnected) {
+      console.log('WebSocket not connected, attempting to connect...');
+      // Try to connect first
+      webSocket.connect('temp-user', 'top-left');
+      
+      // Wait a moment for connection and try again
+      setTimeout(() => {
+        if (webSocket.isConnected) {
+          console.log('WebSocket connected, retrying room creation...');
+          handleCreatePublicRoom();
+        } else {
+          alert('Unable to connect to server. Please try again.');
+        }
+      }, 1000);
+      return;
+    }
+    
+    // Store the join data for when the room is created
+    setPendingJoin({
+      username: username.trim(),
+      position: selectedPosition
+    });
+    
+    // Create the room on the server
+    const roomData: WebSocketMessage = {
+      type: 'CREATE_ROOM',
+      payload: {
+        userId: webSocket.currentUser?.id || `temp-${Date.now()}`,
+        roomName: newRoomName.trim(),
+        roomType: 'public',
+        maxUsers: 4
+      }
+    };
+    
+    console.log('Sending room creation message:', roomData);
+    
+    try {
+      webSocket.sendMessage(roomData);
+      console.log('Room creation message sent successfully');
+    } catch (error) {
+      console.error('Error sending room creation message:', error);
+      alert('Error creating room. Please try again.');
+      return;
+    }
+    
+    // Reset form
+    setNewRoomName('');
+    setIsCreatingRoom(false);
+  };
+
   return (
     <>
     <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 mt-2 w-full max-w-sm">
@@ -269,20 +359,70 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({ onClose, onJoinRoom }) => {
 
         {/* Public Rooms Tab Content */}
         {activeTab === 'public' && (
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Available Rooms</label>
-            <select
-              value={selectedRoom}
-              onChange={(e) => setSelectedRoom(e.target.value)}
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
-            >
-              <option value="">Select a room...</option>
-              {availableRooms.filter(room => room.type === 'public').map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name} ({room.currentUsers.length}/{room.maxUsers || 4})
-                </option>
-              ))}
-            </select>
+          <div className="space-y-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Available Rooms</label>
+              <select
+                value={selectedRoom}
+                onChange={(e) => setSelectedRoom(e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
+              >
+                <option value="">Select a room...</option>
+                {availableRooms.filter(room => room.type === 'public').map((room) => (
+                  <option key={room.id} value={room.id}>
+                    {room.name} ({room.currentUsers.length}/{room.maxUsers || 4})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Divider */}
+            <div className="flex items-center">
+              <div className="flex-grow border-t border-gray-200"></div>
+              <span className="px-3 text-xs text-gray-500">OR</span>
+              <div className="flex-grow border-t border-gray-200"></div>
+            </div>
+
+            {/* Create Public Room Section */}
+            <div className="border border-gray-200 rounded p-2 bg-gray-50">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-gray-700">Create New Public Room</span>
+                <button
+                  onClick={() => setIsCreatingRoom(!isCreatingRoom)}
+                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                    isCreatingRoom
+                      ? 'bg-red-100 text-red-600 hover:bg-red-200'
+                      : 'bg-purple-100 text-purple-600 hover:bg-purple-200'
+                  }`}
+                >
+                  {isCreatingRoom ? 'Cancel' : 'Create'}
+                </button>
+              </div>
+              
+              {isCreatingRoom && (
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    placeholder="Enter room name"
+                  />
+                  <button
+                    onClick={handleCreatePublicRoom}
+                    disabled={!username.trim() || !newRoomName.trim()}
+                    className="w-full bg-purple-600 text-white py-1.5 px-2 rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                    title={
+                      !username.trim() ? 'Please enter your name above' :
+                      !newRoomName.trim() ? 'Please enter a room name' :
+                      ''
+                    }
+                  >
+                    Create & Join
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
@@ -123,6 +124,14 @@ wss.on('connection', (ws) => {
             type: 'ROOM_CREATED',
             payload: { room: newRoom }
           }));
+
+          // If it's a public room, broadcast the new room to all clients
+          if (roomType === 'public') {
+            broadcast({
+              type: 'PUBLIC_ROOM_ADDED',
+              payload: { room: newRoom }
+            });
+          }
           
           break;
         }

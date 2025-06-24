@@ -9,6 +9,26 @@ interface DrawingState {
   shapes: Shape[]
   selectedShapeIds: string[]
   defaultStyle: ShapeStyle
+  // Enhanced drawing features
+  brushSettings: {
+    size: number
+    opacity: number
+    pressure: number
+    texture: 'smooth' | 'rough' | 'watercolor' | 'marker'
+  }
+  voiceChat: {
+    isEnabled: boolean
+    isMuted: boolean
+    isDeafened: boolean
+    participants: string[]
+    localStream?: MediaStream
+  }
+  advancedGestures: {
+    twoHandMode: boolean
+    pressureSensitivity: boolean
+    gestureToolSelection: boolean
+    airWriting: boolean
+  }
   collaborators: User[]
   currentRoom: Room | null
   availableRooms: Room[]
@@ -23,8 +43,8 @@ interface DrawingState {
     offsetY: number
   }
   history: {
-    past: DrawingState[]
-    future: DrawingState[]
+    past: Shape[][]
+    future: Shape[][]
   }
 }
 
@@ -65,6 +85,11 @@ type DrawingAction =
   | { type: 'SET_AVAILABLE_ROOMS'; payload: Room[] }
   | { type: 'ADD_ROOM'; payload: Room }
   | { type: 'REMOVE_ROOM'; payload: string }
+  // Enhanced features actions
+  | { type: 'SET_BRUSH_SETTINGS'; payload: Partial<{ size: number; opacity: number; pressure: number; texture: 'smooth' | 'rough' | 'watercolor' | 'marker' }> }
+  | { type: 'TOGGLE_VOICE_CHAT'; payload?: boolean }
+  | { type: 'SET_VOICE_MUTE'; payload: boolean }
+  | { type: 'SET_ADVANCED_GESTURES'; payload: Partial<{ twoHandMode: boolean; pressureSensitivity: boolean; gestureToolSelection: boolean; airWriting: boolean }> }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -87,6 +112,25 @@ const initialState: DrawingState = {
     strokeWidth: 2,
     opacity: 1,
     fontSize: 16,
+  },
+  // Enhanced drawing features
+  brushSettings: {
+    size: 10,
+    opacity: 0.8,
+    pressure: 0.5,
+    texture: 'smooth'
+  },
+  voiceChat: {
+    isEnabled: false,
+    isMuted: false,
+    isDeafened: false,
+    participants: []
+  },
+  advancedGestures: {
+    twoHandMode: false,
+    pressureSensitivity: true,
+    gestureToolSelection: false,
+    airWriting: false
   },
   // Collaboration properties
   collaborators: [],
@@ -619,6 +663,43 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         ...state,
         selectionBox: null,
         selectedShapeIds
+      }
+
+    // Enhanced features cases
+    case 'SET_BRUSH_SETTINGS':
+      return {
+        ...state,
+        brushSettings: {
+          ...state.brushSettings,
+          ...action.payload
+        }
+      }
+
+    case 'TOGGLE_VOICE_CHAT':
+      return {
+        ...state,
+        voiceChat: {
+          ...state.voiceChat,
+          isEnabled: action.payload !== undefined ? action.payload : !state.voiceChat.isEnabled
+        }
+      }
+
+    case 'SET_VOICE_MUTE':
+      return {
+        ...state,
+        voiceChat: {
+          ...state.voiceChat,
+          isMuted: action.payload
+        }
+      }
+
+    case 'SET_ADVANCED_GESTURES':
+      return {
+        ...state,
+        advancedGestures: {
+          ...state.advancedGestures,
+          ...action.payload
+        }
       }
 
     default:
