@@ -1333,6 +1333,64 @@ const Canvas: React.FC<CanvasProps> = () => {
     }
   };
 
+  const disconnectMultimodal = () => {
+    console.log('🔌 Disconnecting from multimodal server...');
+    
+    // Stop recording if active
+    if (isRecording) {
+      stopMultimodalRecording();
+    }
+    
+    // Stop live streaming
+    stopLiveStreaming();
+    
+    // Close WebSocket connection
+    if (multimodalWebSocketRef.current) {
+      // Remove all event listeners to prevent memory leaks
+      multimodalWebSocketRef.current.onopen = null;
+      multimodalWebSocketRef.current.onmessage = null;
+      multimodalWebSocketRef.current.onclose = null;
+      multimodalWebSocketRef.current.onerror = null;
+      
+      // Close the connection properly
+      if (multimodalWebSocketRef.current.readyState === WebSocket.OPEN) {
+        multimodalWebSocketRef.current.close(1000, 'User disconnected');
+      }
+      
+      multimodalWebSocketRef.current = null;
+    }
+    
+    // Reset all states
+    setIsMultimodalConnected(false);
+    setIsRecording(false);
+    setVoiceStatus('idle');
+    setMultimodalError(null);
+    setMultimodalMessages([]);
+    setIsPlayingAudio(false);
+    multimodalIsPlayingRef.current = false;
+    
+    // Clear audio queue
+    multimodalAudioQueueRef.current = [];
+    
+    // Signal backend about disconnection
+    try {
+      fetch('http://localhost:5001/api/browser-closed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'disconnect' }),
+      }).catch(err => console.log('📡 Disconnect signal sent to backend'));
+    } catch (err) {
+      console.log('📡 Disconnect signal failed:', err);
+    }
+    
+    console.log('✅ Multimodal server disconnected and cleaned up');
+    
+    // Show success message
+    if (window.showToast) {
+      window.showToast('AI Assistant disconnected', 'success', 3000);
+    }
+  };
+
   const sendMultimodalSetup = () => {
     if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
       const setupMessage = {
@@ -1629,38 +1687,51 @@ const Canvas: React.FC<CanvasProps> = () => {
       <button
         className={`absolute right-4 top-16 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
           isMultimodalConnected 
-            ? 'bg-green-600 hover:bg-green-700 text-white' 
+            ? 'bg-red-600 hover:bg-red-700 text-white' 
             : 'bg-blue-600 hover:bg-blue-700 text-white'
         }`}
-        onClick={isRecording ? stopMultimodalRecording : startMultimodalRecording}
-        disabled={!isMultimodalConnected}
-        title={isMultimodalConnected ? (isRecording ? "Stop Recording" : "Start Recording") : "Connect AI Assistant"}
+        onClick={isMultimodalConnected ? disconnectMultimodal : connectMultimodal}
+        title={isMultimodalConnected ? "Disconnect AI Assistant" : "Connect AI Assistant"}
       >
-        {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+        {isMultimodalConnected ? (
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-white rounded-full"></div>
+            <span className="text-sm font-medium">Disconnect AI</span>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-2">
+            <Mic size={20} />
+            <span className="text-sm font-medium">Connect AI</span>
+          </div>
+        )}
       </button>
+
+      {/* Recording Button - only show when connected */}
+      {isMultimodalConnected && (
+        <button
+          className={`absolute right-4 top-28 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
+            isRecording
+              ? 'bg-red-500 hover:bg-red-600 text-white'
+              : 'bg-green-600 hover:bg-green-700 text-white'
+          }`}
+          onClick={isRecording ? stopMultimodalRecording : startMultimodalRecording}
+          title={isRecording ? "Stop Recording" : "Start Recording"}
+        >
+          {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+        </button>
+      )}
 
       {/* Live Streaming Status Indicator */}
       {isLiveStreaming && (
-        <div className="absolute right-4 top-28 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+        <div className="absolute right-4 top-40 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
           <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
           <span>Gemini sees live canvas</span>
         </div>
       )}
 
-      {/* Connection Status Indicator */}
-      {!isMultimodalConnected && (
-        <button
-          className="absolute right-4 top-28 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs transition-colors duration-200"
-          onClick={connectMultimodal}
-          title="Connect to AI Assistant - Gemini will see your canvas live"
-        >
-          Connect AI
-        </button>
-      )}
-
       {/* Audio Playback Indicator */}
       {isPlayingAudio && (
-        <div className="absolute right-4 top-40 bg-blue-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+        <div className="absolute right-4 top-52 bg-blue-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
           <Volume2 size={12} className="animate-pulse" />
           <span>Gemini speaking...</span>
         </div>
@@ -1668,7 +1739,7 @@ const Canvas: React.FC<CanvasProps> = () => {
 
       {/* Voice Activity Indicator */}
       {voiceStatus === 'listening' && (
-        <div className="absolute right-4 top-52 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+        <div className="absolute right-4 top-64 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
           <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
           <span>Listening...</span>
         </div>
@@ -1676,7 +1747,7 @@ const Canvas: React.FC<CanvasProps> = () => {
 
       {/* Error Display */}
       {multimodalError && (
-        <div className="absolute right-4 top-64 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
+        <div className="absolute right-4 top-76 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
           {multimodalError}
         </div>
       )}

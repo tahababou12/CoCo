@@ -27,6 +27,31 @@ import signal
 # Load environment variables
 load_dotenv()
 
+# Global audio manager for cleanup
+global_audio_manager = None
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
+    
+    # Clean up global audio manager if it exists
+    if global_audio_manager:
+        global_audio_manager.cleanup()
+    
+    # Create browser closed signal file
+    try:
+        with open("/tmp/browser_closed", "w") as f:
+            f.write("browser_closed")
+    except:
+        pass
+    
+    print("✅ Cleanup completed, exiting...")
+    exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
 # Get API key
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 if not GOOGLE_API_KEY:
@@ -202,8 +227,46 @@ class AudioManager:
             return base64.b64encode(combined_audio).decode('utf-8')
         return None
 
+    def cleanup(self):
+        """Clean up audio resources"""
+        print("🧹 Cleaning up audio resources...")
+        
+        # Stop any ongoing playback
+        if self.playback_task and not self.playback_task.done():
+            self.playback_task.cancel()
+        
+        # Clear audio queues
+        self.audio_queue.clear()
+        self.audio_buffer.clear()
+        
+        # Close audio streams
+        if self.input_stream:
+            try:
+                self.input_stream.stop_stream()
+                self.input_stream.close()
+            except:
+                pass
+            self.input_stream = None
+            
+        if self.output_stream:
+            try:
+                self.output_stream.stop_stream()
+                self.output_stream.close()
+            except:
+                pass
+            self.output_stream = None
+        
+        # Terminate PyAudio
+        try:
+            self.pya.terminate()
+        except:
+            pass
+        
+        print("✅ Audio resources cleaned up")
+
 async def gemini_session_handler(websocket):
     """Handles the interaction with Gemini API within a websocket session."""
+    global global_audio_manager
     max_retries = 3
     retry_count = 0
     session = None
@@ -249,6 +312,9 @@ Just be helpful and encouraging!"""
                 output_sample_rate=RECEIVE_SAMPLE_RATE
             )
             await audio_manager.initialize()
+            
+            # Set global audio manager for cleanup
+            global_audio_manager = audio_manager
 
             # Set up audio queue for processing
             audio_queue = asyncio.Queue()
@@ -499,6 +565,10 @@ Just be helpful and encouraging!"""
                 break
         finally:
             print("Gemini session closed.")
+            # Clean up audio manager
+            if 'audio_manager' in locals():
+                audio_manager.cleanup()
+                global_audio_manager = None
             break
 
 def convert_pcm_to_mp3(pcm_data):

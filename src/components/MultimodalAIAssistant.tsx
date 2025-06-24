@@ -440,13 +440,13 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
         // Check if this is an enhancement command response
         if (data.command_detected === 'enhance') {
           // Add special enhancement message to chat
-          const newMessage: ChatMessage = {
-            id: Date.now().toString(),
-            type: 'assistant',
-            content: data.text,
-            timestamp: new Date(),
-          };
-          setMessages(prev => [...prev, newMessage]);
+        const newMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: data.text,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, newMessage]);
           console.log('✅ [DEBUG] Enhancement command message added to chat');
         } else if (data.enhancement_started) {
           // Add enhancement started message

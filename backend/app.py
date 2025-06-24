@@ -144,9 +144,8 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                     response = client.models.generate_content(
                         model=GEMINI_MODEL,
                         contents=contents,
-                        config=config
-                    
-                    
+                        config=config)
+                                        
                     print("RESPONSE: ", response)
                         
                 except Exception as api_error:
