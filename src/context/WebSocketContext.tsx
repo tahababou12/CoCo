@@ -4,7 +4,7 @@ import { WebSocketMessage, Shape, User, UserPosition, Point } from '../types';
 import { v4 as uuidv4 } from '../utils/uuid';
 
 // URL of the WebSocket server
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080';
+const WS_URL = 'ws://localhost:8081';
 
 // Array of colors for different users
 const USER_COLORS = [
@@ -36,9 +36,10 @@ export type WebSocketContextType = {
   isConnecting: boolean;
   users: User[];
   currentUser: User | null;
+  currentRoom: { id: string; name: string; code?: string; type: string; currentUsers?: any[]; maxUsers?: number } | null;
   peerConnections: Record<string, RTCPeerConnection>;
   remoteStreams: Record<string, MediaStream>;
-  connect: (userName: string, position: UserPosition) => void;
+  connect: (userName: string, position: UserPosition, roomId?: string, roomCode?: string) => void;
   disconnect: () => void;
   sendCursorMove: (position: Point) => void;
   startDrawing: (point: Point, tool: string) => void;
@@ -65,6 +66,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Instead of managing users with useState, use useRef to avoid the linter error
   const usersRef = useRef<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentRoom, setCurrentRoom] = useState<{ id: string; name: string; code?: string; type: string } | null>(null);
   const [peerConnections, setPeerConnections] = useState<Record<string, RTCPeerConnection>>({});
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [sharedWebcamStream, setSharedWebcamStream] = useState<MediaStream | null>(null);
@@ -73,10 +75,8 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   
   // Calculate available positions
   const availablePositions = useMemo(() => DEFAULT_POSITIONS.filter(
-    pos => !state.collaborators.some(user => user.position && 
-                                           (user.position as unknown as string) === pos) || 
-           (state.currentUser && state.currentUser.position && 
-            (state.currentUser.position as unknown as string) === pos)
+    pos => !state.collaborators.some(user => user.screenPosition === pos) || 
+           (state.currentUser && state.currentUser.screenPosition === pos)
   ), [state.collaborators, state.currentUser]);
 
   // Add cursor batch handling state
@@ -331,7 +331,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   };
 
   // Connect to WebSocket server
-  const connect = (userName: string, position: UserPosition) => {
+  const connect = (userName: string, position: UserPosition, roomId?: string, roomCode?: string) => {
     if (isConnected || isConnecting) return;
     
     setIsConnecting(true);
@@ -352,7 +352,8 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
       const user: User = {
         id: userId,
         name: userName,
-        position: { x: 0, y: 0 }, // Initialize with a Point type
+        position: { x: 0, y: 0 }, // Initialize coordinates
+        screenPosition: position, // Screen position (top-left, etc.)
         color: USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)],
         isActive: true,
         cursor: { x: 0, y: 0 },
@@ -370,7 +371,9 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         payload: {
           userId,
           username: userName,
-          position
+          position,
+          roomId,
+          roomCode
         }
       });
       
@@ -396,6 +399,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
+      setIsConnected(false);
       setIsConnecting(false);
     };
     
@@ -461,9 +465,68 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     console.log("Received WebSocket message:", message.type, message.payload);
     
     switch (message.type) {
+      case 'ROOM_CREATED':
+        console.log("Room created:", message.payload);
+        // Room created successfully, now auto-join it
+        if (message.payload.room && message.payload.room.code) {
+          console.log("Auto-joining created room with code:", message.payload.room.code);
+          // Auto-join the created room - we'll need the user details
+          // For now, we'll just log that the room was created
+          // The user will need to manually join using the code
+        }
+        break;
+        
+      case 'ROOM_JOINED':
+        console.log("Room joined:", message.payload);
+        if (message.payload.room) {
+          const room = {
+            id: message.payload.room.id,
+            name: message.payload.room.name,
+            code: message.payload.room.code,
+            type: message.payload.room.type
+          };
+          console.log("Setting currentRoom to:", room);
+          setCurrentRoom(room);
+        }
+        break;
+        
+      case 'ROOM_ERROR':
+        console.error("Room error:", message.payload);
+        // You could add error handling here, like showing a toast notification
+        alert(`Room error: ${message.payload.message}${message.payload.code ? ` (${message.payload.code})` : ''}`);
+        break;
+        
+      case 'ROOM_UPDATED':
+        console.log("Room updated:", message.payload);
+        if (message.payload.room) {
+          const room = {
+            id: message.payload.room.id,
+            name: message.payload.room.name,
+            code: message.payload.room.code,
+            type: message.payload.room.type,
+            currentUsers: message.payload.room.currentUsers,
+            maxUsers: message.payload.room.maxUsers
+          };
+          console.log("Updating currentRoom to:", room);
+          setCurrentRoom(room);
+        }
+        break;
+        
       case 'USER_JOINED':
-        console.log("Adding collaborator:", message.payload);
-        dispatch({ type: 'ADD_COLLABORATOR', payload: message.payload });
+        console.log("=== USER_JOINED DEBUG ===");
+        console.log("Raw message payload:", message.payload);
+        console.log("Current collaborators before add:", state.collaborators);
+        console.log("Current user ID:", userIdRef.current);
+        console.log("Is this our own user?", message.payload.id === userIdRef.current);
+        
+        // Don't add ourselves to the collaborators list
+        if (message.payload.id !== userIdRef.current) {
+          console.log("Adding collaborator:", message.payload);
+          dispatch({ type: 'ADD_COLLABORATOR', payload: message.payload });
+        } else {
+          console.log("Skipping self - not adding to collaborators");
+        }
+        console.log("========================");
         break;
         
       case 'USER_LEFT': {
@@ -576,6 +639,36 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
         break;
         
+      case 'DRAWING_START':
+        if (message.payload.userId !== userIdRef.current) {
+          console.log('Received drawing start from collaborator:', message.payload);
+          dispatch({
+            type: 'START_DRAWING',
+            payload: { 
+              point: message.payload.point, 
+              type: message.payload.tool as Shape['type'] 
+            }
+          });
+        }
+        break;
+        
+      case 'DRAWING_CONTINUE':
+        if (message.payload.userId !== userIdRef.current) {
+          console.log('Received drawing continue from collaborator:', message.payload);
+          dispatch({
+            type: 'CONTINUE_DRAWING',
+            payload: message.payload.point
+          });
+        }
+        break;
+        
+      case 'DRAWING_END':
+        if (message.payload.userId !== userIdRef.current) {
+          console.log('Received drawing end from collaborator:', message.payload);
+          dispatch({ type: 'END_DRAWING' });
+        }
+        break;
+        
       case 'ERROR':
         console.error('Error from server:', message.payload.message);
         break;
@@ -671,42 +764,119 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     };
   }, []);
   
-  // Add missing method implementations - these match the interface but aren't yet used
+  // Implement drawing synchronization methods
   const startDrawing = useCallback((point: Point, tool: string) => {
     if (!isConnected || !currentUser || !wsRef.current) return;
-    // Placeholder for future implementation
-    console.log('startDrawing not yet implemented in WebSocket', point, tool);
-  }, [isConnected, currentUser]);
+    
+    // Start drawing locally first
+    dispatch({
+      type: 'START_DRAWING',
+      payload: { point, type: tool as Shape['type'] }
+    });
+    
+    // Broadcast to other users
+    sendMessage({
+      type: 'DRAWING_START',
+      payload: {
+        userId: currentUser.id,
+        point,
+        tool
+      }
+    });
+    
+    console.log('Broadcasting drawing start to collaborators', point, tool);
+  }, [isConnected, currentUser, dispatch, sendMessage]);
 
   const continueDrawing = useCallback((point: Point) => {
     if (!isConnected || !currentUser || !wsRef.current) return;
-    // Placeholder for future implementation
-    console.log('continueDrawing not yet implemented in WebSocket', point);
-  }, [isConnected, currentUser]);
+    
+    // Continue drawing locally
+    dispatch({
+      type: 'CONTINUE_DRAWING',
+      payload: point
+    });
+    
+    // Broadcast to other users
+    sendMessage({
+      type: 'DRAWING_CONTINUE',
+      payload: {
+        userId: currentUser.id,
+        point
+      }
+    });
+    
+    console.log('Broadcasting drawing continuation to collaborators', point);
+  }, [isConnected, currentUser, dispatch, sendMessage]);
 
   const endDrawing = useCallback(() => {
     if (!isConnected || !currentUser || !wsRef.current) return;
-    // Placeholder for future implementation
-    console.log('endDrawing not yet implemented in WebSocket');
-  }, [isConnected, currentUser]);
+    
+    // End drawing locally
+    dispatch({ type: 'END_DRAWING' });
+    
+    // Broadcast to other users
+    sendMessage({
+      type: 'DRAWING_END',
+      payload: {
+        userId: currentUser.id
+      }
+    });
+    
+    console.log('Broadcasting drawing end to collaborators');
+  }, [isConnected, currentUser, dispatch, sendMessage]);
 
   const addShape = useCallback((shape: Shape) => {
     if (!isConnected || !currentUser || !wsRef.current) return;
-    // Placeholder for future implementation
-    console.log('addShape not yet implemented in WebSocket', shape);
-  }, [isConnected, currentUser]);
+    
+    // Add shape locally
+    dispatch({ type: 'ADD_SHAPE', payload: shape });
+    
+    // Broadcast to other users
+    sendMessage({
+      type: 'SHAPE_ADDED',
+      payload: {
+        shape: { ...shape, createdBy: currentUser.id },
+        userId: currentUser.id
+      }
+    });
+    
+    console.log('Broadcasting shape addition to collaborators', shape);
+  }, [isConnected, currentUser, dispatch, sendMessage]);
 
   const deleteShape = useCallback((shapeId: string) => {
     if (!isConnected || !currentUser || !wsRef.current) return;
-    // Placeholder for future implementation
-    console.log('deleteShape not yet implemented in WebSocket', shapeId);
-  }, [isConnected, currentUser]);
+    
+    // Delete shape locally
+    dispatch({ type: 'DELETE_SHAPES', payload: [shapeId] });
+    
+    // Broadcast to other users
+    sendMessage({
+      type: 'SHAPES_DELETED',
+      payload: {
+        shapeIds: [shapeId],
+        userId: currentUser.id
+      }
+    });
+    
+    console.log('Broadcasting shape deletion to collaborators', shapeId);
+  }, [isConnected, currentUser, dispatch, sendMessage]);
 
   const updateViewTransform = useCallback((offsetX: number, offsetY: number, scale: number) => {
     if (!isConnected || !currentUser || !wsRef.current) return;
-    // Placeholder for future implementation
-    console.log('updateViewTransform not yet implemented in WebSocket', offsetX, offsetY, scale);
-  }, [isConnected, currentUser]);
+    
+    // Update view transform locally
+    dispatch({
+      type: 'PAN',
+      payload: { x: offsetX, y: offsetY }
+    });
+    
+    dispatch({
+      type: 'ZOOM',
+      payload: scale
+    });
+    
+    console.log('View transform updated', { offsetX, offsetY, scale });
+  }, [isConnected, currentUser, dispatch]);
   
   // Update the context value to include the new function
   const contextValue = useMemo(() => ({
@@ -715,6 +885,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     isConnecting,
     users: getUsers(),
     currentUser,
+    currentRoom,
     peerConnections,
     remoteStreams,
     connect,
@@ -738,6 +909,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     isConnecting,
     getUsers,
     currentUser,
+    currentRoom,
     peerConnections,
     remoteStreams,
     connect,

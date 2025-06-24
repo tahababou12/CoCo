@@ -42,6 +42,7 @@ export interface User {
   name: string
   color: string
   position: Point
+  screenPosition?: UserPosition // Position on screen (top-left, etc.)
   handPosition?: Point
   isHandTracking?: boolean
   isActive: boolean
@@ -51,9 +52,29 @@ export interface User {
   webcamStreamId?: string
 }
 
+// Room types for collaboration
+export type RoomType = 'public' | 'private';
+
+export interface Room {
+  id: string;
+  name: string;
+  type: RoomType;
+  code?: string; // 6-digit code for private rooms
+  createdBy: string;
+  createdAt: Date;
+  maxUsers?: number;
+  currentUsers: User[];
+  isActive: boolean;
+}
+
 // WebSocket message types
 export type WebSocketMessage = 
-  | { type: 'JOIN_ROOM'; payload: { userId: string; username: string; position: UserPosition } }
+  | { type: 'JOIN_ROOM'; payload: { userId: string; username: string; position: UserPosition; roomId?: string; roomCode?: string } }
+  | { type: 'CREATE_ROOM'; payload: { userId: string; roomName: string; roomType: RoomType; maxUsers?: number } }
+  | { type: 'ROOM_CREATED'; payload: { room: Room } }
+  | { type: 'ROOM_LIST'; payload: { rooms: Room[] } }
+  | { type: 'ROOM_JOINED'; payload: { room: Room; user: User } }
+  | { type: 'ROOM_ERROR'; payload: { message: string; code?: string } }
   | { type: 'USER_JOINED'; payload: User }
   | { type: 'USER_LEFT'; payload: { userId: string } }
   | { type: 'CURSOR_MOVE'; payload: { userId: string; position: Point } }
@@ -61,6 +82,10 @@ export type WebSocketMessage =
   | { type: 'SHAPE_ADDED'; payload: { shape: Shape; userId: string } }
   | { type: 'SHAPE_UPDATED'; payload: { shapeId: string; updates: Partial<Shape>; userId: string } }
   | { type: 'SHAPES_DELETED'; payload: { shapeIds: string[]; userId: string } }
+  | { type: 'DRAWING_START'; payload: { userId: string; point: Point; tool: string } }
+  | { type: 'DRAWING_CONTINUE'; payload: { userId: string; point: Point } }
+  | { type: 'DRAWING_END'; payload: { userId: string } }
+  | { type: 'ROOM_UPDATED'; payload: { room: Room } }
   | { type: 'REQUEST_SYNC'; payload: { userId: string } }
   | { type: 'ERROR'; payload: { message: string } }
   | { type: 'HAND_TRACKING_STATUS'; payload: { userId: string; isEnabled: boolean } }
@@ -71,6 +96,11 @@ export type WebSocketMessage =
 
 export type WebSocketMessageType = 
   | 'JOIN_ROOM'
+  | 'CREATE_ROOM'
+  | 'ROOM_CREATED'
+  | 'ROOM_LIST'
+  | 'ROOM_JOINED'
+  | 'ROOM_ERROR'
   | 'USER_JOINED'
   | 'USER_LEFT'
   | 'CURSOR_MOVE'
@@ -78,6 +108,9 @@ export type WebSocketMessageType =
   | 'SHAPE_ADDED'
   | 'SHAPE_UPDATED'
   | 'SHAPES_DELETED'
+  | 'DRAWING_START'
+  | 'DRAWING_CONTINUE'
+  | 'DRAWING_END'
   | 'REQUEST_SYNC'
   | 'ERROR'
   | 'HAND_TRACKING_STATUS'
@@ -100,6 +133,8 @@ export type DrawingState = {
   // Collaboration properties
   currentUser?: User
   collaborators: User[]
+  currentRoom?: Room
+  availableRooms: Room[]
   isConnected: boolean
   peerConnections: Record<string, RTCPeerConnection>
   remoteStreams: Record<string, MediaStream>

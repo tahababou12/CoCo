@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer } from 'react'
-import { Shape, Tool, Point, ShapeStyle, User } from '../types'
+import { Shape, Tool, Point, ShapeStyle, User, Room } from '../types'
 import { v4 as uuidv4 } from '../utils/uuid'
 
 // Define DrawingState interface locally
@@ -10,6 +10,8 @@ interface DrawingState {
   selectedShapeIds: string[]
   defaultStyle: ShapeStyle
   collaborators: User[]
+  currentRoom: Room | null
+  availableRooms: Room[]
   isConnected: boolean
   peerConnections: Record<string, RTCPeerConnection>
   remoteStreams: Record<string, MediaStream>
@@ -59,6 +61,10 @@ type DrawingAction =
   | { type: 'START_SELECTION_BOX'; payload: Point }
   | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
   | { type: 'END_SELECTION_BOX' }
+  | { type: 'SET_CURRENT_ROOM'; payload: Room | null }
+  | { type: 'SET_AVAILABLE_ROOMS'; payload: Room[] }
+  | { type: 'ADD_ROOM'; payload: Room }
+  | { type: 'REMOVE_ROOM'; payload: string }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -84,6 +90,8 @@ const initialState: DrawingState = {
   },
   // Collaboration properties
   collaborators: [],
+  currentRoom: null,
+  availableRooms: [],
   isConnected: false,
   peerConnections: {},
   remoteStreams: {},
@@ -404,14 +412,25 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       }
 
     case 'ADD_COLLABORATOR': {
+      console.log("=== ADD_COLLABORATOR DEBUG ===");
+      console.log("Payload:", action.payload);
+      console.log("Current collaborators:", state.collaborators);
+      
       // Don't add if user already exists
       if (state.collaborators.some(user => user.id === action.payload.id)) {
+        console.log("User already exists, not adding");
+        console.log("===============================");
         return state;
       }
-      return {
+      
+      console.log("Adding new collaborator");
+      const newState = {
         ...state,
         collaborators: [...state.collaborators, action.payload],
-      }
+      };
+      console.log("New collaborators:", newState.collaborators);
+      console.log("===============================");
+      return newState;
     }
 
     case 'REMOVE_COLLABORATOR':

@@ -65,24 +65,25 @@ export const determineHandMode = (landmarks: HandLandmark[]): { mode: HandMode, 
   };
   
   // Log finger states for debugging
-  console.log('Finger states:', {
-    thumb: thumbExtended ? 'Extended' : 'Closed',
-    index: indexExtended ? 'Extended' : 'Closed',
-    middle: middleExtended ? 'Extended' : 'Closed',
-    ring: ringExtended ? 'Extended' : 'Closed',
-    pinky: pinkyExtended ? 'Extended' : 'Closed',
-    handType: isRightHand ? 'Right hand' : 'Left hand'
-  });
+  if (indexExtended || thumbExtended) { // Only log when potentially interesting
+    console.log('🖐️ Finger states:', {
+      thumb: thumbExtended ? '👍 Extended' : '❌ Closed',
+      index: indexExtended ? '☝️ Extended' : '❌ Closed',
+      middle: middleExtended ? '🖕 Extended' : '❌ Closed',
+      ring: ringExtended ? '💍 Extended' : '❌ Closed',
+      pinky: pinkyExtended ? '🤙 Extended' : '❌ Closed',
+      handType: isRightHand ? 'Right hand' : 'Left hand'
+    });
+  }
   
   // FEATURE 1: DRAGGING MODE - Thumb, index, and middle fingers extended (ring and pinky closed)
   if (fingersExtended[0] && fingersExtended[1] && fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
     console.log('GESTURE DETECTED: Dragging mode');
     return { mode: 'Dragging', fingerState };
   }
-  // FEATURE 2: DRAWING MODE - Only index finger is extended
-  // Allow thumb to be slightly extended for more reliable detection
+  // FEATURE 2: DRAWING MODE - ONLY index finger extended, thumb must be closed/hidden
   else if (!fingersExtended[0] && fingersExtended[1] && !fingersExtended[2] && !fingersExtended[3] && !fingersExtended[4]) {
-    console.log('GESTURE DETECTED: Drawing mode');
+    console.log('✏️ GESTURE DETECTED: Drawing mode (index only, thumb down) ✏️');
     return { mode: 'Drawing', fingerState };
   }
   // FEATURE 3: CLICKING MODE - Closed fist (no fingers extended)
@@ -97,8 +98,12 @@ export const determineHandMode = (landmarks: HandLandmark[]): { mode: HandMode, 
     return { mode: 'Clearing', fingerState };
   }
   else {
-    // Any other hand position
-    console.log('GESTURE DETECTED: None (unrecognized gesture)');
+    // Any other hand position (including thumbs up with index = stop drawing)
+    if (fingersExtended[0] && fingersExtended[1]) {
+      console.log('🛑 GESTURE DETECTED: Stop drawing (thumbs up with index) 🛑');
+    } else {
+      console.log('GESTURE DETECTED: None (unrecognized gesture)');
+    }
     return { mode: 'None', fingerState };
   }
 };
@@ -151,8 +156,13 @@ export const getStableHandMode = (
     buffer.modeHistory.shift();
   }
   
-  // With fewer than 3 modes, just use the current mode
-  if (buffer.modeHistory.length < 3) {
+  // For drawing mode, be extremely responsive - use immediately
+  if (currentMode === 'Drawing') {
+    return { mode: 'Drawing', newLastClearTime: lastClearTime };
+  }
+  
+  // With fewer than 2 modes, just use the current mode
+  if (buffer.modeHistory.length < 2) {
     return { mode: currentMode, newLastClearTime: lastClearTime };
   }
   
@@ -179,9 +189,9 @@ export const getStableHandMode = (
     return { mode: 'Clearing', newLastClearTime: now };
   }
   
-  // If drawing mode is detected even just a few times, prioritize it
-  // This makes drawing mode more responsive
-  if (drawingCount >= 2 && buffer.modeHistory.length >= 3) {
+  // If drawing mode is detected even just once in recent history, prioritize it
+  // This makes drawing mode very responsive for better user experience
+  if (drawingCount >= 1) {
     return { mode: 'Drawing', newLastClearTime: lastClearTime };
   }
   
@@ -194,24 +204,14 @@ export const getStableHandMode = (
   let mostCommonMode: HandMode = 'None';
   let maxCount = noneCount;
   
-  if (drawingCount > maxCount) {
-    maxCount = drawingCount;
-    mostCommonMode = 'Drawing';
-  }
-  
   if (clickingCount > maxCount) {
-    maxCount = clickingCount;
     mostCommonMode = 'Clicking';
+    maxCount = clickingCount;
   }
   
   if (draggingCount > maxCount) {
-    maxCount = draggingCount;
     mostCommonMode = 'Dragging';
-  }
-  
-  if (clearingCount > maxCount) {
-    maxCount = clearingCount;
-    mostCommonMode = 'Clearing';
+    maxCount = draggingCount;
   }
   
   return { mode: mostCommonMode, newLastClearTime: lastClearTime };

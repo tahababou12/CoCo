@@ -13,8 +13,8 @@ import { useWebSocket } from '../context/WebSocketContext';
 
 // Debug configuration
 const DEBUG = false;
-const DEBUG_FINGER_DRAWING = false;
-const DEBUG_COLLAB = false;
+const DEBUG_FINGER_DRAWING = true;
+const DEBUG_COLLAB = true;
 
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
@@ -423,6 +423,11 @@ const HandDrawing: React.FC = () => {
   ) => {
     if (!canvasRef.current) return;
     
+    // Debug hand mode detection
+    if (DEBUG_FINGER_DRAWING) {
+      console.log(`Hand ${handIndex} mode: ${mode} at point:`, currentPoint);
+    }
+    
     // Get the canvas-space position
     const canvasSpacePoint = videoToCanvasCoords(currentPoint);
     
@@ -439,6 +444,7 @@ const HandDrawing: React.FC = () => {
     
     // Handle mode change - always save drawing when switching from Drawing mode
     if (prevMode === 'Drawing' && mode !== 'Drawing' && state.currentShape) {
+      if (DEBUG_FINGER_DRAWING) console.log('🛑 Ending drawing due to mode change from Drawing to', mode);
       saveDrawing();
     }
 
@@ -447,6 +453,11 @@ const HandDrawing: React.FC = () => {
       console.log('Drawing mode detected, transformed point:', transformedPoint);
       console.log('Current drawing state:', state.currentShape ? 'Drawing in progress' : 'No active drawing');
       console.log('Current selected tool:', state.tool);
+    }
+    
+    // Debug when stopping drawing
+    if (DEBUG_FINGER_DRAWING && prevMode === 'Drawing' && mode !== 'Drawing') {
+      console.log('🛑 Stopping drawing mode, previous mode was:', prevMode, 'new mode:', mode);
     }
     
     // Update mode in refs for next frame
@@ -486,16 +497,7 @@ const HandDrawing: React.FC = () => {
           
           if (DEBUG_FINGER_DRAWING) console.log('Starting drawing from previous point', prevPoint);
           
-          // Start drawing from the previous point for continuity
-          dispatch({
-            type: 'START_DRAWING',
-            payload: { 
-              point: prevPoint, 
-              type: 'pencil' 
-            }
-          });
-          
-          // Set stroke style 
+          // Set stroke style first
           dispatch({
             type: 'SET_STYLE',
             payload: { 
@@ -504,27 +506,35 @@ const HandDrawing: React.FC = () => {
             }
           });
           
-          // Notify other users about the drawing start via WebSocket
+          // Use WebSocket function which handles both local and remote drawing
           if (webSocket?.isConnected && webSocket?.startDrawing) {
-            if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand drawing start', prevPoint);
+            if (DEBUG_COLLAB) console.log('🎨 [COLLAB] Starting hand drawing via WebSocket', prevPoint);
             webSocket.startDrawing(prevPoint, 'pencil');
-          } else if (DEBUG_COLLAB) {
-            console.warn('[COLLAB] WebSocket not connected for drawing start');
+          } else {
+            // Fallback to local drawing if WebSocket not available
+            if (DEBUG_COLLAB) console.warn('⚠️ [COLLAB] WebSocket not connected, using local drawing');
+            dispatch({
+              type: 'START_DRAWING',
+              payload: { 
+                point: prevPoint, 
+                type: 'pencil' 
+              }
+            });
           }
         } 
         
         if (DEBUG_FINGER_DRAWING) console.log('Continuing drawing at', transformedPoint);
         
-        // Continue drawing - always update with new point
-        dispatch({
-          type: 'CONTINUE_DRAWING', 
-          payload: transformedPoint
-        });
-        
-        // Notify other users about the drawing continuation
+        // Use WebSocket function which handles both local and remote drawing
         if (webSocket?.isConnected && webSocket?.continueDrawing) {
-          if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand drawing update');
+          if (DEBUG_COLLAB) console.log('🖊️ [COLLAB] Continuing hand drawing via WebSocket');
           webSocket.continueDrawing(transformedPoint);
+        } else {
+          // Fallback to local drawing if WebSocket not available
+          dispatch({
+            type: 'CONTINUE_DRAWING', 
+            payload: transformedPoint
+          });
         }
         
         // Store the current point for next frame
@@ -779,17 +789,14 @@ const HandDrawing: React.FC = () => {
     const shapeId = state.currentShape.id;
     const shapePoints = [...state.currentShape.points]; // Make a copy of points
     
-    // First end the drawing in our local state
-    dispatch({ type: 'END_DRAWING' });
-    
     // Reset transformedPoint for all hands
     Object.keys(prevPointsRef.current).forEach(indexStr => {
       prevPointsRef.current[parseInt(indexStr)] = null;
     });
     
-    // Notify other users about the drawing end
+    // Use WebSocket function which handles both local and remote drawing end
     if (webSocket?.isConnected && webSocket?.endDrawing) {
-      if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand drawing end to collaborators for shape:', shapeId);
+      if (DEBUG_COLLAB) console.log('[COLLAB] Ending hand drawing via WebSocket for shape:', shapeId);
       webSocket.endDrawing();
       
       // Additional check - ensure shape was properly added to the drawing state
@@ -816,8 +823,10 @@ const HandDrawing: React.FC = () => {
           dispatch({ type: 'ADD_SHAPE', payload: newShape });
         }
       }, 100);
-    } else if (DEBUG_COLLAB) {
-      console.warn('[COLLAB] Unable to broadcast drawing end - webSocket not ready');
+    } else {
+      // Fallback to local drawing if WebSocket not available
+      if (DEBUG_COLLAB) console.warn('[COLLAB] WebSocket not connected, using local end drawing');
+      dispatch({ type: 'END_DRAWING' });
     }
     
     setIsDrawing(false);

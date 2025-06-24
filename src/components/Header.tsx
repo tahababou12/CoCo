@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { Clock, User, History, ImageIcon } from 'lucide-react'
+import { useWebSocket } from '../context/WebSocketContext'
+import { Clock, User, History, ImageIcon, Eye, EyeOff, Copy, Check, Lock } from 'lucide-react'
 import { renderShape } from '../utils/renderShape'
 import { Shape } from '../types'
 import LoginButton from './LoginButton'
@@ -24,11 +25,23 @@ interface StoryboardFrame {
 
 const Header: React.FC<HeaderProps> = () => {
   const { state, dispatch } = useDrawing()
+  const webSocket = useWebSocket()
   const { isAuthenticated } = useAuth0()
   const [documentName, setDocumentName] = useState('Untitled')
   const [showStoryboard, setShowStoryboard] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [frames, setFrames] = useState<StoryboardFrame[]>([])
+  
+  // Debug logging for room state
+  React.useEffect(() => {
+    console.log('Header: webSocket.currentRoom changed =', webSocket?.currentRoom);
+    console.log('Header: Should show private room badge?', 
+      webSocket?.currentRoom && 
+      webSocket.currentRoom.type === 'private' && 
+      webSocket.currentRoom.code
+    );
+  }, [webSocket?.currentRoom]);
   
   const handleExport = () => {
     const canvas = document.createElement('canvas')
@@ -118,6 +131,16 @@ const Header: React.FC<HeaderProps> = () => {
   // Function to remove a frame
   const removeFrame = (id: string) => {
     setFrames(prevFrames => prevFrames.filter(frame => frame.id !== id));
+  };
+
+  const copyRoomCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy room code:', err);
+    }
   };
 
   // Storyboard icon component
@@ -307,6 +330,27 @@ const Header: React.FC<HeaderProps> = () => {
           >
             <StoryboardIcon />
           </button>
+          
+          {/* Private Room Code Display - show when in a private room */}
+          {webSocket?.currentRoom && webSocket.currentRoom.type === 'private' && webSocket.currentRoom.code && (
+            <div className="flex items-center bg-purple-50 border border-purple-200 rounded-md px-2 py-1 mx-2">
+              <Lock size={12} className="text-purple-600 mr-1" />
+              <span className="text-xs font-mono font-semibold text-purple-700 tracking-wider">
+                {webSocket.currentRoom.code}
+              </span>
+              <button
+                onClick={() => copyRoomCode(webSocket.currentRoom?.code || '')}
+                className="ml-1 p-0.5 hover:bg-purple-100 rounded transition-colors"
+                title="Copy room code"
+              >
+                {copied ? (
+                  <Check size={10} className="text-green-600" />
+                ) : (
+                  <Copy size={10} className="text-purple-600" />
+                )}
+              </button>
+            </div>
+          )}
 {/* 
           {isAuthenticated ? (
             <LogoutButton />
@@ -613,6 +657,8 @@ const Header: React.FC<HeaderProps> = () => {
           </div>
         </div>
       )}
+
+
     </header>
   )
 }

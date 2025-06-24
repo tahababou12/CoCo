@@ -36,18 +36,23 @@ const WebcamDisplays: React.FC = () => {
         const user = state.collaborators.find(c => c.id === userId);
         if (!user || !stream) return null;
         
-        // Default to a position based on user ID (to handle Point vs UserPosition type issues)
-        const defaultPosition: UserPosition = 
-          userId.startsWith('1') ? 'top-left' : 
-          userId.startsWith('2') ? 'top-right' : 
-          userId.startsWith('3') ? 'bottom-left' : 'bottom-right';
+        // Use the user's screen position if available, otherwise default based on user ID
+        let position: UserPosition;
+        if (user.screenPosition) {
+          position = user.screenPosition;
+        } else {
+          // Default to a position based on user ID
+          position = userId.startsWith('1') ? 'top-left' : 
+                    userId.startsWith('2') ? 'top-right' : 
+                    userId.startsWith('3') ? 'bottom-left' : 'bottom-right';
+        }
 
         return (
           <UserWebcam
             key={userId}
             stream={stream}
             username={user.name}
-            position={defaultPosition}
+            position={position}
           />
         );
       })}
@@ -121,9 +126,11 @@ function ProtectedApp() {
         <Toolbar />
         <HandDrawing />
         <SimpleWebcam />
-        {/* <CollaborationPanel /> */}
-        {/* <WebcamDisplays /> */}
-        {/* <CollaboratorCursors /> */}
+        <CollaborationPanel />
+        <WebcamDisplays />
+        <CollaboratorCursors />
+        
+
         
         {/* Video generation button - positioned in the middle-right */}
         <button

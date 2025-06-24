@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useDrawing } from '../context/DrawingContext';
 import { UserPosition } from '../types';
+import RoomSelector from './RoomSelector';
 
 const CollaborationPanel: React.FC = () => {
   const { state } = useDrawing();
@@ -13,11 +14,11 @@ const CollaborationPanel: React.FC = () => {
   const isConnected = webSocketContext?.isConnected || false;
   const connectionError = '';
   const availablePositions = ['top-left', 'top-right', 'bottom-left', 'bottom-right'].filter(
-    pos => !state.collaborators.some(user => user.position === pos) || 
-           (webSocketContext?.currentUser && webSocketContext.currentUser.position === pos)
+    pos => !state.collaborators.some(user => user.screenPosition === pos) || 
+           (webSocketContext?.currentUser && webSocketContext.currentUser.screenPosition === pos)
   ) as UserPosition[];
   const currentUsername = webSocketContext?.currentUser?.name || '';
-  const userPosition = webSocketContext?.currentUser?.position || null;
+  const userPosition = webSocketContext?.currentUser?.screenPosition || null;
   
   // Debug logging
   useEffect(() => {
@@ -28,9 +29,7 @@ const CollaborationPanel: React.FC = () => {
     console.log("================================");
   }, [isConnected, webSocketContext?.currentUser, state.collaborators]);
   
-  const [username, setUsername] = useState('');
-  const [selectedPosition, setSelectedPosition] = useState<UserPosition>('top-left');
-  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [showRoomSelector, setShowRoomSelector] = useState(false);
   
   // Reset localStorage settings to make the panel visible
   useEffect(() => {
@@ -52,13 +51,10 @@ const CollaborationPanel: React.FC = () => {
   // For React state updates (less frequent)
   const [panelPosition, setPanelPosition] = useState({ x: 20, y: 80 });
   
-  const handleConnect = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (username.trim()) {
-      console.log(`Attempting to connect as ${username.trim()} at position ${selectedPosition}`);
-      connect(username.trim(), selectedPosition);
-      setShowJoinForm(false);
-    }
+  const handleJoinRoom = (username: string, position: UserPosition, roomId?: string, roomCode?: string) => {
+    console.log(`Attempting to connect as ${username} at position ${position}`, { roomId, roomCode });
+    connect(username, position, roomId, roomCode);
+    setShowRoomSelector(false);
   };
   
   const handleDisconnect = () => {
@@ -262,7 +258,7 @@ const CollaborationPanel: React.FC = () => {
           style={{ backgroundColor: user.color }}
         />
         <span className="text-xs font-medium">{user.name}</span>
-        <span className="text-xs text-gray-500 ml-auto">{positionLabels[user.position as UserPosition]}</span>
+        <span className="text-xs text-gray-500 ml-auto">{user.screenPosition ? positionLabels[user.screenPosition] : 'Unknown'}</span>
       </div>
     );
   };
@@ -364,7 +360,7 @@ const CollaborationPanel: React.FC = () => {
           {isConnected ? (
             <>
               <div className="mb-3 text-xs text-gray-700">
-                You are connected as <span className="font-semibold">{currentUsername}</span> in position <span className="font-semibold">{userPosition && positionLabels[userPosition as UserPosition]}</span>
+                You are connected as <span className="font-semibold">{currentUsername}</span> in position <span className="font-semibold">{userPosition ? positionLabels[userPosition] : 'Unknown'}</span>
               </div>
               
               {state.collaborators.length > 0 ? (
@@ -384,57 +380,22 @@ const CollaborationPanel: React.FC = () => {
               </button>
             </>
           ) : (
-            showJoinForm ? (
-              <form onSubmit={handleConnect} className="space-y-2">
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Your Name:</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full text-xs p-1.5 border border-gray-300 rounded"
-                    placeholder="Enter your name"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Position:</label>
-                  <select
-                    value={selectedPosition}
-                    onChange={(e) => setSelectedPosition(e.target.value as UserPosition)}
-                    className="w-full text-xs p-1.5 border border-gray-300 rounded"
-                  >
-                    {availablePositions.map((pos: UserPosition) => (
-                      <option key={pos} value={pos}>{positionLabels[pos]}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="flex space-x-2 pt-1">
-                  <button
-                    type="submit"
-                    className="flex-1 bg-green-500 text-white text-xs py-1.5 px-2 rounded hover:bg-green-600 transition-colors"
-                  >
-                    Join
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowJoinForm(false)}
-                    className="flex-1 bg-gray-300 text-gray-700 text-xs py-1.5 px-2 rounded hover:bg-gray-400 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
+            <>
               <button
-                onClick={() => setShowJoinForm(true)}
+                onClick={() => setShowRoomSelector(!showRoomSelector)}
                 className="w-full bg-purple-600 text-white text-sm font-bold py-2 px-3 rounded hover:bg-purple-700 transition-colors"
               >
-                Start Collaborating
+                {showRoomSelector ? 'Cancel' : 'Start Collaborating'}
               </button>
-            )
+              
+              {/* Room Selector Dropdown */}
+              {showRoomSelector && (
+                <RoomSelector
+                  onClose={() => setShowRoomSelector(false)}
+                  onJoinRoom={handleJoinRoom}
+                />
+              )}
+            </>
           )}
         </>
       )}
