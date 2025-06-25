@@ -200,24 +200,6 @@ class EnhancedVideoEffects:
         start_y = max(0, min(start_y, scaled_h - h))
         
         return scaled_frame[start_y:start_y+h, start_x:start_x+w]
-    
-    def get_random_effect(self, scene_index):
-        """Get a random effect based on scene index to avoid repetition"""
-        effects = [
-            'ken_burns_zoom_out',
-            'ken_burns_zoom_in', 
-            'spiral_pan_clockwise',
-            'spiral_pan_counterclockwise',
-            'dramatic_zoom_punch',
-            'dramatic_zoom_dolly',
-            'focus_pull',
-            'pan_right',
-            'pan_left'
-        ]
-        
-        # Use scene index to seed randomness for consistency
-        random.seed(scene_index)
-        return random.choice(effects)
 
 class StoryVideoGenerator:
     def __init__(self, enhanced_dir="enhanced_drawings", output_dir="story_videos"):
@@ -290,12 +272,12 @@ class StoryVideoGenerator:
                 img = Image.open(path)
                 
                 # Create the prompt for image analysis
-                prompt = """Describe this image in a very funny way. Include:
+                prompt = """Describe this image in an interestingway. As is relevant, include:
                 - What's happening in the scene
                 - The main shapes and characters involved
                 - Any interesting details or characters
-                – Make sure you avoid using very big language. Keep it very simple, a little bit ironic, and humorous!
-                Keep it to 2-3 sentences and use very simple, clear language."""
+                – Make sure you avoid using big or complicated language. Keep it very simple, a little bit ironic, and humorous if appropraite.
+                Keep it to 1-2 sentences and use very simple, clear language."""
                 
                 # Generate content using the correct model and API structure
                 response = self.client.models.generate_content(
@@ -314,10 +296,12 @@ class StoryVideoGenerator:
         logging.info("Generating coherent story...")
         context_str = story_context or ''
         story_prompt = f"""
-        Create a fun and engaging story that connects these {len(image_descriptions)} scenes. Make it exciting and interesting!
+        Create a fun and engaging story that connects these {len(image_descriptions)} scenes. Make it exciting and interesting.
         
-        Here are some scene descriptions. Use them to create a coherent story script, that is a little bit funny and ironic. Do not use complicated words:
+        Here are some scene descriptions. Use them to create a coherent story script that is short, engaging, and interesting. Do not use complicated words:
         {chr(10).join(f"Scene {i+1}: {desc}" for i, desc in enumerate(image_descriptions))}
+
+        Remember that you only have the specific number of scenes to work with so do not go over 2 sentences per scene.
         
         Your response must be a valid JSON object with exactly this structure:
         {{
@@ -329,7 +313,7 @@ class StoryVideoGenerator:
             ]
         }}
         
-        Make each scene narration about 5-7 seconds long when read aloud.
+        Make each scene narration about 7-15 seconds long when read aloud. Do not go over this limit.
         Use simple words to make it fun and engaging. Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
         IMPORTANT: Your response must be valid JSON only, with no additional text or markdown formatting.
 
@@ -400,44 +384,6 @@ class StoryVideoGenerator:
             logging.error(f"Error creating audio: {e}")
             return False
     
-    def apply_ken_burns_effect(self, frame, progress, direction='zoom_out'):
-        """Apply Ken Burns effect to a frame with smoother movement."""
-        h, w = frame.shape[:2]
-        
-        # Smoother zoom using easing function
-        if direction == 'zoom_out':
-            scale = 1.0 + (progress * progress * 0.2)  # Quadratic easing for smoother zoom
-        else:
-            scale = 1.2 - (progress * progress * 0.2)  # Quadratic easing for smoother zoom
-        
-        # Calculate new dimensions
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        
-        # Resize image with better interpolation
-        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-        
-        # Calculate crop region
-        x1 = (new_w - w) // 2
-        y1 = (new_h - h) // 2
-        x2 = x1 + w
-        y2 = y1 + h
-        
-        # Crop to original size
-        return resized[y1:y2, x1:x2]
-    
-    def apply_pan_effect(self, frame, progress, direction='right'):
-        """Apply panning effect to a frame with smoother movement."""
-        h, w = frame.shape[:2]
-        
-        # Smoother pan using easing function
-        if direction == 'right':
-            offset = int(w * (progress * progress))  # Quadratic easing
-            return frame[:, offset:offset+w]
-        else:
-            offset = int(w * (1 - (progress * progress)))  # Quadratic easing
-            return frame[:, offset:offset+w]
-    
     def create_scene_clip(self, image_path, duration, effect_type='auto', scene_index=0):
         """Create a video clip for a single scene with enhanced effects."""
         img = cv2.imread(image_path)
@@ -453,6 +399,7 @@ class StoryVideoGenerator:
         # Auto-select effect if not specified
         if effect_type == 'auto':
             effect_type = self.get_random_effect_combination(scene_index)
+            logging.info(f"Scene {scene_index}: Selected effect '{effect_type}'")
         
         # Create frames for the scene
         frames = []
@@ -505,8 +452,7 @@ class StoryVideoGenerator:
             'cool_pan'
         ]
         
-        # Use scene index to seed randomness for consistency
-        random.seed(scene_index)
+        # Truly random selection - no seed for maximum randomness
         return random.choice(effects)
     
     def generate_video(self, image_paths=None, story_context=None):
@@ -586,10 +532,10 @@ class StoryVideoGenerator:
             for i, frame in enumerate(title_frames):
                 # Create a copy of the frame to avoid modifying the original
                 frame_with_text = frame.copy()
-                # Add title text overlay
+                # Add title text overlay with black color
                 cv2.putText(frame_with_text, story_data["title"], 
                            (self.resolution[0]//4, self.resolution[1]//2),
-                           cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+                           cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
                 title_frames[i] = frame_with_text
             all_frames.extend(title_frames)
             current_time += durations[0]
@@ -603,9 +549,11 @@ class StoryVideoGenerator:
             for i, img_path in enumerate(image_paths):
                 logging.info(f"Processing scene {i+1}/{len(image_paths)}")
                 scene_duration = durations[i + 2]  # +2 because we have title and intro
+                scene_index = i + 2
                 
+                logging.info(f"Scene {scene_index}: Using image {img_path}")
                 # Create scene frames with random enhanced effects
-                scene_frames = self.create_scene_clip(img_path, scene_duration, 'auto', i + 2)
+                scene_frames = self.create_scene_clip(img_path, scene_duration, 'auto', scene_index)
                 
                 # Add transition
                 transition_frames = []

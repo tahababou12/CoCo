@@ -365,8 +365,13 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
               storyboardImages.map((image, index) => (
                 <div key={index} className="storyboard-image relative group">
                   <img
-                    src={`data:image/png;base64,${image.base64Data}`}
+                    src={`http://localhost:5001${image.path}`}
                     alt={`Storyboard image ${index + 1}`}
+                    onError={(e) => {
+                      // Fallback to base64 if direct URL fails
+                      const target = e.target as HTMLImageElement;
+                      target.src = `data:image/png;base64,${image.base64Data}`;
+                    }}
                   />
                   <div className="storyboard-image-label">
                     #{index + 1}: {image.filename.substring(0, 15)}...

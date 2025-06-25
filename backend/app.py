@@ -157,25 +157,30 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                             image = Image.open(BytesIO(image_bytes))
                             img_array = np.array(image)
                             
+                            # The image from Gemini is already in RGB format (PIL format)
+                            # We need to convert to BGR for OpenCV saving, but keep RGB for base64
                             if len(img_array.shape) == 3 and img_array.shape[2] == 3:
-                                img = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                                img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
                             else:
-                                img = img_array
+                                img_bgr = img_array
                             
                             # Get enhanced image dimensions
                             enhanced_width, enhanced_height = image.size
                             
-                            # Save the enhanced image
+                            # Save the enhanced image in BGR format (OpenCV format)
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             enhanced_filename = f"enhanced_{timestamp}.png"
                             enhanced_path = os.path.join(enhanced_dir, enhanced_filename)
-                            cv2.imwrite(enhanced_path, img)
+                            cv2.imwrite(enhanced_path, img_bgr)
                             print(f"Enhanced image saved to {enhanced_path}")
                             
-                            # Create base64 image data for direct embedding in frontend
+                            # Create base64 image data from the RGB array for frontend
+                            # Convert back to PIL Image from RGB array to ensure correct format
+                            rgb_image = Image.fromarray(img_array)
                             img_buffer = BytesIO()
-                            image.save(img_buffer, format="PNG")
+                            rgb_image.save(img_buffer, format="PNG")
                             enhanced_base64 = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
+                            print(f"Generated base64 data length: {len(enhanced_base64)}")
                             
                             # Update response status with additional data needed for interactive behavior
                             processing_status[request_id] = {
