@@ -77,7 +77,7 @@ class StoryVideoGenerator:
         logging.info(f"Found {len(image_files)} images in enhanced directory: {image_files}")
         return [os.path.join(self.enhanced_dir, f) for f in image_files]
     
-    def analyze_images(self, image_paths):
+    def analyze_images(self, image_paths, story_context=None):
         """Use Gemini to analyze images and create a coherent story."""
         if not GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not set in environment variables")
@@ -97,7 +97,7 @@ class StoryVideoGenerator:
                 - What's happening in the scene
                 - The main shapes and characters involved
                 - Any interesting details or characters
-                – Make sure you avoid using very big language. Keep it very simple, a little bit ironic, and most of all funny!
+                – Make sure you avoid using very big language. Keep it very simple, a little bit ironic, and humorous!
                 Keep it to 2-3 sentences and use very simple, clear language."""
                 
                 # Generate content using the correct model and API structure
@@ -115,10 +115,11 @@ class StoryVideoGenerator:
         
         # Now, generate a coherent story connecting all images
         logging.info("Generating coherent story...")
+        context_str = story_context or ''
         story_prompt = f"""
-        Create a fun and engaging story that connects these {len(image_descriptions)} scenes. Make it colorful and exciting!
+        Create a fun and engaging story that connects these {len(image_descriptions)} scenes. Make it exciting and interesting!
         
-        Scene descriptions:
+        Here are some scene descriptions. Use them to create a coherent story script, that is a little bit funny and ironic. Do not use complicated words:
         {chr(10).join(f"Scene {i+1}: {desc}" for i, desc in enumerate(image_descriptions))}
         
         Your response must be a valid JSON object with exactly this structure:
@@ -132,13 +133,12 @@ class StoryVideoGenerator:
         }}
         
         Make each scene narration about 5-7 seconds long when read aloud.
-        Make the story exciting and interesting! Use simple words but make it fun and engaging. Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
+        Use simple words to make it fun and engaging. Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
         IMPORTANT: Your response must be valid JSON only, with no additional text or markdown formatting.
 
-        Optionally, the user has shared some context about what kind of theme they would want the story to be around. If there is good detail, make sure the story is based on this. Otherwise ignore! Here is the context:
-        [[context]]
+        Optionally, the user has shared some context about what kind of theme they would want the story to be around. Depending on the amount of detail, make sure the story is inspired by this and relates to the scene descriptions. Here is the context:
+        {context_str}
         """
-        # remember to add the context above.
 
         
         try:
@@ -278,7 +278,7 @@ class StoryVideoGenerator:
         eased_progress = progress * progress
         return cv2.addWeighted(frame1, 1 - eased_progress, frame2, eased_progress, 0)
     
-    def generate_video(self, image_paths=None):
+    def generate_video(self, image_paths=None, story_context=None):
         """Generate the complete story video."""
         try:
             logging.info(f"generate_video called with image_paths: {image_paths}")
@@ -295,8 +295,8 @@ class StoryVideoGenerator:
             for i, path in enumerate(image_paths):
                 logging.info(f"Image {i+1}: {path}")
             
-            # Generate story
-            story_data = self.analyze_images(image_paths)
+            # Generate story, pass story_context
+            story_data = self.analyze_images(image_paths, story_context)
             
             # Create timestamp for unique filenames
             timestamp = time.strftime("%Y%m%d_%H%M%S")

@@ -1117,7 +1117,7 @@ const Canvas: React.FC = () => {
             {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
           </button>
           <button
-            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-purple-100 hover:bg-purple-200 text-purple-800 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-gray-600 hover:bg-gray-700 text-gray-100 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
             onClick={() => setShowGenSettings(true)}
             title="Generation Settings"
           >

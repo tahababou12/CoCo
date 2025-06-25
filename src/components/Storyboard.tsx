@@ -23,6 +23,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
   const [videoResult, setVideoResult] = useState<{ url: string; filename: string } | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [imagePath, setImagePath] = useState('');
+  const [storyContext, setStoryContext] = useState('');
 
   // Fetch storyboard images when component mounts or is opened
   useEffect(() => {
@@ -189,6 +190,8 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
       const response = await fetch('http://localhost:5001/api/generate-video', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyContext }),
       });
       
       if (!response.ok) {
@@ -387,6 +390,17 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
           <div className="mt-8 border-t pt-4">
             <h3 className="text-lg font-semibold mb-4">Video Generation</h3>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Story Details <span className="text-xs text-gray-500">(optional)</span></label>
+              <textarea
+                className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                value={storyContext}
+                onChange={e => setStoryContext(e.target.value)}
+                placeholder="Add any context, theme, or details for the story script..."
+                rows={2}
+              />
+            </div>
             
             <div className={`video-status ${videoStatus !== 'idle' ? videoStatus : ''}`}>
               {videoStatus === 'idle' && (

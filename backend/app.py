@@ -312,7 +312,7 @@ def add_to_storyboard(image_path, image_data=None):
     return True
 
 # Function to generate and play video (background processing)
-def generate_video_background(request_id):
+def generate_video_background(request_id, story_context=None):
     global is_video_processing
     
     try:
@@ -332,7 +332,7 @@ def generate_video_background(request_id):
             print(f"Storyboard image {i+1}: {img_path}")
         
         # Generate video using the storyboard images
-        video_path = video_generator.generate_video(storyboard_images)
+        video_path = video_generator.generate_video(storyboard_images, story_context)
         
         if video_path:
             # Get relative path for client
@@ -632,6 +632,8 @@ def generate_video_api():
     global is_video_processing
     
     try:
+        data = request.json or {}
+        story_context = data.get('storyContext', '')
         print(f"=== VIDEO GENERATION REQUEST ===")
         print(f"Current storyboard_images: {storyboard_images}")
         print(f"Current storyboard_image_data: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
@@ -653,9 +655,9 @@ def generate_video_api():
         # Generate a unique request ID
         request_id = f"video_req_{datetime.now().timestamp()}"
         
-        # Start video generation in background
+        # Start video generation in background, pass story_context
         is_video_processing = True
-        threading.Thread(target=generate_video_background, args=(request_id,)).start()
+        threading.Thread(target=generate_video_background, args=(request_id, story_context)).start()
         
         # Return immediately with request ID for polling
         return jsonify({
