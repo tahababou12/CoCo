@@ -116,9 +116,9 @@ class StoryVideoGenerator:
         Your response must be a valid JSON object with exactly this structure:
         {{
             "title": "A fun and catchy title",
-            "story": "A 2-3 sentence introduction to the story",
+            "story": "A 1-2 sentence introduction to the story",
             "scene_narrations": [
-                "A 2-3 sentence narration for each scene that describes what's happening and connects to the next scene",
+                "A 1-2 sentence narration for each scene that describes what's happening and connects to the next scene",
                 ...
             ]
         }}

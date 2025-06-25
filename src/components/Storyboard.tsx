@@ -146,6 +146,40 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const deleteImageFromStoryboard = async (imagePath: string) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await fetch('http://localhost:5001/api/storyboard/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imagePath }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to delete image: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.storyboard) {
+        setStoryboardImages(data.storyboard.images || []);
+        window.showToast('Image removed from storyboard', 'success', 2000);
+      } else {
+        throw new Error('Invalid response format from server');
+      }
+    } catch (err) {
+      console.error('Error deleting image from storyboard:', err);
+      setError(`Failed to delete image: ${err instanceof Error ? err.message : String(err)}`);
+      window.showToast(`Failed to delete image: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const generateVideo = async () => {
     try {
       setVideoStatus('processing');
@@ -324,7 +358,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
               </div>
             ) : storyboardImages.length > 0 ? (
               storyboardImages.map((image, index) => (
-                <div key={index} className="storyboard-image">
+                <div key={index} className="storyboard-image relative group">
                   <img
                     src={`data:image/png;base64,${image.base64Data}`}
                     alt={`Storyboard image ${index + 1}`}
@@ -332,6 +366,16 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
                   <div className="storyboard-image-label">
                     #{index + 1}: {image.filename.substring(0, 15)}...
                   </div>
+                  <button
+                    onClick={() => deleteImageFromStoryboard(image.path)}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                    title="Delete this image"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               ))
             ) : (

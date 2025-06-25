@@ -69,7 +69,7 @@ is_processing = False
 video_processing_status = {}
 is_video_processing = False
 
-# Function to enhance drawing with Gemini - directly adapted from mvp2hands.py
+# Function to enhance drawing with Gemini - directly adapted from mvp2hands.py. Modify the prompts to take in some context from the user now.
 def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
     global is_processing
     
@@ -545,6 +545,54 @@ def clear_storyboard():
     except Exception as e:
         error_msg = f"Error clearing storyboard: {str(e)}"
         print(error_msg)
+        return jsonify({"error": error_msg}), 500
+
+# API endpoint to delete a specific image from the storyboard
+@app.route('/api/storyboard/delete', methods=['POST'])
+def delete_from_storyboard():
+    try:
+        global storyboard_images, storyboard_image_data
+        data = request.json
+        image_path = data.get('imagePath')
+        
+        if not image_path:
+            return jsonify({"error": "No image path provided"}), 400
+        
+        # Handle different path formats
+        if image_path.startswith('/enhanced_drawings/') or image_path.startswith('/img/'):
+            # Extract the filename and build the absolute path
+            filename = os.path.basename(image_path)
+            if image_path.startswith('/enhanced_drawings/'):
+                absolute_path = os.path.join(enhanced_dir, filename)
+            else:
+                absolute_path = os.path.join(img_dir, filename)
+        else:
+            # Assume it's already an absolute path
+            absolute_path = image_path
+        
+        # Find and remove the image from both arrays
+        if absolute_path in storyboard_images:
+            storyboard_images.remove(absolute_path)
+            
+            # Also remove from image data array
+            storyboard_image_data = [img for img in storyboard_image_data if img.get('path') != absolute_path]
+            
+            return jsonify({
+                "success": True,
+                "message": "Image removed from storyboard",
+                "storyboard": {
+                    "images": storyboard_image_data,
+                    "count": len(storyboard_images)
+                }
+            })
+        else:
+            return jsonify({"error": "Image not found in storyboard"}), 404
+            
+    except Exception as e:
+        error_msg = f"Error deleting image from storyboard: {str(e)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
 # API endpoint to generate video from storyboard
