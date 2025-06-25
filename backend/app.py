@@ -72,6 +72,8 @@ is_video_processing = False
 # Function to enhance drawing with Gemini - directly adapted from mvp2hands.py. Modify the prompts to take in some context from the user now.
 def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
     global is_processing
+
+    print(f"enhance_drawing_with_gemini called with prompt: {prompt}")
     
     if not GEMINI_API_KEY:
         error_msg = "Error: Gemini API key is not set. Cannot enhance drawing."

@@ -65,6 +65,13 @@ const Canvas: React.FC = () => {
 
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
+  const [showGenSettings, setShowGenSettings] = useState(false);
+  const [genSettings, setGenSettings] = useState({
+    style: '',
+    mood: '',
+    details: ''
+  });
+
   const renderBackground = () => {
     const canvas = backgroundCanvasRef.current;
     const context = backgroundCtxRef.current;
@@ -706,7 +713,14 @@ const Canvas: React.FC = () => {
       void (DEBUG && console.log(`Image saved for enhancement: ${saveResult.absolutePath}`));
       
       // Use a default enhancement prompt
-      const defaultPrompt = 'Enhance this sketch into an image with more detail';
+      const defaultPrompt = 'Enhance this sketch into a more interesting image with a little bit more detail. Make sure to follow the artstyle, mood, and extra details if provided, othewise just stick to a normal enhancement.';
+
+      let customPrompt = defaultPrompt;
+      const customParts = [];
+      if (genSettings.style.trim()) customParts.push(`Artstyle: ${genSettings.style.trim()}.`);
+      if (genSettings.mood.trim()) customParts.push(`Mood/emotion: ${genSettings.mood.trim()}.`);
+      if (genSettings.details.trim()) customParts.push(`Extra details: ${genSettings.details.trim()}.`);
+      if (customParts.length > 0) customPrompt = `${defaultPrompt}\n${customParts.join(' ')}`;
 
       // Request image enhancement from Flask server
       const response = await fetch('http://localhost:5001/api/enhance-image', {
@@ -716,7 +730,7 @@ const Canvas: React.FC = () => {
         },
         body: JSON.stringify({ 
           filename: saveResult.filename,
-          prompt: defaultPrompt
+          prompt: customPrompt
         }),
       });
 
@@ -1093,14 +1107,60 @@ const Canvas: React.FC = () => {
 
       {/* Enhance with Gemini button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
-        <button
-          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={enhanceDrawingWithGemini}
-          disabled={enhancementStatus === 'processing'}
-          title="Enhance with Gemini"
-        >
-          {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
-        </button>
+        <>
+          <button
+            className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            onClick={enhanceDrawingWithGemini}
+            disabled={enhancementStatus === 'processing'}
+            title="Enhance with Gemini"
+          >
+            {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
+          </button>
+          <button
+            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-purple-100 hover:bg-purple-200 text-purple-800 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            onClick={() => setShowGenSettings(true)}
+            title="Generation Settings"
+          >
+            Generation Settings
+          </button>
+          {showGenSettings && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+              <div className="relative bg-white rounded-lg w-full max-w-md mx-auto shadow-xl overflow-hidden" style={{maxHeight: '90vh'}}>
+                <button
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-500 text-2xl"
+                  onClick={() => setShowGenSettings(false)}
+                  title="Close"
+                >
+                  ×
+                </button>
+                <div className="p-6">
+                  <h2 className="text-2xl font-bold mb-6 text-purple-800">Generation Settings</h2>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Style</label>
+                    <div className="text-xs text-gray-500 mb-1">What artstyle should generations follow?</div>
+                    <input type="text" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.style} onChange={e => setGenSettings(s => ({...s, style: e.target.value}))} />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Mood</label>
+                    <div className="text-xs text-gray-500 mb-1">What emotions are you hoping to showcase?</div>
+                    <input type="text" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.mood} onChange={e => setGenSettings(s => ({...s, mood: e.target.value}))} />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Additional details</label>
+                    <div className="text-xs text-gray-500 mb-1">Any relevant information.</div>
+                    <textarea className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.details} onChange={e => setGenSettings(s => ({...s, details: e.target.value}))} />
+                  </div>
+                  <button
+                    className="w-full bg-purple-600 text-white rounded py-2 mt-2 hover:bg-purple-700 transition-colors"
+                    onClick={() => setShowGenSettings(false)}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Enhanced image display - replaced by interactive images */}
