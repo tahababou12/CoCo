@@ -24,6 +24,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
   const [statusMessage, setStatusMessage] = useState('');
   const [imagePath, setImagePath] = useState('');
   const [storyContext, setStoryContext] = useState('');
+  const [includeMusic, setIncludeMusic] = useState(false);
 
   // Fetch storyboard images when component mounts or is opened
   useEffect(() => {
@@ -193,7 +194,10 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       const response = await fetch('http://localhost:5001/api/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyContext }),
+        body: JSON.stringify({ 
+          storyContext,
+          includeMusic 
+        }),
       });
       
       if (!response.ok) {
@@ -398,6 +402,24 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
           <div className="mt-8 border-t pt-4">
             <h3 className="text-lg font-semibold mb-4">Video Generation</h3>
             
+            {/* Include Music Checkbox */}
+            <div className="mb-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeMusic}
+                  onChange={(e) => setIncludeMusic(e.target.checked)}
+                  className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                />
+                <span className="ml-2 text-sm font-medium text-gray-700">
+                  Include Music
+                </span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 ml-6">
+                Add AI-generated background music that matches the story theme
+              </p>
+            </div>
+            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Story Details <span className="text-xs text-gray-500">(optional)</span></label>
               <textarea
@@ -505,7 +527,9 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
               <li>You need at least 2 images to generate a video</li>
               <li>The video will include all images in the storyboard</li>
               <li>The video will be generated with audio narration</li>
-              <li>Video generation may take a minute or two</li>
+              <li>Enable "Include Music" to add AI-generated background music that matches your story</li>
+              <li>Music generation uses the story context to create appropriate background music</li>
+              <li>Video generation may take a minute or two (longer with music enabled)</li>
             </ul>
           </div>
         </div>
