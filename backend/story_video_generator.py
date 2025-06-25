@@ -53,10 +53,16 @@ class StoryVideoGenerator:
     
     def get_recent_images(self, image_paths=None):
         """Get images from the provided paths or from the enhanced drawings directory."""
+        logging.info(f"get_recent_images called with image_paths: {image_paths}")
+        logging.info(f"Type of image_paths: {type(image_paths)}")
+        
         if image_paths:
+            logging.info(f"Using provided image paths: {image_paths}")
+            logging.info(f"Number of provided images: {len(image_paths)}")
             # If paths are provided, use those directly
             return image_paths
         
+        logging.warning("No image paths provided, falling back to enhanced directory!")
         # Fallback to getting images from directory if no paths provided
         if not os.path.exists(self.enhanced_dir):
             raise FileNotFoundError(f"Enhanced images directory '{self.enhanced_dir}' not found!")
@@ -68,6 +74,7 @@ class StoryVideoGenerator:
         image_files.sort(key=lambda x: os.path.getctime(os.path.join(self.enhanced_dir, x)), 
                         reverse=True)
         
+        logging.info(f"Found {len(image_files)} images in enhanced directory: {image_files}")
         return [os.path.join(self.enhanced_dir, f) for f in image_files]
     
     def analyze_images(self, image_paths):
@@ -86,10 +93,11 @@ class StoryVideoGenerator:
                 img = Image.open(path)
                 
                 # Create the prompt for image analysis
-                prompt = """Describe this image in a fun way. Include:
+                prompt = """Describe this image in a very funny way. Include:
                 - What's happening in the scene
-                - The main shapes
+                - The main shapes and characters involved
                 - Any interesting details or characters
+                – Make sure you avoid using very big language. Keep it very simple, a little bit ironic, and most of all funny!
                 Keep it to 2-3 sentences and use very simple, clear language."""
                 
                 # Generate content using the correct model and API structure
@@ -116,7 +124,7 @@ class StoryVideoGenerator:
         Your response must be a valid JSON object with exactly this structure:
         {{
             "title": "A fun and catchy title",
-            "story": "A 1-2 sentence introduction to the story",
+            "story": "A 1 sentence introduction to the story",
             "scene_narrations": [
                 "A 1-2 sentence narration for each scene that describes what's happening and connects to the next scene",
                 ...
@@ -124,9 +132,14 @@ class StoryVideoGenerator:
         }}
         
         Make each scene narration about 5-7 seconds long when read aloud.
-        Make the story exciting and full of color! Use simple words but make it fun and engaging. Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
+        Make the story exciting and interesting! Use simple words but make it fun and engaging. Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
         IMPORTANT: Your response must be valid JSON only, with no additional text or markdown formatting.
+
+        Optionally, the user has shared some context about what kind of theme they would want the story to be around. If there is good detail, make sure the story is based on this. Otherwise ignore! Here is the context:
+        [[context]]
         """
+        # remember to add the context above.
+
         
         try:
             # Generate story using text-only model
@@ -268,12 +281,19 @@ class StoryVideoGenerator:
     def generate_video(self, image_paths=None):
         """Generate the complete story video."""
         try:
+            logging.info(f"generate_video called with image_paths: {image_paths}")
+            logging.info(f"Type of image_paths: {type(image_paths)}")
+            
             # Get images from provided paths or directory
             image_paths = self.get_recent_images(image_paths)
+            logging.info(f"Final image_paths after get_recent_images: {image_paths}")
+            
             if not image_paths:
                 raise ValueError("No images found!")
             
             logging.info(f"Found {len(image_paths)} images")
+            for i, path in enumerate(image_paths):
+                logging.info(f"Image {i+1}: {path}")
             
             # Generate story
             story_data = self.analyze_images(image_paths)

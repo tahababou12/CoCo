@@ -1013,8 +1013,13 @@ const Canvas: React.FC = () => {
   const addToStoryboard = async (imageIndex: number) => {
     try {
       const image = interactiveEnhancedImages[imageIndex];
+      console.log('=== ADDING TO STORYBOARD FROM FRONTEND ===');
+      console.log('Original image.url:', image.url);
+      console.log('Image object:', image);
+      
       // Extract just the path part from the full URL
       const path = image.url.replace('http://localhost:5001', '');
+      console.log('Extracted path being sent to backend:', path);
       
       const response = await fetch('http://localhost:5001/api/storyboard/add', {
         method: 'POST',

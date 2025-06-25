@@ -266,6 +266,9 @@ def add_to_storyboard(image_path, image_data=None):
     """Add an image to the storyboard by its file path and optionally image data"""
     global storyboard_images, storyboard_image_data
     
+    print(f"add_to_storyboard called with image_path: {image_path}")
+    print(f"Current storyboard_images before adding: {storyboard_images}")
+    
     # Check if the file exists
     if not os.path.exists(image_path):
         print(f"Error: Image file {image_path} not found")
@@ -273,10 +276,13 @@ def add_to_storyboard(image_path, image_data=None):
     
     # Add the file path to storyboard images
     storyboard_images.append(image_path)
+    print(f"Added {image_path} to storyboard_images")
+    print(f"Storyboard_images after adding: {storyboard_images}")
     
     # If image data is provided, add it to the storyboard image data
     if image_data:
         storyboard_image_data.append(image_data)
+        print(f"Added provided image_data to storyboard_image_data")
     else:
         # Read image and convert to base64 for client display
         try:
@@ -294,10 +300,13 @@ def add_to_storyboard(image_path, image_data=None):
                 "width": width,
                 "height": height
             })
+            print(f"Added image data for {os.path.basename(image_path)} to storyboard_image_data")
         except Exception as e:
             print(f"Error reading image for storyboard: {str(e)}")
             return False
     
+    print(f"Final storyboard_images: {storyboard_images}")
+    print(f"Final storyboard_image_data filenames: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
     return True
 
 # Function to generate and play video (background processing)
@@ -314,6 +323,11 @@ def generate_video_background(request_id):
             video_processing_status[request_id] = {"status": "error", "message": error_msg}
             is_video_processing = False
             return
+        
+        print(f"Storyboard images before video generation: {storyboard_images}")
+        print(f"Number of storyboard images: {len(storyboard_images)}")
+        for i, img_path in enumerate(storyboard_images):
+            print(f"Storyboard image {i+1}: {img_path}")
         
         # Generate video using the storyboard images
         video_path = video_generator.generate_video(storyboard_images)
@@ -472,6 +486,9 @@ def add_to_storyboard_api():
         data = request.json
         image_path = data.get('imagePath')  # This could be an absolute path or relative URL
         
+        print(f"=== ADDING IMAGE TO STORYBOARD ===")
+        print(f"Received image_path: {image_path}")
+        
         if not image_path:
             return jsonify({"error": "No image path provided"}), 400
         
@@ -487,12 +504,19 @@ def add_to_storyboard_api():
             # Assume it's already an absolute path
             absolute_path = image_path
             
+        print(f"Resolved absolute_path: {absolute_path}")
+        print(f"File exists: {os.path.exists(absolute_path)}")
+            
         # Verify file exists
         if not os.path.exists(absolute_path):
             return jsonify({"error": f"Image file not found at {absolute_path}"}), 404
             
         # Add image to storyboard
         success = add_to_storyboard(absolute_path)
+        
+        print(f"Add to storyboard success: {success}")
+        print(f"Current storyboard_images: {storyboard_images}")
+        print(f"Current storyboard_image_data filenames: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
         
         if success:
             # Return the updated storyboard
@@ -518,6 +542,11 @@ def add_to_storyboard_api():
 @app.route('/api/storyboard', methods=['GET'])
 def get_storyboard():
     try:
+        print(f"=== GET STORYBOARD DEBUG ===")
+        print(f"storyboard_images: {storyboard_images}")
+        print(f"storyboard_image_data: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
+        print(f"Number of images: {len(storyboard_images)}")
+        
         return jsonify({
             "success": True,
             "storyboard": {
@@ -601,6 +630,11 @@ def generate_video_api():
     global is_video_processing
     
     try:
+        print(f"=== VIDEO GENERATION REQUEST ===")
+        print(f"Current storyboard_images: {storyboard_images}")
+        print(f"Current storyboard_image_data: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
+        print(f"Number of storyboard images: {len(storyboard_images)}")
+        
         # Check if enough images are in storyboard
         if len(storyboard_images) < 2:
             return jsonify({
@@ -691,6 +725,38 @@ def serve_enhanced_image(filename):
 @app.route('/videos/<path:filename>')
 def serve_video(filename):
     return send_from_directory(story_videos_dir, filename)
+
+# Debug endpoint to check storyboard state
+@app.route('/api/debug/storyboard', methods=['GET'])
+def debug_storyboard():
+    try:
+        print(f"=== DEBUG STORYBOARD ENDPOINT ===")
+        print(f"storyboard_images: {storyboard_images}")
+        print(f"storyboard_image_data: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
+        print(f"Number of images: {len(storyboard_images)}")
+        
+        # Check if files exist
+        existing_files = []
+        for img_path in storyboard_images:
+            exists = os.path.exists(img_path)
+            existing_files.append({
+                "path": img_path,
+                "exists": exists,
+                "filename": os.path.basename(img_path)
+            })
+            print(f"File {img_path} exists: {exists}")
+        
+        return jsonify({
+            "success": True,
+            "storyboard_images": storyboard_images,
+            "storyboard_image_data": [img.get('filename', 'unknown') for img in storyboard_image_data],
+            "count": len(storyboard_images),
+            "file_check": existing_files
+        })
+    except Exception as e:
+        error_msg = f"Error in debug storyboard: {str(e)}"
+        print(error_msg)
+        return jsonify({"error": error_msg}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True) 
