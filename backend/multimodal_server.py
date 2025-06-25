@@ -128,22 +128,66 @@ async def process_user_speech_for_commands(audio_data):
         return None
 
 async def call_enhancement_api(prompt="", websocket=None):
-    """Call the Flask enhancement API directly - same workflow as button"""
+    """Call the Flask enhancement API directly - save drawing first, then enhance"""
     try:
-        print("🚀 Triggering frontend to call same function as button")
+        import aiohttp
         
-        # Send message to frontend to call the exact same function as the button
-        message = {
-            "type": "trigger_enhancement"
+        print("🚀 Starting voice enhancement process")
+        
+        # First, request the frontend to save the current drawing
+        print("💾 Requesting frontend to save current drawing...")
+        save_message = {
+            "type": "save_drawing"
         }
-        print(f"📤 Sending trigger message to frontend: {message}")
-        await websocket.send(json.dumps(message))
+        print(f"📤 Sending save request to frontend: {save_message}")
+        await websocket.send(json.dumps(save_message))
         
-        print("✅ Enhancement trigger sent to frontend")
-        return {"status": "triggered", "message": "Enhancement triggered"}
+        # Wait a moment for the save to complete
+        await asyncio.sleep(1)
         
+        # Now call the voice enhancement API - it will find the most recent saved image
+        print("🎨 Calling enhancement API with most recent saved image...")
+        async with aiohttp.ClientSession() as session:
+            url = "http://localhost:5001/api/enhance-image-voice"
+            data = {"prompt": "Enhance this sketch into an image with more detail"}
+            
+            print(f"📤 Calling voice enhancement API: {url}")
+            async with session.post(url, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    print(f"✅ Enhancement started: {result}")
+                    
+                    # Send success message back to frontend
+                    if websocket:
+                        await websocket.send(json.dumps({
+                            "text": "I'll enhance your drawing with Gemini AI now! Enhancement started successfully.",
+                            "command_detected": "enhance",
+                            "enhancement_started": True,
+                            "enhancement_error": False,
+                            "request_id": result.get("request_id")
+                        }))
+                    
+                    return result
+                else:
+                    print(f"❌ Enhancement failed: {response.status}")
+                    if websocket:
+                        await websocket.send(json.dumps({
+                            "text": "Sorry, I couldn't enhance your drawing. Please try again.",
+                            "command_detected": "enhance",
+                            "enhancement_started": False,
+                            "enhancement_error": True
+                        }))
+                    return None
+                    
     except Exception as e:
-        print(f"❌ Error triggering enhancement: {e}")
+        print(f"❌ Error calling enhancement API: {e}")
+        if websocket:
+            await websocket.send(json.dumps({
+                "text": "Sorry, there was an error enhancing your drawing.",
+                "command_detected": "enhance",
+                "enhancement_started": False,
+                "enhancement_error": True
+            }))
         return None
 
 def notify_browser_closed():
@@ -575,7 +619,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                     if input_transcription and input_transcription.text:
                                         transcript_text = input_transcription.text
                                         print(f"🎤 Your Transcript: {transcript_text}")
-
+                                        
                                         # Always send the transcript to the frontend as a user message
                                         await websocket.send(json.dumps({
                                             "type": "user_transcript",

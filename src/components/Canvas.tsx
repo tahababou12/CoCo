@@ -1503,27 +1503,17 @@ const Canvas: React.FC<CanvasProps> = () => {
         enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
       }
       
-      // Handle trigger_enhancement request from multimodal server
-      if (data.type === 'trigger_enhancement') {
-        console.log('🎯 Trigger enhancement request from multimodal server');
-        console.log('🔍 DEBUG: Current state when enhancement triggered:');
-        console.log('  - Shapes count:', state.shapes.length);
-        console.log('  - Shapes:', state.shapes);
-        console.log('  - Is drawing:', isDrawing);
-        console.log('  - Current shape:', state.currentShape);
-        console.log('  - Tool:', state.tool);
-        console.log('  - Would show enhance button:', state.shapes.length > 0);
-        console.log('🔍 FULL STATE DEBUG:');
-        console.log('  - All state keys:', Object.keys(state));
-        console.log('  - State object:', state);
-        console.log('  - Current shape details:', state.currentShape);
-        console.log('  - All shapes details:', state.shapes.map(s => ({ id: s.id, type: s.type, points: s.points.length })));
+      // Handle save_drawing request from multimodal server
+      if (data.type === 'save_drawing') {
+        console.log('💾 Save drawing request from multimodal server');
         
-        // Call EXACTLY the same as the button - no differences at all
-        console.log('🚀 Starting enhancement with EXACT same call as button');
-        
-        // Call EXACTLY like the button does - same function, same parameters
-        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+        // Automatically save the current drawing
+        if (state.shapes.length > 0) {
+          console.log('💾 Auto-saving current drawing...');
+          saveCanvasAsPNG();
+        } else {
+          console.log('❌ No shapes to save');
+        }
       }
       
       if (data.text) {
