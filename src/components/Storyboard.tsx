@@ -296,7 +296,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       <div 
         className="relative bg-white rounded-lg w-full max-w-4xl mx-auto shadow-xl overflow-hidden"
         onClick={e => e.stopPropagation()}
-        style={{ maxHeight: '90vh' }}
+        style={{ maxHeight: '90vh', overflowY: 'auto' }}
       >
         <button
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-500"
