@@ -435,6 +435,33 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
       const data = JSON.parse(event.data);
       console.log('🔍 [DEBUG] Parsed message:', data);
       
+      // Show user transcript
+      if (data.type === 'user_transcript' && data.input_transcription) {
+        const newMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'user',
+          content: data.input_transcription,
+          timestamp: new Date(),
+          isTranscript: true,
+        };
+        setMessages(prev => [...prev, newMessage]);
+        console.log('✅ [DEBUG] User transcript message added to chat');
+        return;
+      }
+      // Show assistant transcript
+      if (data.type === 'assistant_transcript' && data.output_transcription) {
+        const newMessage: ChatMessage = {
+          id: Date.now().toString(),
+          type: 'assistant',
+          content: data.output_transcription,
+          timestamp: new Date(),
+          isTranscript: true,
+        };
+        setMessages(prev => [...prev, newMessage]);
+        console.log('✅ [DEBUG] Assistant transcript message added to chat');
+        return;
+      }
+      
       if (data.text) {
         console.log('🔍 [DEBUG] Text message received:', data.text);
         
@@ -449,7 +476,7 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
         };
         setMessages(prev => [...prev, newMessage]);
           console.log('✅ [DEBUG] Enhancement command message added to chat');
-        } else if (data.enhancement_started) {
+        }
           // Add enhancement started message
           const newMessage: ChatMessage = {
             id: Date.now().toString(),

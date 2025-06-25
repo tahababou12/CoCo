@@ -65,21 +65,25 @@ MODEL = "gemini-2.0-flash-exp"
 
 # Audio configuration constants
 FORMAT = pyaudio.paInt16  # Audio format: 16-bit PCM
-SEND_SAMPLE_RATE = 16000  # Sample rate for audio sent to Gemini (Hz)
+SEND_SAMPLE_RATE = 24000  # Sample rate for audio sent to Gemini (Hz)
 RECEIVE_SAMPLE_RATE = 24000 # Sample rate for audio received from Gemini (Hz)
-CHUNK_SIZE = 512          # Size of audio chunks to process
+CHUNK_SIZE = 1024         # Size of audio chunks to process
 CHANNELS = 1              # Mono audio
 
 # Voice Activity Detection (VAD) configuration
-VAD_SILENCE_THRESHOLD = 15    # Lower threshold for silence detection
-VAD_VOICE_THRESHOLD = 30      # Higher threshold for voice detection
-VAD_MIN_VOICE_DURATION = 0.5  # Minimum speaking time before starting (seconds)
-VAD_MAX_SILENCE_DURATION = 1.0  # Maximum silence before stopping (seconds)
+VAD_SILENCE_THRESHOLD = 3     # Lower threshold for silence detection (was 5)
+VAD_VOICE_THRESHOLD = 8       # Higher threshold for voice detection (was 10)
+VAD_MIN_VOICE_DURATION = 0.3  # Minimum speaking time before starting (seconds)
+VAD_MAX_SILENCE_DURATION = 2.0  # Maximum silence before stopping (seconds) - increased from 0.8
+VAD_SPEECH_BUFFER = 0.5       # Buffer time to continue speech after silence (seconds)
 
 # Voice command patterns for enhancement
 ENHANCE_COMMANDS = [
-    r'\b(?:enhance|improve|make better|upgrade)\s+(?:this\s+)?(?:drawing|image|sketch|picture)\s+(?:with\s+)?(?:gemini|ai|artificial intelligence)\b',
+    # Simple and direct patterns first
     r'\b(?:enhance|improve|make better|upgrade)\s+(?:with\s+)?(?:gemini|ai|artificial intelligence)\b',
+    r'\b(?:gemini|ai|artificial intelligence)\s+(?:enhance|improve|make better|upgrade)\b',
+    # More specific patterns
+    r'\b(?:enhance|improve|make better|upgrade)\s+(?:this\s+)?(?:drawing|image|sketch|picture)\s+(?:with\s+)?(?:gemini|ai|artificial intelligence)\b',
     r'\b(?:gemini|ai|artificial intelligence)\s+(?:enhance|improve|make better|upgrade)\s+(?:this\s+)?(?:drawing|image|sketch|picture)\b',
     r'\b(?:enhance|improve|make better|upgrade)\s+(?:drawing|image|sketch|picture)\b',
     r'\b(?:enhance|improve|make better|upgrade)\s+(?:this\s+)?(?:drawing|image|sketch|picture)\b',
@@ -98,9 +102,14 @@ ENHANCE_COMMANDS = [
 def is_enhance_command(text):
     """Check if the given text matches any enhancement command pattern"""
     text_lower = text.lower().strip()
-    for pattern in ENHANCE_COMMANDS:
+    print(f"🔍 Checking for enhancement command in: '{text}' (lowercase: '{text_lower}')")
+    
+    for i, pattern in enumerate(ENHANCE_COMMANDS):
         if re.search(pattern, text_lower):
+            print(f"✅ Enhancement command detected! Pattern {i} matched: '{pattern}'")
             return True
+    
+    print(f"❌ No enhancement command pattern matched")
     return False
 
 async def process_user_speech_for_commands(audio_data):
@@ -119,28 +128,22 @@ async def process_user_speech_for_commands(audio_data):
         return None
 
 async def call_enhancement_api(prompt="", websocket=None):
-    """Call the Flask enhancement API with save first"""
+    """Call the Flask enhancement API directly - same workflow as button"""
     try:
-        if not websocket:
-            print("❌ No WebSocket connection available for enhancement")
-            return None
-            
-        # First, request the frontend to save the current drawing
-        print("💾 Requesting frontend to save current drawing...")
+        print("🚀 Triggering frontend to call same function as button")
+        
+        # Send message to frontend to call the exact same function as the button
         message = {
-            "type": "save_and_enhance",
-            "prompt": prompt
+            "type": "trigger_enhancement"
         }
-        print(f"📤 Sending message to frontend: {message}")
+        print(f"📤 Sending trigger message to frontend: {message}")
         await websocket.send(json.dumps(message))
         
-        # Wait for the frontend to respond with the save result
-        # The frontend will handle the save and enhancement process
-        print("✅ Enhancement request sent to frontend")
-        return {"status": "requested", "message": "Enhancement requested"}
+        print("✅ Enhancement trigger sent to frontend")
+        return {"status": "triggered", "message": "Enhancement triggered"}
         
     except Exception as e:
-        print(f"❌ Error calling enhancement API: {e}")
+        print(f"❌ Error triggering enhancement: {e}")
         return None
 
 def notify_browser_closed():
@@ -356,6 +359,14 @@ Just be helpful and encouraging about the drawing itself!"""
                     is_speaking = False     # Current speaking state
                     min_voice_duration = VAD_MIN_VOICE_DURATION
                     max_silence_duration = VAD_MAX_SILENCE_DURATION
+                    speech_buffer = VAD_SPEECH_BUFFER
+                    
+                    # Audio level smoothing
+                    audio_level_history = []
+                    history_size = 5
+                    
+                    # Speech continuation buffer
+                    speech_continuation_time = 0
                     
                     while True:
                         data = await asyncio.to_thread(
@@ -366,20 +377,37 @@ Just be helpful and encouraging about the drawing itself!"""
                         
                         # Only process audio if microphone is not muted
                         if not audio_manager.is_mic_muted:
-                            # Calculate audio level
-                            audio_level = max(abs(int.from_bytes(data[i:i+2], byteorder='little', signed=True)) 
-                                            for i in range(0, len(data), 2))
+                            # Calculate RMS (Root Mean Square) audio level for better accuracy
+                            samples = []
+                            for i in range(0, len(data), 2):
+                                sample = int.from_bytes(data[i:i+2], byteorder='little', signed=True)
+                                samples.append(sample)
+                            
+                            # Calculate RMS level
+                            if samples:
+                                rms = (sum(sample * sample for sample in samples) / len(samples)) ** 0.5
+                                audio_level = int(rms)
+                            else:
+                                audio_level = 0
+                            
+                            # Smooth the audio level using moving average
+                            audio_level_history.append(audio_level)
+                            if len(audio_level_history) > history_size:
+                                audio_level_history.pop(0)
+                            
+                            smoothed_level = sum(audio_level_history) / len(audio_level_history)
                             
                             # Voice activity detection logic
-                            if audio_level > voice_threshold:
+                            if smoothed_level > voice_threshold:
                                 # Voice detected
                                 voice_duration += CHUNK_SIZE / SEND_SAMPLE_RATE
                                 silence_duration = 0
+                                speech_continuation_time = 0  # Reset continuation timer
                                 
                                 if not is_speaking and voice_duration > min_voice_duration:
                                     # Start speaking to Gemini
                                     is_speaking = True
-                                    print(f"🎤 Started speaking to Gemini (level: {audio_level})")
+                                    print(f"🎤 Started speaking to Gemini (level: {smoothed_level:.1f})")
                                     # Send status update to frontend
                                     try:
                                         await websocket.send(json.dumps({"voice_status": "listening"}))
@@ -389,22 +417,27 @@ Just be helpful and encouraging about the drawing itself!"""
                                 if is_speaking:
                                     # Send audio to Gemini
                                     await audio_queue.put(data)
-                                    print(f"🎤 Sending audio to Gemini (level: {audio_level})")
+                                    print(f"🎤 Sending audio to Gemini (level: {smoothed_level:.1f})")
                                 
-                            elif audio_level < silence_threshold:
+                            elif smoothed_level < silence_threshold:
                                 # Silence detected
                                 silence_duration += CHUNK_SIZE / SEND_SAMPLE_RATE
                                 voice_duration = 0
                                 
-                                if is_speaking and silence_duration > max_silence_duration:
-                                    # Stop speaking to Gemini
-                                    is_speaking = False
-                                    print(f"🔇 Stopped speaking to Gemini (silence: {silence_duration:.1f}s)")
-                                    # Send status update to frontend
-                                    try:
-                                        await websocket.send(json.dumps({"voice_status": "idle"}))
-                                    except:
-                                        pass  # Ignore if websocket is closed
+                                if is_speaking:
+                                    # Continue sending audio during brief silences (speech buffer)
+                                    if silence_duration <= speech_buffer:
+                                        await audio_queue.put(data)
+                                        print(f"🎤 Continuing speech during brief silence (level: {smoothed_level:.1f})")
+                                    elif silence_duration > max_silence_duration:
+                                        # Stop speaking to Gemini
+                                        is_speaking = False
+                                        print(f"🔇 Stopped speaking to Gemini (silence: {silence_duration:.1f}s)")
+                                        # Send status update to frontend
+                                        try:
+                                            await websocket.send(json.dumps({"voice_status": "idle"}))
+                                        except:
+                                            pass  # Ignore if websocket is closed
                             
                             # Always buffer audio for frontend (for visualization)
                             audio_manager.audio_buffer.append(data)
@@ -416,12 +449,25 @@ Just be helpful and encouraging about the drawing itself!"""
                 async def process_and_send_audio():
                     """Sends audio chunks to Gemini"""
                     print("📤 Starting to send audio to Gemini...")
+                    audio_buffer = []  # Buffer to accumulate audio for better quality
+                    
                     while True:
                         try:
                             data = await audio_queue.get()
-                            # Use new API with Blob object
-                            blob = types.Blob(data=data, mime_type="audio/pcm;rate=24000")
-                            await session.send_realtime_input(media=blob)
+                            
+                            # Add to buffer for better quality
+                            audio_buffer.append(data)
+                            
+                            # Send accumulated audio when buffer is large enough for better transcription
+                            if len(audio_buffer) >= 5 or len(b''.join(audio_buffer)) >= 5120:  # ~5 chunks or 5KB
+                                combined_audio = b''.join(audio_buffer)
+                                audio_buffer.clear()
+                                
+                                # Use new API with Blob object - specify correct sample rate
+                                blob = types.Blob(data=combined_audio, mime_type="audio/pcm;rate=24000")
+                                await session.send_realtime_input(media=blob)
+                                print(f"📤 Sent {len(combined_audio)} bytes of audio to Gemini")
+                            
                             audio_queue.task_done()
                         except websockets.exceptions.ConnectionClosedError as e:
                             print(f"❌ WebSocket connection closed: {e}")
@@ -447,7 +493,34 @@ Just be helpful and encouraging about the drawing itself!"""
                                 data = json.loads(message)
                                 print(f"Received message from client: {list(data.keys())}")
                                 
-                                if "get_audio" in data:
+                                # Handle save_and_enhance request from frontend
+                                if data.get("type") == "save_and_enhance":
+                                    print(f"🎯 Save and enhance request received: {data.get('prompt')}")
+                                    # This should be handled by the frontend, not echoed back
+                                    # The frontend will process this and send back enhancement_started
+                                    continue
+                                
+                                # Handle enhancement response from frontend
+                                if data.get("type") == "enhancement_started":
+                                    print(f"✅ Enhancement started successfully with requestId: {data.get('requestId')}")
+                                    # Store the requestId for future reference
+                                    enhancement_request_id = data.get('requestId')
+                                    # Send confirmation back to frontend
+                                    await websocket.send(json.dumps({
+                                        "type": "enhancement_confirmed",
+                                        "requestId": enhancement_request_id,
+                                        "message": "Enhancement process started"
+                                    }))
+                                elif data.get("type") == "enhancement_error":
+                                    print(f"❌ Enhancement failed: {data.get('error')}")
+                                    # Send error message back to frontend
+                                    await websocket.send(json.dumps({
+                                        "type": "enhancement_error_response",
+                                        "error": data.get('error'),
+                                        "message": "Enhancement could not be started"
+                                    }))
+                                
+                                elif "get_audio" in data:
                                     # Frontend is requesting buffered audio
                                     audio_data = audio_manager.get_buffered_audio()
                                     if audio_data:
@@ -484,6 +557,11 @@ Just be helpful and encouraging about the drawing itself!"""
                 async def receive_from_gemini():
                     """Receives responses from the Gemini API and forwards them to the client."""
                     try:
+                        # Buffer for accumulating transcription
+                        transcription_buffer = ""
+                        last_transcription_time = 0
+                        transcription_timeout = 1.0  # 1 second timeout
+                        
                         while True:
                             try:
                                 print("receiving from gemini")
@@ -497,21 +575,34 @@ Just be helpful and encouraging about the drawing itself!"""
                                     if input_transcription and input_transcription.text:
                                         transcript_text = input_transcription.text
                                         print(f"🎤 Your Transcript: {transcript_text}")
+
+                                        # Always send the transcript to the frontend as a user message
+                                        await websocket.send(json.dumps({
+                                            "type": "user_transcript",
+                                            "input_transcription": transcript_text
+                                        }))
                                         
-                                        # Check if this is an enhancement command
-                                        if is_enhance_command(transcript_text):
-                                            print(f"🎯 Enhancement command detected in voice input: {transcript_text}")
-                                            
+                                        # Buffer the transcription
+                                        current_time = asyncio.get_event_loop().time()
+                                        if current_time - last_transcription_time > transcription_timeout:
+                                            # Reset buffer if too much time has passed
+                                            transcription_buffer = transcript_text
+                                        else:
+                                            # Append to existing buffer
+                                            transcription_buffer += transcript_text
+                                        
+                                        last_transcription_time = current_time
+                                        
+                                        # Check if this is an enhancement command (only on complete phrases)
+                                        if is_enhance_command(transcription_buffer):
+                                            print(f"🎯 Enhancement command detected in voice input: {transcription_buffer}")
                                             # Call the enhancement API
-                                            enhancement_result = await call_enhancement_api(transcript_text, websocket)
-                                            
-                                            # Send confirmation to frontend
+                                            enhancement_result = await call_enhancement_api(transcription_buffer, websocket)
+                                            # Send confirmation to frontend (existing logic)
                                             if enhancement_result:
                                                 confirmation_text = "I'll enhance your drawing with Gemini AI now! Enhancement started successfully."
                                             else:
                                                 confirmation_text = "Sorry, I couldn't start the enhancement. Please try again."
-                                            
-                                            # Send the confirmation to frontend
                                             await websocket.send(json.dumps({
                                                 "text": confirmation_text,
                                                 "command_detected": "enhance",
@@ -519,22 +610,18 @@ Just be helpful and encouraging about the drawing itself!"""
                                                 "enhancement_error": not bool(enhancement_result),
                                                 "request_id": enhancement_result.get("requestId") if enhancement_result else None
                                             }))
-                                        
-                                        # Send input transcription to frontend
-                                        await websocket.send(json.dumps({
-                                            "input_transcription": transcript_text,
-                                            "type": "user_transcript"
-                                        }))
+                                            # Clear the buffer after processing
+                                            transcription_buffer = ""
 
                                     # Handle output transcription (what Gemini said)
                                     output_transcription = response.server_content.output_transcription
                                     if output_transcription and output_transcription.text:
                                         transcript_text = output_transcription.text
                                         print(f"🤖 Gemini's Transcript: {transcript_text}")
-                                        # Send output transcription to frontend
+                                        # Always send Gemini's output to the frontend as an assistant message
                                         await websocket.send(json.dumps({
-                                            "output_transcription": transcript_text,
-                                            "type": "assistant_transcript"
+                                            "type": "assistant_transcript",
+                                            "output_transcription": transcript_text
                                         }))
 
                                     model_turn = response.server_content.model_turn
@@ -543,23 +630,17 @@ Just be helpful and encouraging about the drawing itself!"""
                                             if hasattr(part, 'text') and part.text is not None:
                                                 text_content = part.text
                                                 print(f"📝 Received text from Gemini: {text_content}")
-                                                
                                                 # Check if this is an enhancement command
                                                 if is_enhance_command(text_content):
                                                     print(f"🎯 Enhancement command detected: {text_content}")
-                                                    
                                                     # Call the enhancement API first
                                                     enhancement_result = await call_enhancement_api(text_content, websocket)
-                                                    
                                                     # Send confirmation through Gemini so it gets spoken
                                                     if enhancement_result:
                                                         confirmation_text = "I'll enhance your drawing with Gemini AI now! Enhancement started successfully."
                                                     else:
                                                         confirmation_text = "Sorry, I couldn't start the enhancement. Please try again."
-                                                    
-                                                    # Send the confirmation text to Gemini to get it spoken
                                                     await send_text_to_gemini(confirmation_text)
-                                                    
                                                     # Also send to frontend for immediate display
                                                     await websocket.send(json.dumps({
                                                         "text": confirmation_text,
@@ -571,20 +652,16 @@ Just be helpful and encouraging about the drawing itself!"""
                                                 else:
                                                     # Regular text response - send to frontend
                                                     await websocket.send(json.dumps({"text": text_content}))
-                                                    
                                             elif hasattr(part, 'inline_data') and part.inline_data is not None:
                                                 print("audio mime_type:", part.inline_data.mime_type)
                                                 base64_audio = base64.b64encode(part.inline_data.data).decode('utf-8')
-                                                
                                                 await websocket.send(json.dumps({"audio": base64_audio}))
-                                                
                                                 # Play the audio through speakers
                                                 audio_manager.add_audio(part.inline_data.data)
                                                 print("audio received and queued for playback")
 
                                     if response.server_content.turn_complete:
                                         print('\n<Turn complete>')
-                                        
                             except websockets.exceptions.ConnectionClosedOK:
                                 print("Client connection closed normally (receive)")
                                 break

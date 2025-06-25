@@ -906,18 +906,47 @@ const Canvas: React.FC<CanvasProps> = () => {
     }
   }
 
-  const enhanceDrawingWithGemini = async (customPrompt?: string) => {
+  // Wrapper function for multimodal server to use
+  const enhanceDrawingWithGeminiWithPrompt = async (prompt: string, fromMultimodal: boolean = false) => {
+    console.log('🚀 Starting enhancement process with prompt:', prompt, 'fromMultimodal:', fromMultimodal);
+    console.log('📊 Current shapes on canvas:', state.shapes.length);
+    console.log('📋 Shapes details:', state.shapes.map(s => ({ type: s.type, points: s.points.length })));
+    console.log('🎨 Current drawing state:', { 
+      isDrawing, 
+      currentShape: state.currentShape ? { type: state.currentShape.type, points: state.currentShape.points.length } : null 
+    });
+    
+    // Add a small delay to ensure drawing state is fully updated
+    if (isDrawing || state.currentShape) {
+      console.log('⏳ Drawing in progress, waiting for completion...');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('📊 After delay - shapes on canvas:', state.shapes.length);
+    }
+    
     // Check if there are shapes to save
     if (state.shapes.length === 0) {
+      console.log('❌ No shapes to enhance - please draw something first');
       window.showToast('Draw something first before enhancing', 'info', 3000);
+      
+      // If called from multimodal server, send error back
+      if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        console.log('📤 Sending "no shapes" error back to multimodal server');
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: 'enhancement_error',
+          error: 'No shapes to enhance - please draw something first',
+          success: false
+        }));
+      }
       return;
     }
 
+    console.log('✅ Shapes found, starting enhancement process');
     setEnhancementStatus('processing');
     setEnhancedImage(null);
     
     try {
       // Always save the drawing first before enhancing
+      console.log('💾 Creating temporary canvas for drawing...');
       // Create a temporary canvas for rendering just the drawings
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
@@ -966,6 +995,8 @@ const Canvas: React.FC<CanvasProps> = () => {
       tempCanvas.width = width;
       tempCanvas.height = height;
       
+      console.log(`📐 Canvas dimensions: ${width}x${height}`);
+      
       // Fill with a white background
       tempCtx.fillStyle = '#FFFFFF';
       tempCtx.fillRect(0, 0, width, height);
@@ -980,8 +1011,10 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       // Convert to image
       const dataUrl = tempCanvas.toDataURL('image/png');
+      console.log('🖼️ Image data created, length:', dataUrl.length);
       
       // Send image data to server
+      console.log('📤 Saving image to server...');
       const saveResponse = await fetch('http://localhost:5001/api/save-image', {
         method: 'POST',
         headers: {
@@ -996,12 +1029,14 @@ const Canvas: React.FC<CanvasProps> = () => {
       }
       
       const saveResult = await saveResponse.json();
-      void (DEBUG && console.log(`Image saved for enhancement: ${saveResult.absolutePath}`));
+      console.log('✅ Image saved successfully:', saveResult);
       
       // Use the provided prompt or default enhancement prompt
-      const prompt = customPrompt || 'Enhance this sketch into an image with more detail';
+      const enhancementPrompt = prompt || 'Enhance this sketch into an image with more detail';
+      console.log('🎨 Enhancement prompt:', enhancementPrompt);
 
       // Request image enhancement from Flask server
+      console.log('🚀 Calling enhancement API...');
       const response = await fetch('http://localhost:5001/api/enhance-image', {
         method: 'POST',
         headers: {
@@ -1009,7 +1044,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         },
         body: JSON.stringify({ 
           filename: saveResult.filename,
-          prompt: prompt
+          prompt: enhancementPrompt
         }),
       });
 
@@ -1019,69 +1054,94 @@ const Canvas: React.FC<CanvasProps> = () => {
       }
 
       const result = await response.json();
-      void (DEBUG && console.log('Enhancement started:', result));
+      console.log('✅ Enhancement API response:', result);
 
       if (result.success && result.requestId) {
+        console.log('🎯 Enhancement started successfully with requestId:', result.requestId);
+        
+        // If called from multimodal server, send the requestId back
+        if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          console.log('📤 Sending requestId back to multimodal server:', result.requestId);
+          multimodalWebSocketRef.current.send(JSON.stringify({
+            type: 'enhancement_started',
+            requestId: result.requestId,
+            success: true
+          }));
+        }
+        
         // Show a toast notification that enhancement is in progress
         window.showToast('Enhancing your drawing with Gemini...', 'info', 3000);
         
         // Poll for enhancement status
+        console.log('🔄 Starting to poll for enhancement status...');
         pollEnhancementStatus(result.requestId);
       } else {
         throw new Error('Failed to start enhancement process');
       }
     } catch (err) {
-      void (DEBUG && console.error('Error enhancing drawing:', err));
+      console.error('❌ Error in enhancement process:', err);
+      
+      // If called from multimodal server, send error back
+      if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        console.log('📤 Sending enhancement error back to multimodal server');
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: 'enhancement_error',
+          error: err instanceof Error ? err.message : String(err),
+          success: false
+        }));
+      }
+      
       window.showToast(`Error enhancing drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
       setEnhancementStatus('error');
     }
   }
 
-  // Wrapper function for multimodal server to use
-  const enhanceDrawingWithGeminiWithPrompt = (prompt: string) => {
-    enhanceDrawingWithGemini(prompt);
-  }
-
   const pollEnhancementStatus = async (requestId: string) => {
+    console.log('🔄 Polling enhancement status for requestId:', requestId);
     try {
       const response = await fetch(`http://localhost:5001/api/enhancement-status/${requestId}`);
       
       if (!response.ok) {
         const errorText = await response.text();
-        void (DEBUG && console.error(`Error response: ${response.status} - ${errorText}`));
+        console.error(`❌ Error response: ${response.status} - ${errorText}`);
         throw new Error(`Failed to fetch enhancement status: ${response.status} ${response.statusText}`);
       }
       
       const status = await response.json();
-      void (DEBUG && console.log('Enhancement status:', status));
+      console.log('📊 Enhancement status received:', status);
       
       if (status.status === 'processing') {
+        console.log('⏳ Enhancement still processing, will poll again in 2 seconds...');
         // Continue polling every 2 seconds
         setTimeout(() => pollEnhancementStatus(requestId), 2000);
       } else if (status.status === 'complete' && status.result) {
+        console.log('✅ Enhancement complete! Result:', status.result);
         // Enhancement is complete, add the enhanced image to the canvas
         setEnhancementStatus('complete');
         
         // Add as interactive image
+        console.log('🖼️ Adding enhanced image to canvas...');
         addEnhancedImageToCanvas(status.result);
         
         // Show success toast
         window.showToast('Enhancement complete! Image added to canvas.', 'success', 3000);
       } else if (status.status === 'error') {
+        console.error('❌ Enhancement failed with error:', status.message);
         // Enhancement failed
         setEnhancementStatus('error');
         
         // Show a more detailed error message
         const errorMessage = status.message || 'Unknown error occurred';
-        void (DEBUG && console.error('Enhancement error:', errorMessage));
+        console.error('Enhancement error:', errorMessage);
         window.showToast(`Enhancement failed: ${errorMessage}`, 'error', 3000);
       } else {
+        console.warn('⚠️ Unexpected status returned:', status.status);
         // Unexpected status
         setEnhancementStatus('error');
         window.showToast(`Unexpected status returned: ${status.status}`, 'error', 3000);
       }
     } catch (err) {
-      void (DEBUG && console.error('Error polling enhancement status:', err));
+      console.error('❌ Error polling enhancement status:', err);
       setEnhancementStatus('error');
       window.showToast(`Error checking enhancement status: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
     }
@@ -1144,6 +1204,8 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   // Add a function to convert an enhanced image result to an interactive image
   const addEnhancedImageToCanvas = (result: EnhancedImageResult) => {
+    console.log('🖼️ Adding enhanced image to canvas:', result);
+    
     // Calculate the centered position for the image
     const viewWidth = window.innerWidth;
     const viewHeight = window.innerHeight;
@@ -1169,26 +1231,35 @@ const Canvas: React.FC<CanvasProps> = () => {
     // Create a unique ID for this image
     const id = `enhanced-${Date.now()}`;
     
+    const imageUrl = `http://localhost:5001${result.path}`;
+    console.log('🖼️ Enhanced image URL:', imageUrl);
+    console.log('📐 Image position:', { x, y, width: displayWidth, height: displayHeight });
+    
     // Add the image to the state
-    setInteractiveEnhancedImages(prev => [
-      ...prev,
-      {
-        id,
-        url: `http://localhost:5001${result.path}`,
-        x,
-        y,
-        width: displayWidth,
-        height: displayHeight,
-        prompt: result.prompt,
-        base64Data: result.base64Data,
-        isDragging: false,
-        isResizing: false,
-        resizeHandle: null
-      }
-    ]);
+    setInteractiveEnhancedImages(prev => {
+      const newImages = [
+        ...prev,
+        {
+          id,
+          url: imageUrl,
+          x,
+          y,
+          width: displayWidth,
+          height: displayHeight,
+          prompt: result.prompt,
+          base64Data: result.base64Data,
+          isDragging: false,
+          isResizing: false,
+          resizeHandle: null
+        }
+      ];
+      console.log('📊 Total enhanced images now:', newImages.length);
+      return newImages;
+    });
     
     // Show the preview image
-    setEnhancedImage(`http://localhost:5001${result.path}`);
+    setEnhancedImage(imageUrl);
+    console.log('✅ Enhanced image added to canvas successfully');
   };
 
   // Add a function to render enhanced images on the canvas
@@ -1410,7 +1481,50 @@ const Canvas: React.FC<CanvasProps> = () => {
   const handleMultimodalMessage = (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data);
-      console.log('📨 Received WebSocket message:', data);
+      console.log('🔍 [DEBUG] Raw message:', event.data);
+      console.log('🔍 [DEBUG] Parsed message:', data);
+      
+      // Handle save_and_enhance request from multimodal server
+      if (data.type === 'save_and_enhance') {
+        console.log('🎯 Save and enhance request from multimodal server:', data);
+        console.log('🔍 DEBUG: Current state when enhancement requested:');
+        console.log('  - Shapes count:', state.shapes.length);
+        console.log('  - Shapes:', state.shapes);
+        console.log('  - Is drawing:', isDrawing);
+        console.log('  - Current shape:', state.currentShape);
+        console.log('  - Tool:', state.tool);
+        console.log('  - All state keys:', Object.keys(state));
+        console.log('  - Would show enhance button:', state.shapes.length > 0);
+        
+        // Call EXACTLY the same as the button - no differences at all
+        console.log('🚀 Starting enhancement with EXACT same call as button');
+        
+        // Call EXACTLY like the button does - same function, same parameters
+        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+      }
+      
+      // Handle trigger_enhancement request from multimodal server
+      if (data.type === 'trigger_enhancement') {
+        console.log('🎯 Trigger enhancement request from multimodal server');
+        console.log('🔍 DEBUG: Current state when enhancement triggered:');
+        console.log('  - Shapes count:', state.shapes.length);
+        console.log('  - Shapes:', state.shapes);
+        console.log('  - Is drawing:', isDrawing);
+        console.log('  - Current shape:', state.currentShape);
+        console.log('  - Tool:', state.tool);
+        console.log('  - Would show enhance button:', state.shapes.length > 0);
+        console.log('🔍 FULL STATE DEBUG:');
+        console.log('  - All state keys:', Object.keys(state));
+        console.log('  - State object:', state);
+        console.log('  - Current shape details:', state.currentShape);
+        console.log('  - All shapes details:', state.shapes.map(s => ({ id: s.id, type: s.type, points: s.points.length })));
+        
+        // Call EXACTLY the same as the button - no differences at all
+        console.log('🚀 Starting enhancement with EXACT same call as button');
+        
+        // Call EXACTLY like the button does - same function, same parameters
+        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+      }
       
       if (data.text) {
         const newMessage = {
@@ -1424,30 +1538,6 @@ const Canvas: React.FC<CanvasProps> = () => {
         if (window.showToast) {
           window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
         }
-      }
-      
-      // Handle input transcription (what you said)
-      if (data.input_transcription) {
-        const newMessage = {
-          type: 'user' as const,
-          content: data.input_transcription,
-          timestamp: new Date(),
-          isTranscript: true,
-        };
-        setMultimodalMessages(prev => [...prev, newMessage]);
-        console.log('🎤 Your transcript:', data.input_transcription);
-      }
-      
-      // Handle output transcription (what Gemini said)
-      if (data.output_transcription) {
-        const newMessage = {
-          type: 'assistant' as const,
-          content: data.output_transcription,
-          timestamp: new Date(),
-          isTranscript: true,
-        };
-        setMultimodalMessages(prev => [...prev, newMessage]);
-        console.log('🤖 Gemini transcript:', data.output_transcription);
       }
       
       // Handle enhancement commands triggered by voice
@@ -1468,18 +1558,6 @@ const Canvas: React.FC<CanvasProps> = () => {
             window.showToast('Enhancement failed via voice command', 'error', 3000);
           }
         }
-      }
-      
-      // Handle save_and_enhance request from multimodal server
-      if (data.type === 'save_and_enhance') {
-        console.log('🎯 Save and enhance request from multimodal server:', data);
-        
-        // Trigger the same enhancement process as the button
-        const prompt = data.prompt || 'Enhance this sketch into an image with more detail';
-        console.log('🚀 Starting enhancement with prompt:', prompt);
-        
-        // Use the existing enhancement function but with the provided prompt
-        enhanceDrawingWithGeminiWithPrompt(prompt);
       }
       
       if (data.audio) {
@@ -1737,7 +1815,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       {state.shapes.length > 0 && (
         <button
           className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={() => enhanceDrawingWithGemini()}
+          onClick={() => enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail')}
           disabled={enhancementStatus === 'processing'}
           title="Enhance with Gemini"
         >

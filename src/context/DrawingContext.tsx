@@ -92,11 +92,17 @@ const initialState: DrawingState = {
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
-  console.log(`Action received: ${action.type}`);
+  console.log(`🔍 [STATE CHANGE] Action received: ${action.type}`);
+  console.log(`  - Current shapes count: ${state.shapes.length}`);
+  console.log(`  - Action payload:`, action);
   
   switch (action.type) {
     case 'SET_TOOL':
-      console.log(`Tool changed to: ${action.payload}`);
+      console.log('🔍 [SET_TOOL] Tool changed:', {
+        from: state.tool,
+        to: action.payload,
+        stack: new Error().stack
+      });
       return {
         ...state,
         tool: action.payload,
@@ -106,7 +112,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
 
     case 'START_DRAWING': {
       if (state.tool === 'select' || state.tool === 'pan' || state.tool === 'eraser') {
-        console.log('Cannot start drawing with current tool:', state.tool);
+        console.log('🔍 [START_DRAWING] Cannot start drawing with current tool:', state.tool);
         return state
       }
 
@@ -118,7 +124,13 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         isSelected: false,
       }
 
-      console.log(`Starting to draw ${action.payload.type} at`, action.payload.point);
+      console.log('🔍 [START_DRAWING] Starting to draw:', {
+        tool: state.tool,
+        type: action.payload.type,
+        point: action.payload.point,
+        shapeId: newShape.id
+      });
+      
       return {
         ...state,
         currentShape: newShape,
@@ -185,11 +197,14 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
 
     case 'END_DRAWING': {
       if (!state.currentShape) {
-        console.log('No current shape to end drawing');
+        console.log('🔍 [END_DRAWING] No current shape to end drawing');
         return state
       }
 
-      console.log(`Ending drawing with ${state.currentShape.points.length} points:`, state.currentShape.points);
+      console.log('🔍 [END_DRAWING] Ending drawing with shape:', state.currentShape);
+      console.log(`  - Points: ${state.currentShape.points.length}`);
+      console.log(`  - Type: ${state.currentShape.type}`);
+      console.log(`  - ID: ${state.currentShape.id}`);
 
       // Create a deep copy of the shape to avoid reference issues
       const shapeToSave = {
@@ -201,6 +216,9 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       // (which would be the case for pencil drawings that are continuously persisted)
       const shapeIndex = state.shapes.findIndex(shape => shape.id === state.currentShape!.id);
       
+      console.log(`  - Shape already exists in array: ${shapeIndex >= 0}`);
+      console.log(`  - Current shapes count: ${state.shapes.length}`);
+      
       // Only add to shapes array if not already there
       let newShapes;
       if (shapeIndex >= 0) {
@@ -208,12 +226,14 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         newShapes = state.shapes.map((shape, index) => 
           index === shapeIndex ? shapeToSave : shape
         );
+        console.log('  - Updated existing shape');
       } else {
         // Add as a new shape
         newShapes = [...state.shapes, shapeToSave];
+        console.log('  - Added new shape');
       }
       
-      console.log(`Finished drawing ${state.currentShape.type}, total shapes:`, newShapes.length);
+      console.log(`🔍 [END_DRAWING] Finished drawing ${state.currentShape.type}, total shapes: ${newShapes.length}`);
 
       return {
         ...state,
@@ -257,8 +277,15 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       // Track the deleted shape IDs to broadcast to collaborators
       const deletedShapeIds = action.payload;
       
+      console.log('🔍 [SHAPE DELETION] DELETE_SHAPES action triggered');
+      console.log('  - Deleted shape IDs:', deletedShapeIds);
+      console.log('  - Current shapes before deletion:', state.shapes.length);
+      console.log('  - Stack trace:', new Error().stack);
+      
       // Update the state by filtering out the deleted shapes
       const newShapes = state.shapes.filter(shape => !deletedShapeIds.includes(shape.id));
+      
+      console.log('  - Shapes after deletion:', newShapes.length);
       
       return {
         ...state,
@@ -285,6 +312,10 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
     }
 
     case 'CLEAR_SELECTION': {
+      console.log('🔍 [SELECTION CLEAR] CLEAR_SELECTION action triggered');
+      console.log('  - Current shapes before clear:', state.shapes.length);
+      console.log('  - Stack trace:', new Error().stack);
+      
       const updatedShapes = state.shapes.map((shape) => ({
         ...shape,
         isSelected: false,
@@ -438,6 +469,12 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       }
 
     case 'SYNC_ALL_SHAPES':
+      console.log('🔍 [SYNC_ALL_SHAPES] Syncing shapes from collaboration');
+      console.log('  - Current shapes count:', state.shapes.length);
+      console.log('  - Syncing shapes count:', action.payload.length);
+      console.log('  - Syncing shapes:', action.payload);
+      console.log('  - Stack trace:', new Error().stack);
+      
       return {
         ...state,
         shapes: action.payload,
