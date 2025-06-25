@@ -73,7 +73,7 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [isMultimodalConnected, setIsMultimodalConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isPlayingAudio, setIsPlayingAudio] = useState(false)
-  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date, isTranscript?: boolean}>>([])
   const [multimodalError, setMultimodalError] = useState<string | null>(null)
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening'>('idle')
   
@@ -709,9 +709,9 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       // Immediately send canvas update to Gemini when drawing stops
       if (isLiveStreaming && multimodalWebSocketRef.current) {
-        setTimeout(() => {
-          const currentCanvas = getCanvasHash();
-          if (currentCanvas) {
+        setTimeout(async () => {
+          const currentCanvas = await getCanvasHash();
+          if (currentCanvas && typeof currentCanvas === 'string') {
             const payload = {
               realtime_input: {
                 media_chunks: [
@@ -906,7 +906,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     }
   }
 
-  const enhanceDrawingWithGemini = async () => {
+  const enhanceDrawingWithGemini = async (customPrompt?: string) => {
     // Check if there are shapes to save
     if (state.shapes.length === 0) {
       window.showToast('Draw something first before enhancing', 'info', 3000);
@@ -998,8 +998,8 @@ const Canvas: React.FC<CanvasProps> = () => {
       const saveResult = await saveResponse.json();
       void (DEBUG && console.log(`Image saved for enhancement: ${saveResult.absolutePath}`));
       
-      // Use a default enhancement prompt
-      const defaultPrompt = 'Enhance this sketch into an image with more detail';
+      // Use the provided prompt or default enhancement prompt
+      const prompt = customPrompt || 'Enhance this sketch into an image with more detail';
 
       // Request image enhancement from Flask server
       const response = await fetch('http://localhost:5001/api/enhance-image', {
@@ -1009,7 +1009,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         },
         body: JSON.stringify({ 
           filename: saveResult.filename,
-          prompt: defaultPrompt
+          prompt: prompt
         }),
       });
 
@@ -1035,6 +1035,11 @@ const Canvas: React.FC<CanvasProps> = () => {
       window.showToast(`Error enhancing drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
       setEnhancementStatus('error');
     }
+  }
+
+  // Wrapper function for multimodal server to use
+  const enhanceDrawingWithGeminiWithPrompt = (prompt: string) => {
+    enhanceDrawingWithGemini(prompt);
   }
 
   const pollEnhancementStatus = async (requestId: string) => {
@@ -1405,6 +1410,7 @@ const Canvas: React.FC<CanvasProps> = () => {
   const handleMultimodalMessage = (event: MessageEvent) => {
     try {
       const data = JSON.parse(event.data);
+      console.log('📨 Received WebSocket message:', data);
       
       if (data.text) {
         const newMessage = {
@@ -1418,6 +1424,62 @@ const Canvas: React.FC<CanvasProps> = () => {
         if (window.showToast) {
           window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
         }
+      }
+      
+      // Handle input transcription (what you said)
+      if (data.input_transcription) {
+        const newMessage = {
+          type: 'user' as const,
+          content: data.input_transcription,
+          timestamp: new Date(),
+          isTranscript: true,
+        };
+        setMultimodalMessages(prev => [...prev, newMessage]);
+        console.log('🎤 Your transcript:', data.input_transcription);
+      }
+      
+      // Handle output transcription (what Gemini said)
+      if (data.output_transcription) {
+        const newMessage = {
+          type: 'assistant' as const,
+          content: data.output_transcription,
+          timestamp: new Date(),
+          isTranscript: true,
+        };
+        setMultimodalMessages(prev => [...prev, newMessage]);
+        console.log('🤖 Gemini transcript:', data.output_transcription);
+      }
+      
+      // Handle enhancement commands triggered by voice
+      if (data.command_detected === 'enhance') {
+        console.log('🎯 Voice enhancement command detected:', data);
+        
+        if (data.enhancement_started && data.request_id) {
+          // Start polling for enhancement status
+          pollEnhancementStatus(data.request_id);
+          
+          // Show success message
+          if (window.showToast) {
+            window.showToast('Enhancement started via voice command!', 'success', 3000);
+          }
+        } else if (data.enhancement_error) {
+          // Show error message
+          if (window.showToast) {
+            window.showToast('Enhancement failed via voice command', 'error', 3000);
+          }
+        }
+      }
+      
+      // Handle save_and_enhance request from multimodal server
+      if (data.type === 'save_and_enhance') {
+        console.log('🎯 Save and enhance request from multimodal server:', data);
+        
+        // Trigger the same enhancement process as the button
+        const prompt = data.prompt || 'Enhance this sketch into an image with more detail';
+        console.log('🚀 Starting enhancement with prompt:', prompt);
+        
+        // Use the existing enhancement function but with the provided prompt
+        enhanceDrawingWithGeminiWithPrompt(prompt);
       }
       
       if (data.audio) {
@@ -1675,7 +1737,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       {state.shapes.length > 0 && (
         <button
           className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={enhanceDrawingWithGemini}
+          onClick={() => enhanceDrawingWithGemini()}
           disabled={enhancementStatus === 'processing'}
           title="Enhance with Gemini"
         >

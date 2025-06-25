@@ -16,6 +16,7 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   audioUrl?: string;
+  isTranscript?: boolean;
 }
 
 const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, onClose }) => {
@@ -946,8 +947,14 @@ const MultimodalAIAssistant: React.FC<MultimodalAIAssistantProps> = ({ isOpen, o
                       message.type === 'user'
                         ? 'bg-blue-600 text-white'
                         : 'bg-white text-gray-800 border border-gray-200'
-                    }`}
+                    } ${message.isTranscript ? 'border-dashed border-2' : ''}`}
                   >
+                    {message.isTranscript && (
+                      <div className="text-xs opacity-70 mb-1 flex items-center">
+                        <span className="mr-1">🎤</span>
+                        <span>{message.type === 'user' ? 'You said' : 'Gemini said'}</span>
+                      </div>
+                    )}
                     <p>{message.content}</p>
                     <p className="text-xs opacity-70 mt-1">
                       {message.timestamp.toLocaleTimeString()}

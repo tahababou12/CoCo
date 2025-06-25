@@ -118,27 +118,22 @@ async def process_user_speech_for_commands(audio_data):
         print(f"Error processing user speech: {e}")
         return None
 
-async def call_enhancement_api(prompt="", websocket=None):
-    """Call the Flask enhancement API with save first"""
+async def call_enhancement_api(prompt=""):
+    """Call the Flask enhancement API"""
     try:
-        if not websocket:
-            print("❌ No WebSocket connection available for enhancement")
-            return None
+        async with aiohttp.ClientSession() as session:
+            url = "http://localhost:5001/api/enhance-image-voice"
+            data = {"prompt": prompt}
             
-        # First, request the frontend to save the current drawing
-        print("💾 Requesting frontend to save current drawing...")
-        message = {
-            "type": "save_and_enhance",
-            "prompt": prompt
-        }
-        print(f"📤 Sending message to frontend: {message}")
-        await websocket.send(json.dumps(message))
-        
-        # Wait for the frontend to respond with the save result
-        # The frontend will handle the save and enhancement process
-        print("✅ Enhancement request sent to frontend")
-        return {"status": "requested", "message": "Enhancement requested"}
-        
+            async with session.post(url, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    print(f"✅ Enhancement API called successfully: {result}")
+                    return result
+                else:
+                    error_text = await response.text()
+                    print(f"❌ Enhancement API error: {response.status} - {error_text}")
+                    return None
     except Exception as e:
         print(f"❌ Error calling enhancement API: {e}")
         return None
@@ -503,7 +498,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                             print(f"🎯 Enhancement command detected in voice input: {transcript_text}")
                                             
                                             # Call the enhancement API
-                                            enhancement_result = await call_enhancement_api(transcript_text, websocket)
+                                            enhancement_result = await call_enhancement_api(transcript_text)
                                             
                                             # Send confirmation to frontend
                                             if enhancement_result:
@@ -549,7 +544,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                                     print(f"🎯 Enhancement command detected: {text_content}")
                                                     
                                                     # Call the enhancement API first
-                                                    enhancement_result = await call_enhancement_api(text_content, websocket)
+                                                    enhancement_result = await call_enhancement_api(text_content)
                                                     
                                                     # Send confirmation through Gemini so it gets spoken
                                                     if enhancement_result:
@@ -601,22 +596,22 @@ Just be helpful and encouraging about the drawing itself!"""
                         print("Gemini connection closed (receive)")
 
                 # Start all tasks
-                try:
-                    async with asyncio.TaskGroup() as tg:
-                        tg.create_task(listen_for_audio())
-                        tg.create_task(process_and_send_audio())
-                        tg.create_task(handle_frontend_messages())
-                        tg.create_task(receive_from_gemini())
-                except websockets.exceptions.ConnectionClosedError as e:
-                    print(f"❌ WebSocket connection error: {e}")
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        print(f"🔄 Retrying connection... (attempt {retry_count}/{max_retries})")
-                        await asyncio.sleep(2)  # Wait before retrying
-                        continue
-                    else:
-                        print("❌ Max retries reached. Giving up.")
-                        break
+                async with asyncio.TaskGroup() as tg:
+                    tg.create_task(listen_for_audio())
+                    tg.create_task(process_and_send_audio())
+                    tg.create_task(handle_frontend_messages())
+                    tg.create_task(receive_from_gemini())
+
+            except websockets.exceptions.ConnectionClosedError as e:
+                print(f"❌ WebSocket connection error: {e}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    print(f"🔄 Retrying connection... (attempt {retry_count}/{max_retries})")
+                    await asyncio.sleep(2)  # Wait before retrying
+                    continue
+                else:
+                    print("❌ Max retries reached. Giving up.")
+                    break
         except Exception as e:
             print(f"Error in Gemini session: {e}")
             import traceback
