@@ -144,6 +144,63 @@ class EnhancedVideoEffects:
         
         return zoomed[focus_y:focus_y+h, focus_x:focus_x+w]
     
+    def apply_stretch_effect(self, frame, progress):
+        """Apply a stretch effect that distorts the image"""
+        h, w = frame.shape[:2]
+        
+        # Create a stretch effect using different scaling for x and y
+        stretch_factor = 1.0 + progress * 0.5  # Stretch up to 1.5x
+        
+        # Apply different scaling to width and height
+        new_w = int(w * stretch_factor)
+        new_h = int(h * (2.0 - stretch_factor))  # Compress height as width stretches
+        
+        # Resize with different interpolation for dramatic effect
+        stretched = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        
+        # Crop to maintain aspect ratio
+        crop_w = min(new_w, w)
+        crop_h = min(new_h, h)
+        
+        # Center crop
+        start_x = (new_w - crop_w) // 2
+        start_y = (new_h - crop_h) // 2
+        
+        return stretched[start_y:start_y+crop_h, start_x:start_x+crop_w]
+    
+    def apply_cool_pan(self, frame, progress):
+        """Apply a cool diagonal pan with zoom"""
+        h, w = frame.shape[:2]
+        
+        # Scale image up to allow for movement
+        scale = 1.3
+        scaled_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), 
+                                 interpolation=cv2.INTER_LANCZOS4)
+        scaled_h, scaled_w = scaled_frame.shape[:2]
+        
+        # Smooth easing
+        eased_progress = self.smooth_ease_in_out(progress)
+        
+        # Diagonal movement with zoom
+        angle = eased_progress * math.pi * 2  # Full circle
+        radius = min(scaled_w - w, scaled_h - h) // 4
+        
+        # Add zoom effect
+        zoom_scale = 1.0 + eased_progress * 0.3
+        
+        center_x = (scaled_w - w) // 2
+        center_y = (scaled_h - h) // 2
+        
+        # Calculate position with zoom
+        start_x = center_x + int(radius * math.cos(angle) * zoom_scale)
+        start_y = center_y + int(radius * math.sin(angle) * zoom_scale)
+        
+        # Clamp values
+        start_x = max(0, min(start_x, scaled_w - w))
+        start_y = max(0, min(start_y, scaled_h - h))
+        
+        return scaled_frame[start_y:start_y+h, start_x:start_x+w]
+    
     def get_random_effect(self, scene_index):
         """Get a random effect based on scene index to avoid repetition"""
         effects = [
@@ -403,33 +460,20 @@ class StoryVideoGenerator:
             progress = i / (duration * self.fps)
             
             # Apply the selected effect
-            if effect_type.startswith('combined_'):
-                # Handle combined effects
-                parts = effect_type.split('_')
-                if len(parts) >= 3:
-                    effect1 = f"{parts[1]}_{parts[2]}"
-                    effect2 = f"{parts[3]}_{parts[4]}" if len(parts) > 4 else parts[3]
-                    frame = self.apply_combined_effects(img, progress, effect1, effect2)
-                else:
-                    frame = img.copy()
-            elif effect_type == 'ken_burns_zoom_out':
-                frame = self.apply_ken_burns_effect(img, progress, 'zoom_out')
-            elif effect_type == 'ken_burns_zoom_in':
-                frame = self.apply_ken_burns_effect(img, progress, 'zoom_in')
+            if effect_type == 'dramatic_zoom_punch':
+                frame = self.effects.apply_dramatic_zoom(img, progress, 'punch_in')
+            elif effect_type == 'dramatic_zoom_dolly':
+                frame = self.effects.apply_dramatic_zoom(img, progress, 'dolly_zoom')
             elif effect_type == 'spiral_pan_clockwise':
                 frame = self.effects.apply_spiral_pan(img, progress, 'clockwise')
             elif effect_type == 'spiral_pan_counterclockwise':
                 frame = self.effects.apply_spiral_pan(img, progress, 'counterclockwise')
-            elif effect_type == 'dramatic_zoom_punch':
-                frame = self.effects.apply_dramatic_zoom(img, progress, 'punch_in')
-            elif effect_type == 'dramatic_zoom_dolly':
-                frame = self.effects.apply_dramatic_zoom(img, progress, 'dolly_zoom')
+            elif effect_type == 'stretch_effect':
+                frame = self.effects.apply_stretch_effect(img, progress)
             elif effect_type == 'focus_pull':
                 frame = self.effects.apply_focus_pull(img, progress)
-            elif effect_type == 'pan_right':
-                frame = self.apply_pan_effect(img, progress, 'right')
-            elif effect_type == 'pan_left':
-                frame = self.apply_pan_effect(img, progress, 'left')
+            elif effect_type == 'cool_pan':
+                frame = self.effects.apply_cool_pan(img, progress)
             else:
                 frame = img.copy()
             
@@ -449,63 +493,21 @@ class StoryVideoGenerator:
         eased_progress = progress * progress
         return cv2.addWeighted(frame1, 1 - eased_progress, frame2, eased_progress, 0)
     
-    def apply_combined_effects(self, frame, progress, effect1, effect2, blend_ratio=0.5):
-        """Combine two effects for more dramatic results"""
-        # Apply first effect
-        if effect1 == 'ken_burns_zoom_out':
-            frame1 = self.apply_ken_burns_effect(frame, progress, 'zoom_out')
-        elif effect1 == 'ken_burns_zoom_in':
-            frame1 = self.apply_ken_burns_effect(frame, progress, 'zoom_in')
-        elif effect1 == 'spiral_pan_clockwise':
-            frame1 = self.effects.apply_spiral_pan(frame, progress, 'clockwise')
-        elif effect1 == 'dramatic_zoom_punch':
-            frame1 = self.effects.apply_dramatic_zoom(frame, progress, 'punch_in')
-        elif effect1 == 'focus_pull':
-            frame1 = self.effects.apply_focus_pull(frame, progress)
-        else:
-            frame1 = frame.copy()
-        
-        # Apply second effect
-        if effect2 == 'ken_burns_zoom_out':
-            frame2 = self.apply_ken_burns_effect(frame, progress, 'zoom_out')
-        elif effect2 == 'ken_burns_zoom_in':
-            frame2 = self.apply_ken_burns_effect(frame, progress, 'zoom_in')
-        elif effect2 == 'spiral_pan_clockwise':
-            frame2 = self.effects.apply_spiral_pan(frame, progress, 'clockwise')
-        elif effect2 == 'dramatic_zoom_punch':
-            frame2 = self.effects.apply_dramatic_zoom(frame, progress, 'punch_in')
-        elif effect2 == 'focus_pull':
-            frame2 = self.effects.apply_focus_pull(frame, progress)
-        else:
-            frame2 = frame.copy()
-        
-        # Blend the two effects
-        return cv2.addWeighted(frame1, blend_ratio, frame2, 1 - blend_ratio, 0)
-    
     def get_random_effect_combination(self, scene_index):
-        """Get a random effect or combination of effects"""
+        """Get a random effect from the simplified list"""
         effects = [
-            'ken_burns_zoom_out',
-            'ken_burns_zoom_in', 
+            'dramatic_zoom_punch',
+            'dramatic_zoom_dolly', 
             'spiral_pan_clockwise',
             'spiral_pan_counterclockwise',
-            'dramatic_zoom_punch',
-            'dramatic_zoom_dolly',
+            'stretch_effect',
             'focus_pull',
-            'pan_right',
-            'pan_left'
+            'cool_pan'
         ]
         
         # Use scene index to seed randomness for consistency
         random.seed(scene_index)
-        
-        # 30% chance to combine two effects for more dramatic results
-        if random.random() < 0.3:
-            effect1 = random.choice(effects)
-            effect2 = random.choice(effects)
-            return f"combined_{effect1}_{effect2}"
-        else:
-            return random.choice(effects)
+        return random.choice(effects)
     
     def generate_video(self, image_paths=None, story_context=None):
         """Generate the complete story video."""

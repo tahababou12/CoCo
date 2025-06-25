@@ -12,7 +12,7 @@ from PIL import Image
 import platform
 import subprocess
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -744,10 +744,40 @@ def play_video(video_filename):
 # Serve static files from the various directories
 @app.route('/img/<path:filename>')
 def serve_image(filename):
+    try:
+        # Read the image and convert BGR to RGB
+        img_path = os.path.join(img_dir, filename)
+        if os.path.exists(img_path):
+            img = cv2.imread(img_path)
+            if img is not None:
+                # Convert BGR to RGB
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                # Encode as PNG
+                _, buffer = cv2.imencode('.png', img_rgb)
+                return Response(buffer.tobytes(), mimetype='image/png')
+    except Exception as e:
+        print(f"Error serving image {filename}: {e}")
+    
+    # Fallback to direct file serving
     return send_from_directory(img_dir, filename)
 
 @app.route('/enhanced_drawings/<path:filename>')
 def serve_enhanced_image(filename):
+    try:
+        # Read the image and convert BGR to RGB
+        img_path = os.path.join(enhanced_dir, filename)
+        if os.path.exists(img_path):
+            img = cv2.imread(img_path)
+            if img is not None:
+                # Convert BGR to RGB
+                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                # Encode as PNG
+                _, buffer = cv2.imencode('.png', img_rgb)
+                return Response(buffer.tobytes(), mimetype='image/png')
+    except Exception as e:
+        print(f"Error serving enhanced image {filename}: {e}")
+    
+    # Fallback to direct file serving
     return send_from_directory(enhanced_dir, filename)
 
 @app.route('/videos/<path:filename>')
