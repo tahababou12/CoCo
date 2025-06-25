@@ -63,6 +63,8 @@ const Canvas: React.FC = () => {
   const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
   const [initialImageState, setInitialImageState] = useState<EnhancedImage | null>(null)
 
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+
   const renderBackground = () => {
     const canvas = backgroundCanvasRef.current;
     const context = backgroundCtxRef.current;
@@ -894,24 +896,27 @@ const Canvas: React.FC = () => {
   // Add a function to render enhanced images on the canvas
   const renderEnhancedImages = () => {
     return interactiveEnhancedImages.map((image, index) => (
-      <div 
+      <div
         key={image.id}
-        className="absolute"
+        className="absolute border-2 border-purple-500 bg-white shadow-lg rounded-lg overflow-hidden"
         style={{
-          left: `${image.x}px`,
-          top: `${image.y}px`,
-          width: `${image.width}px`,
-          height: `${image.height}px`,
-          border: '2px solid #9333ea',
-          borderRadius: '4px',
-          overflow: 'hidden',
-          pointerEvents: 'auto',
-          touchAction: 'none',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-          zIndex: 20,
-          cursor: image.isDragging ? 'grabbing' : 'grab'
+          left: image.x,
+          top: image.y,
+          width: image.width,
+          height: image.height,
+          cursor: image.isDragging ? 'grabbing' : 'grab',
+          zIndex: selectedImageIndex === index ? 25 : 20,
+          borderColor: selectedImageIndex === index ? '#8b5cf6' : '#a855f7',
+          borderWidth: selectedImageIndex === index ? '3px' : '2px',
         }}
-        onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index)}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          handlePointerDownOnEnhancedImage(e, index);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedImageIndex(index);
+        }}
       >
         <img
           src={image.url}
@@ -931,83 +936,134 @@ const Canvas: React.FC = () => {
             e.stopPropagation();
             const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
             setInteractiveEnhancedImages(updatedImages);
+            if (selectedImageIndex === index) {
+              setSelectedImageIndex(null);
+            }
+          }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+          }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
           }}
         >
           ✕
         </div>
         
-        {/* Add EnhancedImageActions component without onClose prop */}
-        <EnhancedImageActions 
-          imageData={{
-            path: image.url,
-            filename: image.id,
-            base64Data: image.base64Data || ''
-          }}
-        />
-
-        {/* Resize handles - all 8 directions */}
-        <div className="absolute top-0 left-0 w-4 h-4 bg-purple-500 rounded-br-md cursor-nwse-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'top-left');
-          }}
-        />
-        <div className="absolute top-0 right-0 w-4 h-4 bg-purple-500 rounded-bl-md cursor-nesw-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'top-right');
-          }}
-        />
-        <div className="absolute bottom-0 left-0 w-4 h-4 bg-purple-500 rounded-tr-md cursor-nesw-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'bottom-left');
-          }}
-        />
-        <div className="absolute bottom-0 right-0 w-4 h-4 bg-purple-500 rounded-tl-md cursor-nwse-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'bottom-right');
-          }}
-        />
-        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-purple-500 rounded-b-md cursor-ns-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'top');
-          }}
-        />
-        <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-purple-500 rounded-t-md cursor-ns-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'bottom');
-          }}
-        />
-        <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-purple-500 rounded-r-md cursor-ew-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'left');
-          }}
-        />
-        <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-purple-500 rounded-l-md cursor-ew-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'right');
-          }}
-        />
+        {/* Action buttons at the bottom */}
+        <div className="absolute bottom-0 left-0 right-0 flex justify-center space-x-3 z-50 bg-black bg-opacity-60 py-2 px-3 pointer-events-auto">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              console.log('Add to storyboard clicked for index:', index);
+              addToStoryboard(index);
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors shadow flex items-center cursor-pointer"
+            title="Add to Storyboard"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            Add to Storyboard
+          </button>
+          
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              console.log('Download clicked for index:', index);
+              downloadImage(index);
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors shadow flex items-center cursor-pointer"
+            title="Download Image"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download
+          </button>
+        </div>
       </div>
     ));
   };
 
+  const addToStoryboard = async (imageIndex: number) => {
+    try {
+      const image = interactiveEnhancedImages[imageIndex];
+      // Extract just the path part from the full URL
+      const path = image.url.replace('http://localhost:5001', '');
+      
+      const response = await fetch('http://localhost:5001/api/storyboard/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imagePath: path }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to add image to storyboard: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        window.showToast('Image added to storyboard!', 'success', 2000);
+      } else {
+        throw new Error('Failed to add image to storyboard');
+      }
+    } catch (err) {
+      console.error('Error adding image to storyboard:', err);
+      window.showToast(`Error adding to storyboard: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    }
+  };
+
+  const downloadImage = (imageIndex: number) => {
+    const image = interactiveEnhancedImages[imageIndex];
+    const link = document.createElement('a');
+    link.href = `data:image/png;base64,${image.base64Data || ''}`;
+    link.download = image.id;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.showToast('Image downloading...', 'success', 2000);
+  };
+
   return (
-    <div ref={containerRef} className="absolute inset-0 bg-stone-50 select-none" style={{ touchAction: 'none' }}>
+    <div 
+      ref={containerRef} 
+      className="absolute inset-0 bg-stone-50 select-none" 
+      style={{ touchAction: 'none' }}
+      onClick={(e) => {
+        // Deselect image when clicking on empty space
+        if (e.target === e.currentTarget) {
+          setSelectedImageIndex(null);
+        }
+      }}
+    >
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
@@ -1081,6 +1137,61 @@ const Canvas: React.FC = () => {
 
       {/* Render interactive enhanced images */}
       {renderEnhancedImages()}
+      
+      {/* Floating action panel for selected enhanced image */}
+      {selectedImageIndex !== null && interactiveEnhancedImages[selectedImageIndex] && (
+        <div 
+          className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50"
+          style={{
+            left: interactiveEnhancedImages[selectedImageIndex].x + interactiveEnhancedImages[selectedImageIndex].width + 10,
+            top: interactiveEnhancedImages[selectedImageIndex].y,
+            minWidth: '200px'
+          }}
+        >
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-sm font-medium text-gray-700">Image Actions</div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedImageIndex(null);
+              }}
+              className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer"
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className="space-y-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                addToStoryboard(selectedImageIndex);
+              }}
+              className="w-full text-xs px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors shadow flex items-center justify-center cursor-pointer"
+              title="Add to Storyboard"
+            >
+              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              </svg>
+              Add to Storyboard
+            </button>
+            
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadImage(selectedImageIndex);
+              }}
+              className="w-full text-xs px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors shadow flex items-center justify-center cursor-pointer"
+              title="Download Image"
+            >
+              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </button>
+          </div>
+        </div>
+      )}
       
       <canvas ref={backgroundCanvasRef} className="absolute top-0 left-0" style={{ zIndex: 0, pointerEvents: 'none' }} />
       <canvas

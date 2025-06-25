@@ -51,7 +51,7 @@ const EnhancedImageActions: React.FC<EnhancedImageActionsProps> = ({ imageData }
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 flex justify-center space-x-3 z-30 bg-black bg-opacity-60 py-2 px-3 pointer-events-auto">
+    <div className="absolute bottom-0 left-0 right-0 flex justify-center space-x-3 z-40 bg-black bg-opacity-60 py-2 px-3 pointer-events-auto">
       <button
         onClick={addToStoryboard}
         className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors shadow flex items-center cursor-pointer"
