@@ -158,27 +158,21 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                             img_array = np.array(image)
                             
                             # The image from Gemini is already in RGB format (PIL format)
-                            # We need to convert to BGR for OpenCV saving, but keep RGB for base64
-                            if len(img_array.shape) == 3 and img_array.shape[2] == 3:
-                                img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
-                            else:
-                                img_bgr = img_array
-                            
+                            # Save the enhanced image in RGB format to avoid color space issues
                             # Get enhanced image dimensions
                             enhanced_width, enhanced_height = image.size
                             
-                            # Save the enhanced image in BGR format (OpenCV format)
+                            # Save the enhanced image in RGB format using PIL
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             enhanced_filename = f"enhanced_{timestamp}.png"
                             enhanced_path = os.path.join(enhanced_dir, enhanced_filename)
-                            cv2.imwrite(enhanced_path, img_bgr)
+                            image.save(enhanced_path, format="PNG")
                             print(f"Enhanced image saved to {enhanced_path}")
                             
                             # Create base64 image data from the RGB array for frontend
-                            # Convert back to PIL Image from RGB array to ensure correct format
-                            rgb_image = Image.fromarray(img_array)
+                            # Use the same PIL image for base64 encoding
                             img_buffer = BytesIO()
-                            rgb_image.save(img_buffer, format="PNG")
+                            image.save(img_buffer, format="PNG")
                             enhanced_base64 = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
                             print(f"Generated base64 data length: {len(enhanced_base64)}")
                             
@@ -298,14 +292,35 @@ def add_to_storyboard(image_path, image_data=None):
     else:
         # Read image and convert to base64 for client display
         try:
-            img = cv2.imread(image_path)
-            # Convert BGR to RGB to fix color inversion issue
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            _, buffer = cv2.imencode('.png', img)
-            img_base64 = base64.b64encode(buffer).decode('utf-8')
-            
-            # Get image dimensions
-            height, width = img.shape[:2]
+            # Try to read as PIL Image first (for RGB images)
+            try:
+                pil_img = Image.open(image_path)
+                # Convert PIL image to RGB if it's not already
+                if pil_img.mode != 'RGB':
+                    pil_img = pil_img.convert('RGB')
+                
+                # Convert to base64
+                img_buffer = BytesIO()
+                pil_img.save(img_buffer, format='PNG')
+                img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+                
+                # Get image dimensions
+                width, height = pil_img.size
+                
+            except Exception as pil_error:
+                # Fallback to OpenCV for BGR images
+                print(f"PIL failed, trying OpenCV: {pil_error}")
+                img = cv2.imread(image_path)
+                if img is not None:
+                    # Convert BGR to RGB to fix color inversion issue
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    _, buffer = cv2.imencode('.png', img)
+                    img_base64 = base64.b64encode(buffer).decode('utf-8')
+                    
+                    # Get image dimensions
+                    height, width = img.shape[:2]
+                else:
+                    raise Exception("Could not read image with either PIL or OpenCV")
             
             storyboard_image_data.append({
                 "path": image_path,
@@ -750,16 +765,31 @@ def play_video(video_filename):
 @app.route('/img/<path:filename>')
 def serve_image(filename):
     try:
-        # Read the image and convert BGR to RGB
+        # Read the image and serve it correctly
         img_path = os.path.join(img_dir, filename)
         if os.path.exists(img_path):
-            img = cv2.imread(img_path)
-            if img is not None:
-                # Convert BGR to RGB
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                # Encode as PNG
-                _, buffer = cv2.imencode('.png', img_rgb)
-                return Response(buffer.tobytes(), mimetype='image/png')
+            # Try to read as PIL Image first (for RGB images)
+            try:
+                pil_img = Image.open(img_path)
+                # Convert PIL image to RGB if it's not already
+                if pil_img.mode != 'RGB':
+                    pil_img = pil_img.convert('RGB')
+                
+                # Convert to base64 and serve
+                img_buffer = BytesIO()
+                pil_img.save(img_buffer, format='PNG')
+                return Response(img_buffer.getvalue(), mimetype='image/png')
+                
+            except Exception as pil_error:
+                # Fallback to OpenCV for BGR images
+                print(f"PIL failed, trying OpenCV: {pil_error}")
+                img = cv2.imread(img_path)
+                if img is not None:
+                    # Convert BGR to RGB to fix color inversion issue
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    # Encode as PNG
+                    _, buffer = cv2.imencode('.png', img_rgb)
+                    return Response(buffer.tobytes(), mimetype='image/png')
     except Exception as e:
         print(f"Error serving image {filename}: {e}")
     
@@ -769,16 +799,31 @@ def serve_image(filename):
 @app.route('/enhanced_drawings/<path:filename>')
 def serve_enhanced_image(filename):
     try:
-        # Read the image and convert BGR to RGB
+        # Read the image and serve it correctly
         img_path = os.path.join(enhanced_dir, filename)
         if os.path.exists(img_path):
-            img = cv2.imread(img_path)
-            if img is not None:
-                # Convert BGR to RGB
-                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                # Encode as PNG
-                _, buffer = cv2.imencode('.png', img_rgb)
-                return Response(buffer.tobytes(), mimetype='image/png')
+            # Try to read as PIL Image first (for RGB images)
+            try:
+                pil_img = Image.open(img_path)
+                # Convert PIL image to RGB if it's not already
+                if pil_img.mode != 'RGB':
+                    pil_img = pil_img.convert('RGB')
+                
+                # Convert to base64 and serve
+                img_buffer = BytesIO()
+                pil_img.save(img_buffer, format='PNG')
+                return Response(img_buffer.getvalue(), mimetype='image/png')
+                
+            except Exception as pil_error:
+                # Fallback to OpenCV for BGR images
+                print(f"PIL failed, trying OpenCV: {pil_error}")
+                img = cv2.imread(img_path)
+                if img is not None:
+                    # Convert BGR to RGB to fix color inversion issue
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    # Encode as PNG
+                    _, buffer = cv2.imencode('.png', img_rgb)
+                    return Response(buffer.tobytes(), mimetype='image/png')
     except Exception as e:
         print(f"Error serving enhanced image {filename}: {e}")
     
