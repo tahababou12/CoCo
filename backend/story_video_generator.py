@@ -8,9 +8,11 @@ from dotenv import load_dotenv
 from io import BytesIO
 import base64
 from elevenlabs.client import ElevenLabs
-import moviepy as mp
+from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, ImageSequenceClip, concatenate_audioclips
 import json
 import time
+import math
+import random
 from pathlib import Path
 import logging
 
@@ -24,6 +26,141 @@ logging.basicConfig(
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+
+class EnhancedVideoEffects:
+    def __init__(self, resolution=(1280, 720), fps=30):
+        self.resolution = resolution
+        self.fps = fps
+    
+    def smooth_ease_in_out(self, t):
+        """Smooth easing function for more natural movement"""
+        return t * t * (3.0 - 2.0 * t)
+    
+    def apply_spiral_pan(self, frame, progress, direction='clockwise'):
+        """Spiral panning effect for dynamic movement"""
+        h, w = frame.shape[:2]
+        
+        # Scale image up to allow for spiral movement
+        scale = 1.4
+        scaled_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), 
+                                 interpolation=cv2.INTER_LANCZOS4)
+        scaled_h, scaled_w = scaled_frame.shape[:2]
+        
+        # Smooth easing
+        eased_progress = self.smooth_ease_in_out(progress)
+        
+        # Spiral movement - very dynamic
+        angle = eased_progress * math.pi * 4  # 2 full rotations
+        if direction == 'counterclockwise':
+            angle = -angle
+            
+        radius = min(scaled_w - w, scaled_h - h) // 3
+        center_x = (scaled_w - w) // 2
+        center_y = (scaled_h - h) // 2
+        
+        # Add some radius variation for more interesting movement
+        radius_variation = radius * 0.3 * math.sin(angle * 2)
+        current_radius = radius + radius_variation
+        
+        start_x = center_x + int(current_radius * math.cos(angle))
+        start_y = center_y + int(current_radius * math.sin(angle))
+        
+        # Clamp values to prevent out-of-bounds
+        start_x = max(0, min(start_x, scaled_w - w))
+        start_y = max(0, min(start_y, scaled_h - h))
+        
+        return scaled_frame[start_y:start_y+h, start_x:start_x+w]
+    
+    def apply_dramatic_zoom(self, frame, progress, zoom_type='punch_in'):
+        """Dramatic zoom effects for emphasis"""
+        h, w = frame.shape[:2]
+        
+        if zoom_type == 'punch_in':
+            # Quick zoom in, then settle
+            if progress < 0.3:
+                # Fast zoom phase
+                scale = 1.0 + (progress / 0.3) * 0.6  # Zoom to 1.6x quickly
+            else:
+                # Settle phase
+                settle_progress = (progress - 0.3) / 0.7
+                scale = 1.6 + settle_progress * 0.4  # Settle to 2.0x
+        
+        elif zoom_type == 'dolly_zoom':
+            # Vertigo/dolly zoom effect (zoom in while "moving back")
+            zoom_scale = 1.0 + progress * 0.8
+            # Simulate perspective change by slightly adjusting the crop
+            perspective_offset = int(progress * 30)
+            
+            # Resize with zoom
+            new_w, new_h = int(w * zoom_scale), int(h * zoom_scale)
+            zoomed = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+            
+            # Crop with perspective offset
+            x1 = (new_w - w) // 2 + perspective_offset
+            y1 = (new_h - h) // 2
+            
+            return zoomed[y1:y1+h, x1:x1+w]
+        
+        elif zoom_type == 'speed_zoom':
+            # Very fast zoom in over short duration
+            ease_progress = progress ** 3  # Cubic easing for speed
+            scale = 1.0 + ease_progress * 1.0
+        
+        # Standard zoom processing
+        new_w, new_h = int(w * scale), int(h * scale)
+        zoomed = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        
+        # Center crop
+        x1 = (new_w - w) // 2
+        y1 = (new_h - h) // 2
+        
+        return zoomed[y1:y1+h, x1:x1+w]
+    
+    def apply_focus_pull(self, frame, progress, focus_point=(0.5, 0.5)):
+        """Simulate focus pull by combining zoom with blur"""
+        h, w = frame.shape[:2]
+        
+        # Split the effect into two phases
+        if progress < 0.5:
+            # Phase 1: Out of focus, zoom in
+            blur_strength = int(20 * (1 - progress * 2))
+            zoom_scale = 1.0 + progress * 0.4
+        else:
+            # Phase 2: Come into focus, continue zoom
+            blur_strength = 0
+            zoom_scale = 1.2 + (progress - 0.5) * 0.4
+        
+        # Apply blur if needed
+        if blur_strength > 0:
+            frame = cv2.GaussianBlur(frame, (blur_strength * 2 + 1, blur_strength * 2 + 1), 0)
+        
+        # Apply zoom toward focus point
+        new_w, new_h = int(w * zoom_scale), int(h * zoom_scale)
+        zoomed = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        
+        # Calculate crop position based on focus point
+        focus_x = int(focus_point[0] * (new_w - w))
+        focus_y = int(focus_point[1] * (new_h - h))
+        
+        return zoomed[focus_y:focus_y+h, focus_x:focus_x+w]
+    
+    def get_random_effect(self, scene_index):
+        """Get a random effect based on scene index to avoid repetition"""
+        effects = [
+            'ken_burns_zoom_out',
+            'ken_burns_zoom_in', 
+            'spiral_pan_clockwise',
+            'spiral_pan_counterclockwise',
+            'dramatic_zoom_punch',
+            'dramatic_zoom_dolly',
+            'focus_pull',
+            'pan_right',
+            'pan_left'
+        ]
+        
+        # Use scene index to seed randomness for consistency
+        random.seed(scene_index)
+        return random.choice(effects)
 
 class StoryVideoGenerator:
     def __init__(self, enhanced_dir="enhanced_drawings", output_dir="story_videos"):
@@ -40,6 +177,9 @@ class StoryVideoGenerator:
         self.resolution = (1280, 720)  # HD resolution
         self.transition_duration = 2  # seconds
         self.scene_duration = 5  # seconds per scene
+        
+        # Initialize enhanced effects
+        self.effects = EnhancedVideoEffects(self.resolution, self.fps)
         
         # Initialize Gemini
         if GEMINI_API_KEY:
@@ -241,24 +381,55 @@ class StoryVideoGenerator:
             offset = int(w * (1 - (progress * progress)))  # Quadratic easing
             return frame[:, offset:offset+w]
     
-    def create_scene_clip(self, image_path, duration, effect_type='ken_burns'):
-        """Create a video clip for a single scene with effects."""
+    def create_scene_clip(self, image_path, duration, effect_type='auto', scene_index=0):
+        """Create a video clip for a single scene with enhanced effects."""
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"Could not read image: {image_path}")
         
+        # Convert BGR to RGB to fix color inversion issue
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
         # Resize image to video resolution
         img = cv2.resize(img, self.resolution)
+        
+        # Auto-select effect if not specified
+        if effect_type == 'auto':
+            effect_type = self.get_random_effect_combination(scene_index)
         
         # Create frames for the scene
         frames = []
         for i in range(int(duration * self.fps)):
             progress = i / (duration * self.fps)
             
-            if effect_type == 'ken_burns':
-                frame = self.apply_ken_burns_effect(img, progress)
-            elif effect_type == 'pan':
-                frame = self.apply_pan_effect(img, progress)
+            # Apply the selected effect
+            if effect_type.startswith('combined_'):
+                # Handle combined effects
+                parts = effect_type.split('_')
+                if len(parts) >= 3:
+                    effect1 = f"{parts[1]}_{parts[2]}"
+                    effect2 = f"{parts[3]}_{parts[4]}" if len(parts) > 4 else parts[3]
+                    frame = self.apply_combined_effects(img, progress, effect1, effect2)
+                else:
+                    frame = img.copy()
+            elif effect_type == 'ken_burns_zoom_out':
+                frame = self.apply_ken_burns_effect(img, progress, 'zoom_out')
+            elif effect_type == 'ken_burns_zoom_in':
+                frame = self.apply_ken_burns_effect(img, progress, 'zoom_in')
+            elif effect_type == 'spiral_pan_clockwise':
+                frame = self.effects.apply_spiral_pan(img, progress, 'clockwise')
+            elif effect_type == 'spiral_pan_counterclockwise':
+                frame = self.effects.apply_spiral_pan(img, progress, 'counterclockwise')
+            elif effect_type == 'dramatic_zoom_punch':
+                frame = self.effects.apply_dramatic_zoom(img, progress, 'punch_in')
+            elif effect_type == 'dramatic_zoom_dolly':
+                frame = self.effects.apply_dramatic_zoom(img, progress, 'dolly_zoom')
+            elif effect_type == 'focus_pull':
+                frame = self.effects.apply_focus_pull(img, progress)
+            elif effect_type == 'pan_right':
+                frame = self.apply_pan_effect(img, progress, 'right')
+            elif effect_type == 'pan_left':
+                frame = self.apply_pan_effect(img, progress, 'left')
             else:
                 frame = img.copy()
             
@@ -278,6 +449,64 @@ class StoryVideoGenerator:
         eased_progress = progress * progress
         return cv2.addWeighted(frame1, 1 - eased_progress, frame2, eased_progress, 0)
     
+    def apply_combined_effects(self, frame, progress, effect1, effect2, blend_ratio=0.5):
+        """Combine two effects for more dramatic results"""
+        # Apply first effect
+        if effect1 == 'ken_burns_zoom_out':
+            frame1 = self.apply_ken_burns_effect(frame, progress, 'zoom_out')
+        elif effect1 == 'ken_burns_zoom_in':
+            frame1 = self.apply_ken_burns_effect(frame, progress, 'zoom_in')
+        elif effect1 == 'spiral_pan_clockwise':
+            frame1 = self.effects.apply_spiral_pan(frame, progress, 'clockwise')
+        elif effect1 == 'dramatic_zoom_punch':
+            frame1 = self.effects.apply_dramatic_zoom(frame, progress, 'punch_in')
+        elif effect1 == 'focus_pull':
+            frame1 = self.effects.apply_focus_pull(frame, progress)
+        else:
+            frame1 = frame.copy()
+        
+        # Apply second effect
+        if effect2 == 'ken_burns_zoom_out':
+            frame2 = self.apply_ken_burns_effect(frame, progress, 'zoom_out')
+        elif effect2 == 'ken_burns_zoom_in':
+            frame2 = self.apply_ken_burns_effect(frame, progress, 'zoom_in')
+        elif effect2 == 'spiral_pan_clockwise':
+            frame2 = self.effects.apply_spiral_pan(frame, progress, 'clockwise')
+        elif effect2 == 'dramatic_zoom_punch':
+            frame2 = self.effects.apply_dramatic_zoom(frame, progress, 'punch_in')
+        elif effect2 == 'focus_pull':
+            frame2 = self.effects.apply_focus_pull(frame, progress)
+        else:
+            frame2 = frame.copy()
+        
+        # Blend the two effects
+        return cv2.addWeighted(frame1, blend_ratio, frame2, 1 - blend_ratio, 0)
+    
+    def get_random_effect_combination(self, scene_index):
+        """Get a random effect or combination of effects"""
+        effects = [
+            'ken_burns_zoom_out',
+            'ken_burns_zoom_in', 
+            'spiral_pan_clockwise',
+            'spiral_pan_counterclockwise',
+            'dramatic_zoom_punch',
+            'dramatic_zoom_dolly',
+            'focus_pull',
+            'pan_right',
+            'pan_left'
+        ]
+        
+        # Use scene index to seed randomness for consistency
+        random.seed(scene_index)
+        
+        # 30% chance to combine two effects for more dramatic results
+        if random.random() < 0.3:
+            effect1 = random.choice(effects)
+            effect2 = random.choice(effects)
+            return f"combined_{effect1}_{effect2}"
+        else:
+            return random.choice(effects)
+    
     def generate_video(self, image_paths=None, story_context=None):
         """Generate the complete story video."""
         try:
@@ -291,7 +520,21 @@ class StoryVideoGenerator:
             if not image_paths:
                 raise ValueError("No images found!")
             
-            logging.info(f"Found {len(image_paths)} images")
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_image_paths = []
+            for path in image_paths:
+                if path not in seen:
+                    seen.add(path)
+                    unique_image_paths.append(path)
+            
+            if len(unique_image_paths) != len(image_paths):
+                logging.info(f"Removed {len(image_paths) - len(unique_image_paths)} duplicate images")
+                logging.info(f"Original count: {len(image_paths)}, Unique count: {len(unique_image_paths)}")
+            
+            image_paths = unique_image_paths
+            
+            logging.info(f"Found {len(image_paths)} unique images")
             for i, path in enumerate(image_paths):
                 logging.info(f"Image {i+1}: {path}")
             
@@ -322,7 +565,7 @@ class StoryVideoGenerator:
                 audio_paths.append(scene_audio_path)
             
             # Load all audio clips and calculate durations
-            audio_clips = [mp.AudioFileClip(path) for path in audio_paths]
+            audio_clips = [AudioFileClip(path) for path in audio_paths]
             durations = [clip.duration for clip in audio_clips]
             
             # Calculate total duration and adjust scene durations
@@ -336,16 +579,21 @@ class StoryVideoGenerator:
             current_time = 0
             
             # Add title screen
-            title_frames = self.create_scene_clip(image_paths[0], durations[0], 'ken_burns')
-            title_text = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
-            cv2.putText(title_text, story_data["title"], 
-                       (self.resolution[0]//4, self.resolution[1]//2),
-                       cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+            title_frames = self.create_scene_clip(image_paths[0], durations[0], 'dramatic_zoom_punch', 0)
+            # Overlay title text on each frame
+            for i, frame in enumerate(title_frames):
+                # Create a copy of the frame to avoid modifying the original
+                frame_with_text = frame.copy()
+                # Add title text overlay
+                cv2.putText(frame_with_text, story_data["title"], 
+                           (self.resolution[0]//4, self.resolution[1]//2),
+                           cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+                title_frames[i] = frame_with_text
             all_frames.extend(title_frames)
             current_time += durations[0]
             
             # Add introduction scene
-            intro_frames = self.create_scene_clip(image_paths[0], durations[1], 'ken_burns')
+            intro_frames = self.create_scene_clip(image_paths[0], durations[1], 'focus_pull', 1)
             all_frames.extend(intro_frames)
             current_time += durations[1]
             
@@ -354,9 +602,8 @@ class StoryVideoGenerator:
                 logging.info(f"Processing scene {i+1}/{len(image_paths)}")
                 scene_duration = durations[i + 2]  # +2 because we have title and intro
                 
-                # Create scene frames with alternating effects
-                scene_frames = self.create_scene_clip(img_path, scene_duration, 
-                                                    'ken_burns' if i % 2 == 0 else 'pan')
+                # Create scene frames with random enhanced effects
+                scene_frames = self.create_scene_clip(img_path, scene_duration, 'auto', i + 2)
                 
                 # Add transition
                 transition_frames = []
@@ -372,10 +619,10 @@ class StoryVideoGenerator:
             
             # Create video clip
             logging.info("Creating final video...")
-            video_clip = mp.ImageSequenceClip(all_frames, fps=self.fps)
+            video_clip = ImageSequenceClip(all_frames, fps=self.fps)
             
             # Combine audio clips
-            final_audio = mp.concatenate_audioclips(audio_clips)
+            final_audio = concatenate_audioclips(audio_clips)
             
             # Set audio to video
             final_video = video_clip.with_audio(final_audio)

@@ -30,7 +30,9 @@ const EnhancedImageActions: React.FC<EnhancedImageActionsProps> = ({ imageData }
       const data = await response.json();
       
       if (data.success) {
-        window.showToast('Image added to storyboard!', 'success', 2000);
+        const message = data.isDuplicate ? 'Image already in storyboard' : 'Image added to storyboard!';
+        const toastType = data.isDuplicate ? 'info' : 'success';
+        window.showToast(message, toastType, 2000);
       } else {
         throw new Error('Failed to add image to storyboard');
       }

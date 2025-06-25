@@ -276,6 +276,11 @@ def add_to_storyboard(image_path, image_data=None):
         print(f"Error: Image file {image_path} not found")
         return False
     
+    # Check if image is already in storyboard to prevent duplicates
+    if image_path in storyboard_images:
+        print(f"Image {image_path} is already in storyboard, skipping duplicate")
+        return True  # Return True since the image is already there
+    
     # Add the file path to storyboard images
     storyboard_images.append(image_path)
     print(f"Added {image_path} to storyboard_images")
@@ -289,6 +294,8 @@ def add_to_storyboard(image_path, image_data=None):
         # Read image and convert to base64 for client display
         try:
             img = cv2.imread(image_path)
+            # Convert BGR to RGB to fix color inversion issue
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             _, buffer = cv2.imencode('.png', img)
             img_base64 = base64.b64encode(buffer).decode('utf-8')
             
@@ -521,10 +528,14 @@ def add_to_storyboard_api():
         print(f"Current storyboard_image_data filenames: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
         
         if success:
+            # Check if this was a duplicate (image was already in storyboard)
+            is_duplicate = absolute_path in storyboard_images[:-1]  # Check if it existed before we added it
+            
             # Return the updated storyboard
             return jsonify({
                 "success": True,
-                "message": "Image added to storyboard",
+                "message": "Image already in storyboard" if is_duplicate else "Image added to storyboard",
+                "isDuplicate": is_duplicate,
                 "storyboard": {
                     "images": storyboard_image_data,
                     "count": len(storyboard_images)
@@ -585,6 +596,7 @@ def delete_from_storyboard():
         global storyboard_images, storyboard_image_data
         data = request.json
         image_path = data.get('imagePath')
+        image_index = data.get('imageIndex')  # New parameter for specific instance
         
         if not image_path:
             return jsonify({"error": "No image path provided"}), 400
@@ -601,23 +613,35 @@ def delete_from_storyboard():
             # Assume it's already an absolute path
             absolute_path = image_path
         
-        # Find and remove the image from both arrays
-        if absolute_path in storyboard_images:
-            storyboard_images.remove(absolute_path)
+        # If index is provided, delete the specific instance
+        if image_index is not None and 0 <= image_index < len(storyboard_images):
+            # Remove the specific instance by index
+            removed_path = storyboard_images.pop(image_index)
+            print(f"Removed image at index {image_index}: {removed_path}")
             
-            # Also remove from image data array
-            storyboard_image_data = [img for img in storyboard_image_data if img.get('path') != absolute_path]
-            
-            return jsonify({
-                "success": True,
-                "message": "Image removed from storyboard",
-                "storyboard": {
-                    "images": storyboard_image_data,
-                    "count": len(storyboard_images)
-                }
-            })
+            # Also remove the corresponding image data
+            if image_index < len(storyboard_image_data):
+                removed_data = storyboard_image_data.pop(image_index)
+                print(f"Removed image data at index {image_index}: {removed_data.get('filename', 'unknown')}")
         else:
-            return jsonify({"error": "Image not found in storyboard"}), 404
+            # Fallback: Find and remove the first occurrence of the image
+            if absolute_path in storyboard_images:
+                storyboard_images.remove(absolute_path)
+                print(f"Removed first occurrence of: {absolute_path}")
+                
+                # Also remove from image data array
+                storyboard_image_data = [img for img in storyboard_image_data if img.get('path') != absolute_path]
+            else:
+                return jsonify({"error": "Image not found in storyboard"}), 404
+        
+        return jsonify({
+            "success": True,
+            "message": "Image removed from storyboard",
+            "storyboard": {
+                "images": storyboard_image_data,
+                "count": len(storyboard_images)
+            }
+        })
             
     except Exception as e:
         error_msg = f"Error deleting image from storyboard: {str(e)}"

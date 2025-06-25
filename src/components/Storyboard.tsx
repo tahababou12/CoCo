@@ -96,7 +96,9 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       
       if (data.success && data.storyboard) {
         setStoryboardImages(data.storyboard.images || []);
-        window.showToast('Image added to storyboard', 'success', 2000);
+        const message = data.isDuplicate ? 'Image already in storyboard' : 'Image added to storyboard';
+        const toastType = data.isDuplicate ? 'info' : 'success';
+        window.showToast(message, toastType, 2000);
         setImagePath('');
       } else {
         throw new Error('Invalid response format from server');
@@ -147,7 +149,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const deleteImageFromStoryboard = async (imagePath: string) => {
+  const deleteImageFromStoryboard = async (imagePath: string, imageIndex: number) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -157,7 +159,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ imagePath }),
+        body: JSON.stringify({ imagePath, imageIndex }),
       });
       
       if (!response.ok) {
@@ -370,7 +372,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
                     #{index + 1}: {image.filename.substring(0, 15)}...
                   </div>
                   <button
-                    onClick={() => deleteImageFromStoryboard(image.path)}
+                    onClick={() => deleteImageFromStoryboard(image.path, index)}
                     className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                     title="Delete this image"
                     style={{ pointerEvents: 'auto' }}
