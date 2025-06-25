@@ -50,9 +50,11 @@ CORS(app)
 img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img")
 enhanced_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "enhanced_drawings")
 story_videos_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "story_videos")
+gen_music_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gen_music")
 os.makedirs(img_dir, exist_ok=True)
 os.makedirs(enhanced_dir, exist_ok=True)
 os.makedirs(story_videos_dir, exist_ok=True)
+os.makedirs(gen_music_dir, exist_ok=True)
 
 # Storyboard settings
 storyboard_images = []  # List to store storyboard images (filenames only)
@@ -339,7 +341,7 @@ def add_to_storyboard(image_path, image_data=None):
     return True
 
 # Function to generate and play video (background processing)
-def generate_video_background(request_id, story_context=None):
+def generate_video_background(request_id, story_context=None, include_music=False):
     global is_video_processing
     
     try:
@@ -355,11 +357,12 @@ def generate_video_background(request_id, story_context=None):
         
         print(f"Storyboard images before video generation: {storyboard_images}")
         print(f"Number of storyboard images: {len(storyboard_images)}")
+        print(f"Include music: {include_music}")
         for i, img_path in enumerate(storyboard_images):
             print(f"Storyboard image {i+1}: {img_path}")
         
-        # Generate video using the storyboard images
-        video_path = video_generator.generate_video(storyboard_images, story_context)
+        # Generate video using the storyboard images, pass include_music parameter
+        video_path = video_generator.generate_video(storyboard_images, story_context, include_music)
         
         if video_path:
             # Get relative path for client
@@ -678,10 +681,12 @@ def generate_video_api():
     try:
         data = request.json or {}
         story_context = data.get('storyContext', '')
+        include_music = data.get('includeMusic', False)
         print(f"=== VIDEO GENERATION REQUEST ===")
         print(f"Current storyboard_images: {storyboard_images}")
         print(f"Current storyboard_image_data: {[img.get('filename', 'unknown') for img in storyboard_image_data]}")
         print(f"Number of storyboard images: {len(storyboard_images)}")
+        print(f"Include music: {include_music}")
         
         # Check if enough images are in storyboard
         if len(storyboard_images) < 2:
@@ -699,9 +704,9 @@ def generate_video_api():
         # Generate a unique request ID
         request_id = f"video_req_{datetime.now().timestamp()}"
         
-        # Start video generation in background, pass story_context
+        # Start video generation in background, pass story_context and include_music
         is_video_processing = True
-        threading.Thread(target=generate_video_background, args=(request_id, story_context)).start()
+        threading.Thread(target=generate_video_background, args=(request_id, story_context, include_music)).start()
         
         # Return immediately with request ID for polling
         return jsonify({
@@ -833,6 +838,10 @@ def serve_enhanced_image(filename):
 @app.route('/videos/<path:filename>')
 def serve_video(filename):
     return send_from_directory(story_videos_dir, filename)
+
+@app.route('/gen_music/<path:filename>')
+def serve_music(filename):
+    return send_from_directory(gen_music_dir, filename)
 
 # Debug endpoint to check storyboard state
 @app.route('/api/debug/storyboard', methods=['GET'])

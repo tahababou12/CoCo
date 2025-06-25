@@ -8,13 +8,15 @@ from dotenv import load_dotenv
 from io import BytesIO
 import base64
 from elevenlabs.client import ElevenLabs
-from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, ImageSequenceClip, concatenate_audioclips
+from moviepy import VideoFileClip, AudioFileClip, concatenate_videoclips, ImageSequenceClip, concatenate_audioclips, CompositeAudioClip
 import json
 import time
 import math
 import random
 from pathlib import Path
 import logging
+import asyncio
+from mvpmusic import MusicGenerator
 
 # Set up logging
 logging.basicConfig(
@@ -206,9 +208,10 @@ class StoryVideoGenerator:
         self.enhanced_dir = enhanced_dir
         self.output_dir = output_dir
         self.temp_dir = "temp_processing"
+        self.music_dir = "gen_music"
         
         # Create directories
-        for directory in [self.output_dir, self.temp_dir]:
+        for directory in [self.output_dir, self.temp_dir, self.music_dir]:
             os.makedirs(directory, exist_ok=True)
         
         # Video settings
@@ -272,7 +275,7 @@ class StoryVideoGenerator:
                 img = Image.open(path)
                 
                 # Create the prompt for image analysis
-                prompt = """Describe this image in an interestingway. As is relevant, include:
+                prompt = """Describe this image in an interesting way. As is relevant, include:
                 - What's happening in the scene
                 - The main shapes and characters involved
                 - Any interesting details or characters
@@ -455,11 +458,132 @@ class StoryVideoGenerator:
         # Truly random selection - no seed for maximum randomness
         return random.choice(effects)
     
-    def generate_video(self, image_paths=None, story_context=None):
+    def generate_music_description(self, story_data):
+        """Generate a music description based on the story data using Gemini."""
+        if not GEMINI_API_KEY:
+            logging.warning("GEMINI_API_KEY not set, using default music description")
+            return "upbeat and cheerful background music"
+        
+        try:
+            logging.info("Generating music description from story data...")
+            
+            prompt = f"""
+            Based on this story, generate a brief description of what kind of background music would be appropriate. Make sure you specific that the background music should not be distracting. 
+            
+            Story Title: {story_data.get('title', 'A Story')}
+            Story Introduction: {story_data.get('story', 'A tale unfolds')}
+            
+            Generate a 1-2 sentence description of the music style, mood, and instruments that would fit this story.
+            Focus on the emotional tone and atmosphere. Keep it simple and descriptive.
+            
+            Examples:
+            - "gentle acoustic guitar with soft piano melodies, creating a warm and peaceful atmosphere"
+            - "upbeat electronic music with driving rhythms and bright synthesizers"
+            - "mysterious orchestral music with strings and woodwinds, building tension"
+            
+            Your response should be just the music description, nothing else.
+            """
+            
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[prompt]
+            )
+            
+            music_description = response.text.strip()
+            logging.info(f"Generated music description: {music_description}")
+            return music_description
+            
+        except Exception as e:
+            logging.error(f"Error generating music description: {e}")
+            return "upbeat and cheerful background music"
+    
+    async def generate_background_music(self, story_data, total_duration):
+        """Generate background music using the MusicGenerator."""
+        try:
+            logging.info("Starting background music generation...")
+            
+            # Generate music description
+            music_description = self.generate_music_description(story_data)
+            
+            # Create timestamp for unique filename
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            music_filename = f"background_music_{timestamp}.mp3"
+            music_path = os.path.join(self.music_dir, music_filename)
+            
+            # Initialize music generator
+            music_generator = MusicGenerator(
+                prompt=music_description,
+                duration=total_duration,
+                bpm=120,  # Default BPM, could be made dynamic
+                output_file=music_path
+            )
+            
+            # Generate music asynchronously
+            success = await music_generator.generate()
+            
+            if success:
+                logging.info(f"Background music generated successfully: {music_path}")
+                return music_path
+            else:
+                logging.error("Failed to generate background music")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Error generating background music: {e}")
+            return None
+    
+
+    
+    def merge_audio_with_music(self, narration_audio_path, music_path, output_path, music_volume=0.2):
+        """Merge narration audio with background music."""
+        try:
+            logging.info("Merging narration with background music...")
+            
+            # Load audio files
+            narration_audio = AudioFileClip(narration_audio_path)
+            background_music = AudioFileClip(music_path)
+            
+            # Get duration
+            narration_duration = narration_audio.duration
+            music_duration = background_music.duration
+            
+            # Loop music if it's shorter than narration
+            if music_duration < narration_duration:
+                # Calculate how many loops we need
+                loops_needed = int(narration_duration / music_duration) + 1
+                background_music = concatenate_audioclips([background_music] * loops_needed)
+            
+            # Trim music to match narration duration
+            background_music = background_music.subclipped(0, narration_duration)
+            
+            # Reduce music volume BEFORE creating composite
+            background_music = background_music.with_volume_scaled(music_volume)
+            
+            # Combine audio using CompositeAudioClip
+            from moviepy import CompositeAudioClip
+            combined_audio = CompositeAudioClip([narration_audio, background_music])
+            
+            # Save combined audio
+            combined_audio.write_audiofile(output_path)
+            
+            # Clean up
+            narration_audio.close()
+            background_music.close()
+            combined_audio.close()
+            
+            logging.info(f"Audio merged successfully: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logging.error(f"Error merging audio with music: {e}")
+            return narration_audio_path  # Fallback to original audio
+
+    def generate_video(self, image_paths=None, story_context=None, include_music=False):
         """Generate the complete story video."""
         try:
             logging.info(f"generate_video called with image_paths: {image_paths}")
             logging.info(f"Type of image_paths: {type(image_paths)}")
+            logging.info(f"Include music: {include_music}")
             
             # Get images from provided paths or directory
             image_paths = self.get_recent_images(image_paths)
@@ -498,18 +622,24 @@ class StoryVideoGenerator:
             
             # Generate title audio
             title_audio_path = os.path.join(self.temp_dir, f"title_{timestamp}.mp3")
-            self.create_audio(story_data["title"], title_audio_path)
+            if not self.create_audio(story_data["title"], title_audio_path):
+                logging.error("Failed to create title audio")
+                raise ValueError("Failed to create title audio - ElevenLabs API quota may be exceeded. Please check your API key and account credits.")
             audio_paths.append(title_audio_path)
             
             # Generate story introduction audio
             intro_audio_path = os.path.join(self.temp_dir, f"intro_{timestamp}.mp3")
-            self.create_audio(story_data["story"], intro_audio_path)
+            if not self.create_audio(story_data["story"], intro_audio_path):
+                logging.error("Failed to create intro audio")
+                raise ValueError("Failed to create intro audio - ElevenLabs API quota may be exceeded. Please check your API key and account credits.")
             audio_paths.append(intro_audio_path)
             
             # Generate scene audio files
             for i, narration in enumerate(story_data["scene_narrations"]):
                 scene_audio_path = os.path.join(self.temp_dir, f"scene_{i}_{timestamp}.mp3")
-                self.create_audio(narration, scene_audio_path)
+                if not self.create_audio(narration, scene_audio_path):
+                    logging.error(f"Failed to create scene {i} audio")
+                    raise ValueError(f"Failed to create scene {i} audio - ElevenLabs API quota may be exceeded. Please check your API key and account credits.")
                 audio_paths.append(scene_audio_path)
             
             # Load all audio clips and calculate durations
@@ -520,6 +650,27 @@ class StoryVideoGenerator:
             total_duration = sum(durations)
             transition_duration = 1.0  # 1 second transitions
             available_duration = total_duration - (len(durations) - 1) * transition_duration
+            
+            # Generate background music if requested
+            music_path = None
+            if include_music:
+                logging.info("Music generation requested, starting background music generation...")
+                try:
+                    # Run music generation asynchronously
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    music_path = loop.run_until_complete(
+                        self.generate_background_music(story_data, total_duration)
+                    )
+                    loop.close()
+                    
+                    if music_path:
+                        logging.info(f"Background music generated: {music_path}")
+                    else:
+                        logging.warning("Music generation failed, proceeding without music")
+                except Exception as e:
+                    logging.error(f"Error in music generation: {e}")
+                    logging.info("Proceeding without background music")
             
             # Create video frames
             logging.info("Creating video frames...")
@@ -573,6 +724,35 @@ class StoryVideoGenerator:
             
             # Combine audio clips
             final_audio = concatenate_audioclips(audio_clips)
+            
+            # If music was generated, merge it with the narration
+            if music_path and os.path.exists(music_path):
+                logging.info("Merging narration with background music...")
+                combined_audio_path = os.path.join(self.temp_dir, f"combined_audio_{timestamp}.mp3")
+                
+                # Save the narration audio temporarily
+                temp_narration_path = os.path.join(self.temp_dir, f"temp_narration_{timestamp}.mp3")
+                final_audio.write_audiofile(temp_narration_path)
+                
+                # Merge with background music
+                merged_path = self.merge_audio_with_music(
+                    temp_narration_path,
+                    music_path,
+                    combined_audio_path
+                )
+                
+                # Check if merge was successful and file exists
+                if merged_path and os.path.exists(merged_path):
+                    # Use the combined audio for the video
+                    final_audio = AudioFileClip(merged_path)
+                    logging.info("Successfully loaded combined audio with music")
+                else:
+                    logging.warning("Music merge failed, using narration-only audio")
+                    # Clean up the failed merge attempt
+                    if os.path.exists(temp_narration_path):
+                        os.remove(temp_narration_path)
+            else:
+                logging.info("No music generated or music file not found, using narration-only audio")
             
             # Set audio to video
             final_video = video_clip.with_audio(final_audio)
