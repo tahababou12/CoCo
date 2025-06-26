@@ -451,6 +451,8 @@ class StoryVideoGenerator:
             'spiral_pan_clockwise',
             'spiral_pan_counterclockwise',
             'stretch_effect',
+            'stretch_effect',
+            'stretch_effect',
             'focus_pull',
             'cool_pan'
         ]
