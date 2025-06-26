@@ -822,13 +822,13 @@ const HandDrawing: React.FC = () => {
             }
           });
           
-          // Set erasing style with destination-out composite operation
+          // Set erasing style by painting with background color
           dispatch({
             type: 'SET_STYLE',
             payload: { 
-              strokeColor: '#000000', // Color doesn't matter for erasing, but we need one
+              strokeColor: '#fffbeb', // Use background color to "erase" by painting over
               strokeWidth: strokeWidthRef.current * 2.5, // Larger width for erasing
-              globalCompositeOperation: 'destination-out' // This makes it erase
+              globalCompositeOperation: 'source-over' // Normal drawing operation
             }
           });
           
