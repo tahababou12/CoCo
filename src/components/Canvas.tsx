@@ -67,8 +67,6 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
   const [initialImageState, setInitialImageState] = useState<EnhancedImage | null>(null)
 
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
-
   const [showGenSettings, setShowGenSettings] = useState(false);
   const [genSettings, setGenSettings] = useState({
     style: '',
@@ -358,7 +356,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     
     const point = getCanvasPoint(e.clientX, e.clientY);
 
-    // Handle enhanced image dragging and resizing
+    // Handle enhanced image dragging and resizing - check this first
     if (dragStartPos && initialImageState) {
       const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
       const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
@@ -443,73 +441,6 @@ const Canvas: React.FC<CanvasProps> = () => {
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
       
       // No need to re-dispatch SET_STYLE here since renderCanvas will handle it
-    }
-
-    // Add this to the section handling image resizing
-    const draggedImage = interactiveEnhancedImages.find(img => img.isDragging || img.isResizing);
-    
-    if (draggedImage && initialImageState && dragStartPos) {
-      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
-      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
-      
-      const draggedIndex = interactiveEnhancedImages.findIndex(img => 
-        img.isDragging || img.isResizing
-      );
-      
-      if (draggedIndex !== -1) {
-        const updatedImages = [...interactiveEnhancedImages];
-        const image = { ...updatedImages[draggedIndex] };
-        
-        if (draggedImage.isResizing && draggedImage.resizeHandle) {
-          // Handle resizing based on which handle was grabbed
-          switch (draggedImage.resizeHandle) {
-            case 'bottom-right':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
-              break;
-            case 'bottom-left':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
-              image.x = initialImageState.x + dx;
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
-              break;
-            case 'top-right':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
-              image.y = initialImageState.y + dy;
-              break;
-            case 'top-left':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
-              image.x = initialImageState.x + dx;
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
-              image.y = initialImageState.y + dy;
-              break;
-            case 'right':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
-              break;
-            case 'left':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
-              image.x = initialImageState.x + dx;
-              break;
-            case 'bottom':
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
-              break;
-            case 'top':
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
-              image.y = initialImageState.y + dy;
-              break;
-          }
-        } else if (draggedImage.isDragging) {
-          // Handle dragging
-          image.x = initialImageState.x + dx;
-          image.y = initialImageState.y + dy;
-        }
-        
-        updatedImages[draggedIndex] = image;
-        setInteractiveEnhancedImages(updatedImages);
-        
-        e.preventDefault();
-        e.stopPropagation();
-      }
     }
   };
 
@@ -906,6 +837,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     handlePosition: string | null = null
   ) => {
     e.stopPropagation();
+    e.preventDefault();
 
     const updatedImages = [...interactiveEnhancedImages];
     
@@ -1005,9 +937,14 @@ const Canvas: React.FC<CanvasProps> = () => {
           zIndex: 20,
           cursor: image.isDragging ? 'grabbing' : 'grab'
         }}
-        onClick={(e) => {
+        onPointerDown={(e) => {
           e.stopPropagation();
-          setSelectedImageIndex(index);
+          e.preventDefault();
+          handlePointerDownOnEnhancedImage(e, index);
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
         }}
       >
         <img
@@ -1028,9 +965,6 @@ const Canvas: React.FC<CanvasProps> = () => {
             e.stopPropagation();
             const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
             setInteractiveEnhancedImages(updatedImages);
-            if (selectedImageIndex === index) {
-              setSelectedImageIndex(null);
-            }
           }}
           onMouseDown={(e) => {
             e.stopPropagation();
@@ -1404,12 +1338,6 @@ const Canvas: React.FC<CanvasProps> = () => {
       ref={containerRef} 
       className="absolute inset-0 bg-stone-50 select-none" 
       style={{ touchAction: 'none' }}
-      onClick={(e) => {
-        // Deselect image when clicking on empty space
-        if (e.target === e.currentTarget) {
-          setSelectedImageIndex(null);
-        }
-      }}
     >
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
@@ -1578,61 +1506,6 @@ const Canvas: React.FC<CanvasProps> = () => {
 
       {/* Render interactive enhanced images */}
       {renderEnhancedImages()}
-      
-      {/* Floating action panel for selected enhanced image */}
-      {selectedImageIndex !== null && interactiveEnhancedImages[selectedImageIndex] && (
-        <div 
-          className="absolute bg-white rounded-lg shadow-lg border border-gray-200 p-3 z-50"
-          style={{
-            left: interactiveEnhancedImages[selectedImageIndex].x + interactiveEnhancedImages[selectedImageIndex].width + 10,
-            top: interactiveEnhancedImages[selectedImageIndex].y,
-            minWidth: '200px'
-          }}
-        >
-          <div className="flex justify-between items-center mb-2">
-            <div className="text-sm font-medium text-gray-700">Image Actions</div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedImageIndex(null);
-              }}
-              className="text-gray-400 hover:text-gray-600 text-lg font-bold cursor-pointer"
-              title="Close"
-            >
-              ×
-            </button>
-          </div>
-          <div className="space-y-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                addToStoryboard(selectedImageIndex);
-              }}
-              className="w-full text-xs px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors shadow flex items-center justify-center cursor-pointer"
-              title="Add to Storyboard"
-            >
-              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-              </svg>
-              Add to Storyboard
-            </button>
-            
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                downloadImage(selectedImageIndex);
-              }}
-              className="w-full text-xs px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors shadow flex items-center justify-center cursor-pointer"
-              title="Download Image"
-            >
-              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download
-            </button>
-          </div>
-        </div>
-      )}
       
       <canvas
         ref={canvasRef}
