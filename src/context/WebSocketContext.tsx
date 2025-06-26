@@ -576,6 +576,27 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
         break;
         
+      case 'save_drawing':
+        console.log("🖼️ Save drawing request received from backend");
+        // This will be handled by the drawing context
+        dispatch({ type: 'SAVE_DRAWING_REQUEST' });
+        break;
+        
+      case 'modification_started':
+        console.log("🎨 Modification started:", message.payload);
+        // Handle modification start notification
+        break;
+        
+      case 'modification_error':
+        console.error("❌ Modification error:", message.payload);
+        // Handle modification error
+        break;
+        
+      case 'clear_canvas':
+        console.log("🧹 Clear canvas request received");
+        dispatch({ type: 'CLEAR_CANVAS' });
+        break;
+        
       case 'ERROR':
         console.error('Error from server:', message.payload.message);
         break;

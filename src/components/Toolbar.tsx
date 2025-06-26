@@ -45,11 +45,11 @@ const Toolbar: React.FC = () => {
     
     switch (primaryGesture) {
       case 'Drawing':
-        return 'Drawing ✍️'
-      case 'Erasing':
-        return 'Clicking 👆'
-      case 'Clear All':
-        return 'Clear All ✌️🗑️'
+        return '🖐️ Drawing Mode'
+      case 'Clearing':
+        return '🤙 Clear Mode'
+      case 'Clicking':
+        return '✊ Click Mode'
       case 'None':
         // When a hand is detected but no specific gesture is recognized
         return 'Hand Detected 👋'

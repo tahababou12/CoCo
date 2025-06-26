@@ -11,6 +11,7 @@ from google.genai import types
 from PIL import Image
 import platform
 import subprocess
+import time
 
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -85,6 +86,11 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
 
     print(f"enhance_drawing_with_gemini called with prompt: {prompt}")
     
+    print(f"🔍 DEBUG: enhance_drawing_with_gemini called with:")
+    print(f"   - image_path: {image_path}")
+    print(f"   - prompt: '{prompt}'")
+    print(f"   - request_id: {request_id}")
+    
     if not GEMINI_API_KEY:
         error_msg = "Error: Gemini API key is not set. Cannot enhance drawing."
         print(error_msg)
@@ -118,9 +124,14 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
         def process_with_gemini(prompt_text):
             global is_processing
             try:
+                print(f"🔍 DEBUG: process_with_gemini called with prompt_text: '{prompt_text}'")
+                
                 # Default prompt if none provided
                 if not prompt_text:
                     prompt_text = "Enhance this sketch into an image with more detail."
+                    print(f"🔍 DEBUG: Using default prompt: '{prompt_text}'")
+                else:
+                    print(f"🔍 DEBUG: Using provided prompt: '{prompt_text}'")
                 
                 print(f"Processing with prompt: {prompt_text}")
                 print(f"Using model: {GEMINI_MODEL}")
@@ -148,11 +159,10 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                     response = client.models.generate_content(
                         model=GEMINI_MODEL,
                         contents=contents,
-                        config=config
-                    )
-                    
+                        config=config)
+                                        
                     print("RESPONSE: ", response)
-                    
+                        
                 except Exception as api_error:
                     error_msg = f"Gemini API error: {str(api_error)}"
                     print(error_msg)
@@ -793,6 +803,248 @@ def play_video(video_filename):
         print(error_msg)
         return jsonify({"error": error_msg}), 500
 
+# API endpoint to enhance image via voice command
+@app.route('/api/enhance-image-voice', methods=['POST'])
+def enhance_image_voice():
+    global is_processing
+    
+    try:
+        data = request.json
+        prompt = data.get('prompt', 'Enhance this drawing with more detail and artistic flair')
+        
+        print(f"Received voice-triggered enhancement request with prompt: {prompt}")
+        
+        # Check if another enhancement is already in progress
+        if is_processing:
+            print("Voice enhancement request rejected: Another enhancement is already in progress")
+            return jsonify({
+                "error": "Another enhancement is already in progress", 
+                "status": "busy"
+            }), 429  # Too Many Requests
+        
+        # Wait a moment for any pending saves to complete
+        time.sleep(0.5)
+        
+        # Find the most recent image in the img directory
+        img_files = [f for f in os.listdir(img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if not img_files:
+            return jsonify({"error": "No images found to enhance"}), 404
+        
+        # Sort by modification time and get the most recent
+        img_files.sort(key=lambda x: os.path.getmtime(os.path.join(img_dir, x)), reverse=True)
+        latest_image = img_files[0]
+        filepath = os.path.join(img_dir, latest_image)
+        
+        # Get the file modification time to verify it's recent
+        file_mtime = os.path.getmtime(filepath)
+        current_time = time.time()
+        time_diff = current_time - file_mtime
+        
+        print(f"Using latest image for voice enhancement: {latest_image}")
+        print(f"Image was modified {time_diff:.2f} seconds ago")
+        
+        # If the image is older than 10 seconds, it might not be the current drawing
+        if time_diff > 10:
+            print(f"Warning: Latest image is {time_diff:.2f} seconds old - may not be current drawing")
+        
+        # Generate a unique request ID
+        request_id = f"voice_req_{datetime.now().timestamp()}"
+        print(f"Starting voice-triggered enhancement with request ID: {request_id}")
+        
+        # Trigger the enhancement in a background thread
+        enhance_drawing_with_gemini(filepath, prompt, request_id)
+        
+        # Return immediately with the request ID for status polling
+        return jsonify({
+            "success": True,
+            "requestId": request_id,
+            "message": "Voice-triggered enhancement started",
+            "imageUsed": latest_image,
+            "imageAge": f"{time_diff:.2f} seconds"
+        })
+    except Exception as e:
+        error_msg = f"Error requesting voice-triggered image enhancement: {str(e)}"
+        print(error_msg)
+        # Log detailed error information for debugging
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Failed to process voice enhancement request", "details": str(e)}), 500
+
+# API endpoint to save and enhance current canvas via voice command
+@app.route('/api/save-and-enhance-voice', methods=['POST'])
+def save_and_enhance_voice():
+    global is_processing
+    
+    try:
+        data = request.json
+        prompt = data.get('prompt', 'Enhance this drawing with more detail and artistic flair')
+        canvas_data = data.get('canvasData')  # Base64 canvas data from frontend
+        
+        print(f"Received save-and-enhance voice request with prompt: {prompt}")
+        
+        # Check if another enhancement is already in progress
+        if is_processing:
+            print("Save-and-enhance request rejected: Another enhancement is already in progress")
+            return jsonify({
+                "error": "Another enhancement is already in progress", 
+                "status": "busy"
+            }), 429  # Too Many Requests
+        
+        if not canvas_data:
+            return jsonify({"error": "No canvas data provided"}), 400
+        
+        # Save the canvas data first
+        try:
+            # Extract the base64 data from the data URL
+            base64_data = canvas_data.replace('data:image/png;base64,', '')
+            
+            # Generate a unique filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"voice-enhanced-{timestamp}.png"
+            filepath = os.path.join(img_dir, filename)
+            
+            # Save the file
+            with open(filepath, 'wb') as f:
+                f.write(base64.b64decode(base64_data))
+            
+            print(f"Canvas saved to {filepath}")
+            
+        except Exception as save_error:
+            error_msg = f"Error saving canvas: {str(save_error)}"
+            print(error_msg)
+            return jsonify({"error": error_msg}), 500
+        
+        # Generate a unique request ID
+        request_id = f"voice_req_{datetime.now().timestamp()}"
+        print(f"Starting save-and-enhance with request ID: {request_id}")
+        
+        # Trigger the enhancement in a background thread
+        enhance_drawing_with_gemini(filepath, prompt, request_id)
+        
+        # Return immediately with the request ID for status polling
+        return jsonify({
+            "success": True,
+            "requestId": request_id,
+            "message": "Save and enhance started",
+            "savedImage": filename
+        })
+    except Exception as e:
+        error_msg = f"Error in save-and-enhance: {str(e)}"
+        print(error_msg)
+        # Log detailed error information for debugging
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Failed to process save-and-enhance request", "details": str(e)}), 500
+
+# API endpoint to modify an existing enhanced image based on voice commands
+@app.route('/api/modify-image', methods=['POST'])
+def modify_image():
+    """Modify an existing enhanced image based on voice commands"""
+    global is_processing
+    
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        
+        print(f"🎨 Modification request received with prompt: {prompt}")
+        
+        # Generate a unique request ID
+        request_id = f"modify_{int(time.time())}"
+        
+        # Check if we're already processing
+        if is_processing:
+            return jsonify({
+                "status": "error",
+                "message": "Another modification is already in progress. Please wait.",
+                "request_id": request_id
+            }), 400
+        
+        # Find the most recent enhanced image
+        enhanced_files = [f for f in os.listdir(enhanced_dir) if f.startswith('enhanced_') and f.endswith('.png')]
+        if not enhanced_files:
+            return jsonify({
+                "status": "error",
+                "message": "No enhanced image found to modify. Please enhance an image first.",
+                "request_id": request_id
+            }), 404
+        
+        # Get the most recent enhanced image
+        enhanced_files.sort(reverse=True)  # Sort by filename (timestamp-based)
+        latest_enhanced = enhanced_files[0]
+        enhanced_path = os.path.join(enhanced_dir, latest_enhanced)
+        
+        print(f"🎨 Found latest enhanced image: {latest_enhanced}")
+        
+        # Set processing state
+        is_processing = True
+        processing_status[request_id] = {"status": "processing", "message": "Modifying image..."}
+        
+        # Start processing in a separate thread
+        def process_modification():
+            global is_processing
+            try:
+                # Use the same enhancement function but with modification prompt
+                result = enhance_drawing_with_gemini(enhanced_path, prompt, request_id)
+                
+                if result:
+                    processing_status[request_id] = {
+                        "status": "completed",
+                        "message": "Image modification completed successfully",
+                        "enhanced_image": result.get("enhanced_image"),
+                        "filename": result.get("filename")
+                    }
+                else:
+                    processing_status[request_id] = {
+                        "status": "error",
+                        "message": "Failed to modify image"
+                    }
+                    
+            except Exception as e:
+                error_msg = f"Error during modification: {str(e)}"
+                print(error_msg)
+                processing_status[request_id] = {"status": "error", "message": error_msg}
+            finally:
+                is_processing = False
+        
+        # Start the processing thread
+        thread = threading.Thread(target=process_modification)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "status": "processing",
+            "message": "Modification started",
+            "request_id": request_id
+        })
+        
+    except Exception as e:
+        error_msg = f"Error in modification API: {str(e)}"
+        print(error_msg)
+        is_processing = False
+        return jsonify({
+            "status": "error",
+            "message": error_msg
+        }), 500
+
+# API endpoint to check modification status
+@app.route('/api/modification-status/<request_id>', methods=['GET'])
+def check_modification_status(request_id):
+    """Check the status of a modification request"""
+    try:
+        if request_id in processing_status:
+            status_info = processing_status[request_id]
+            return jsonify(status_info)
+        else:
+            return jsonify({
+                "status": "not_found",
+                "message": "Modification request not found"
+            }), 404
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error checking modification status: {str(e)}"
+        }), 500
+
 # Serve static files from the various directories
 @app.route('/img/<path:filename>')
 def serve_image(filename):
@@ -866,6 +1118,7 @@ def serve_enhanced_image(filename):
 def serve_video(filename):
     return send_from_directory(story_videos_dir, filename)
 
+
 @app.route('/gen_music/<path:filename>')
 def serve_music(filename):
     return send_from_directory(gen_music_dir, filename)
@@ -901,6 +1154,27 @@ def debug_storyboard():
         error_msg = f"Error in debug storyboard: {str(e)}"
         print(error_msg)
         return jsonify({"error": error_msg}), 500
+
+# Test endpoint to verify connection
+@app.route('/api/test', methods=['GET'])
+def test_connection():
+    """Test endpoint to verify frontend can reach backend"""
+    return jsonify({"success": True, "message": "Backend connection working", "timestamp": datetime.now().isoformat()})
+
+# API endpoint to handle browser close
+@app.route('/api/browser-closed', methods=['POST'])
+def browser_closed():
+    """Handle browser close event and trigger server shutdown"""
+    try:
+        print("🚨 Browser close detected via HTTP endpoint")
+        # Create the browser closed signal file
+        with open("/tmp/browser_closed", "w") as f:
+            f.write("browser_closed")
+        print("✅ Browser closed signal file created")
+        return jsonify({"success": True, "message": "Browser close signal sent"})
+    except Exception as e:
+        print(f"❌ Error handling browser close: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True) 

@@ -30,14 +30,40 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   // Available gestures for the challenge
   const availableGestures = ['Drawing', 'Clicking', 'Clearing'];
 
-  // Generate random gestures for the challenge
-  const generateTargetGestures = () => {
-    const gestures = [...availableGestures];
-    const selected: string[] = [];
-    for (let i = 0; i < 3; i++) {
-      const randomIndex = Math.floor(Math.random() * gestures.length);
-      selected.push(gestures[randomIndex]);
+  // Function to get detailed instructions for each gesture
+  const getGestureInstructions = (gesture: string) => {
+    switch (gesture) {
+      case 'Drawing':
+        return {
+          emoji: '☝️',
+          instruction: 'Index finger pointing up, all other fingers closed',
+          description: 'Point your index finger up with other fingers closed'
+        };
+      case 'Clearing':
+        return {
+          emoji: '🤙',
+          instruction: 'Thumb and pinky extended - palm facing camera',
+          description: 'Extend your thumb and pinky, keep other fingers closed, palm facing camera'
+        };
+      case 'Clicking':
+        return {
+          emoji: '✊',
+          instruction: 'Closed fist - all fingers curled into palm',
+          description: 'Make a fist with all fingers closed'
+        };
+      default:
+        return {
+          emoji: '🤔',
+          instruction: 'Unknown gesture',
+          description: 'Unknown gesture type'
+        };
     }
+  };
+
+  // Generate fixed gestures for the challenge
+  const generateTargetGestures = () => {
+    // Always use the same three gestures in order: Drawing, Clearing, Clicking
+    const selected: string[] = ['Drawing', 'Clearing', 'Clicking'];
     setTargetGestures(selected);
   };
 
@@ -216,11 +242,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   }
 
   return (
-    <div className="flex flex-col items-center space-y-4">
+    <div className="flex flex-col items-center space-y-1">
       <div className="relative">
         <video
           ref={videoRef}
-          className="w-64 h-48 object-cover rounded-lg shadow-lg"
+          className="w-56 h-42 object-cover rounded-lg shadow-lg"
           autoPlay
           playsInline
           muted
@@ -231,17 +257,16 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
           ref={canvasRef}
           className="absolute top-0 left-0 w-full h-full pointer-events-none"
           width={640}
-          height={480}
+          height="480"
         />
       </div>
       
-      <div className="text-center space-y-2">
-        <h3 className="text-lg font-semibold">Perform these gestures in order:</h3>
-        <div className="flex space-x-2">
+      <div className="text-center space-y-1">
+        <div className="flex justify-center space-x-1">
           {targetGestures.map((gesture, index) => (
             <div
               key={index}
-              className={`px-3 py-1 rounded ${
+              className={`px-3 py-1.5 rounded text-sm ${
                 index === currentGestureIndex
                   ? 'bg-purple-600 text-white'
                   : 'bg-gray-200'
@@ -251,11 +276,24 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
             </div>
           ))}
         </div>
-        <p className="text-sm text-gray-600">
-          Current gesture: {currentGesture}
+        
+        {/* Current gesture instructions */}
+        {targetGestures[currentGestureIndex] && (
+          <div className="mt-1 p-1 bg-purple-50 rounded border border-purple-200">
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-lg">{getGestureInstructions(targetGestures[currentGestureIndex]).emoji}</span>
+              <span className="text-base text-purple-800">
+                {getGestureInstructions(targetGestures[currentGestureIndex]).instruction}
+              </span>
+            </div>
+          </div>
+        )}
+        
+        <p className="text-xs text-gray-600">
+          {currentGesture}
           {isDebouncing && (
-            <span className="ml-2 text-orange-600 font-medium">
-              (Gesture detected - waiting for debounce...)
+            <span className="ml-2 text-orange-600">
+              (waiting...)
             </span>
           )}
         </p>
