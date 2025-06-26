@@ -7,6 +7,20 @@ const PostLoginAuth: React.FC = () => {
   const { isAuthenticated, getAccessTokenSilently } = useAuth0();
   const [showGestureAuth, setShowGestureAuth] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGestureVerified, setIsGestureVerified] = useState(false);
+  const [gestureKey, setGestureKey] = useState(0); // Add key to force re-render
+
+  const resetGestureAuth = () => {
+    console.log('Resetting gesture authentication...');
+    setIsGestureVerified(false);
+    setShowGestureAuth(false);
+    
+    // Force a complete re-render of the GestureAuth component
+    setTimeout(() => {
+      setGestureKey(prev => prev + 1);
+    setShowGestureAuth(true);
+    }, 100);
+  };
 
   useEffect(() => {
     const checkGestureVerification = async () => {
@@ -14,59 +28,85 @@ const PostLoginAuth: React.FC = () => {
         try {
           const token = await getAccessTokenSilently();
           const decodedToken = JSON.parse(atob(token.split('.')[1]));
-          // Show gesture auth when requires_gesture_verification is true
-          setShowGestureAuth(decodedToken.requires_gesture_verification);
+          console.log('Token claims:', decodedToken); // Debug log
+          if (!isGestureVerified) {
+            setShowGestureAuth(true);
+          }
         } catch (error) {
           console.error('Error checking gesture verification status:', error);
-          // Fallback to showing gesture auth if we can't determine the status
-          setShowGestureAuth(true);
+          if (!isGestureVerified) {
+            setShowGestureAuth(true);
+          }
         }
         setIsLoading(false);
       }
     };
 
     checkGestureVerification();
-  }, [isAuthenticated, getAccessTokenSilently]);
+  }, [isAuthenticated, getAccessTokenSilently, isGestureVerified]);
 
-  const handleGestureSuccess = async () => {
-    try {
-      const token = await getAccessTokenSilently();
-      
-      // Call your backend API to update the Auth0 user metadata
-      await fetch('/api/complete-gesture-verification', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
+  const handleGestureSuccess = () => {
+    console.log('Gesture verification successful');
+    setIsGestureVerified(true);
+    setTimeout(() => {
       setShowGestureAuth(false);
-    } catch (error) {
-      console.error('Error updating verification status:', error);
-    }
+    }, 100);
   };
 
   const handleGestureFailure = () => {
-    setShowGestureAuth(false);
+    console.log('Gesture verification failed');
+    setTimeout(() => {
+      setShowGestureAuth(false);
+    }, 100);
   };
 
-  if (!isAuthenticated || isLoading) {
+  if (isAuthenticated && !isLoading && isGestureVerified) {
     return null;
   }
 
-  if (showGestureAuth) {
+  if (isAuthenticated && !isLoading && !isGestureVerified) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full relative">
-          <div className="absolute top-4 right-4">
-            <LogoutButton />
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75 backdrop-blur-sm">
+        <div className="bg-white rounded-xl p-8 w-full max-w-2xl relative shadow-2xl">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-800 mb-2">Gesture Authentication</h2>
+              <p className="text-gray-600">Complete the gesture sequence to verify your identity</p>
+            </div>
+            <button
+              onClick={resetGestureAuth}
+              className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              </svg>
+              Restart
+            </button>
           </div>
-          <h2 className="text-2xl font-bold mb-4 text-center">Gesture Authentication</h2>
-          <GestureAuth
-            onSuccess={handleGestureSuccess}
-            onFailure={handleGestureFailure}
-          />
+          
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">Instructions</h3>
+            <ul className="list-disc list-inside text-gray-600 space-y-1">
+              <li>Position yourself in front of the camera</li>
+              <li>Follow the gesture sequence shown below</li>
+              <li>Complete all gestures to verify your identity</li>
+            </ul>
+          </div>
+
+          {showGestureAuth && (
+            <div className="relative">
+              <GestureAuth
+                key={gestureKey} // Force re-render when key changes
+                onSuccess={handleGestureSuccess}
+                onFailure={handleGestureFailure}
+              />
+            </div>
+          )}
+
+          <div className="mt-6 text-center text-sm text-gray-500">
+            <p>Make sure you're in a well-lit environment</p>
+            <p>Keep your hands visible to the camera</p>
+          </div>
         </div>
       </div>
     );

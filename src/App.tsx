@@ -7,7 +7,6 @@ import ToastContainer from './components/ToastContainer'
 import Storyboard from './components/Storyboard'
 import { DrawingProvider } from './context/DrawingContext'
 import { HandGestureProvider } from './context/HandGestureContext'
-import AIAssistant from './components/AIAssistant'
 import CollaborationPanel from './components/CollaborationPanel'
 import UserWebcam from './components/UserWebcam'
 import SimpleWebcam from './components/SimpleWebcam'
@@ -79,13 +78,8 @@ const CollaboratorCursors: React.FC = () => {
 };
 
 function ProtectedApp() {
-  const [showCocoify, setShowCocoify] = useState(false);
   const [showStoryboard, setShowStoryboard] = useState(false);
   const webSocket = useWebSocket();
-
-  const toggleCocoify = () => {
-    setShowCocoify(!showCocoify);
-  };
 
   const toggleStoryboard = () => {
     setShowStoryboard(!showStoryboard);
@@ -112,10 +106,7 @@ function ProtectedApp() {
       style={{ touchAction: 'none' }}
       onMouseMove={handleMouseMove}
     >
-      <Header 
-        onToggleAI={toggleCocoify}
-        showAIAssistant={showCocoify}
-      />
+      <Header />
       <div className="flex-1 overflow-hidden relative">
         <Canvas />
         <Toolbar />
@@ -136,9 +127,6 @@ function ProtectedApp() {
           </svg>
           Storyboard
         </button>
-        
-        {/* Using AIAssistant component instead of inline implementation */}
-        {showCocoify && <AIAssistant isOpen={showCocoify} onClose={toggleCocoify} />}
         
         {/* Storyboard modal */}
         <Storyboard isOpen={showStoryboard} onClose={() => setShowStoryboard(false)} />
@@ -168,49 +156,91 @@ function NoAuthApp() {
 
 function App() {
   // For disabling auth during development, set this to true
-  const DISABLE_AUTH = true; // Set to false to enable authentication
+  const DISABLE_AUTH = false; // Set to false to enable authentication
   
   // Always call hooks at the top level, regardless of whether we use the results
-  const { isAuthenticated } = useAuth0();
+  const { isAuthenticated, isLoading } = useAuth0();
   
   if (DISABLE_AUTH) {
     return <NoAuthApp />;
   }
 
-  if (!isAuthenticated) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center space-y-8">
-          {/* Logo and Title */}
-          <div className="space-y-4">
-            <div className="w-20 h-20 rounded-full bg-purple-600 flex items-center justify-center mx-auto">
-              <span className="text-3xl font-bold text-white">C</span>
-            </div>
-            <h1 className="text-4xl font-bold text-neutral-800">CoCo</h1>
-            <p className="text-lg text-neutral-500">Create, collaborate, and share your drawings</p>
-          </div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
-          {/* Login Button */}
-          <div className="pt-4">
-            <LoginButton />
-          </div>
+  if (!isAuthenticated) {
+    return (
+      <div className="h-screen flex flex-col bg-gradient-to-br from-purple-50 via-white to-purple-50 overflow-hidden">
+        {/* Enhanced decorative elements */}
+        <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-br from-purple-600/10 to-purple-800/10 rounded-b-[100px] transform -skew-y-6"></div>
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-purple-600/5 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-purple-800/5 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-400/5 rounded-full blur-3xl animate-pulse delay-500"></div>
 
-          {/* Feature Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-2xl mx-auto pt-8">
-            <div className="p-4">
-              <div className="text-purple-600 mb-2">🎨</div>
-              <h3 className="font-medium text-neutral-800">Draw Freely</h3>
-              <p className="text-sm text-neutral-500">Express your creativity with our intuitive drawing tools</p>
+        <div className="flex-1 flex items-center justify-center px-4 relative">
+          <div className="text-center space-y-12 max-w-5xl w-full">
+            {/* Logo and Title */}
+            <div className="space-y-6">
+              <div className="relative">
+                <div className="w-32 h-32 rounded-[2rem] bg-gradient-to-br from-purple-600 to-purple-800 flex items-center justify-center mx-auto shadow-2xl transform hover:scale-105 transition-all duration-300">
+                  <span className="text-6xl font-bold text-white">C</span>
+                </div>
+                {/* Enhanced decorative elements around logo */}
+                <div className="absolute -top-4 -right-4 w-10 h-10 bg-yellow-400 rounded-full animate-pulse shadow-lg"></div>
+                <div className="absolute -bottom-4 -left-4 w-8 h-8 bg-blue-400 rounded-full animate-pulse delay-100 shadow-lg"></div>
+                <div className="absolute top-1/2 -right-10 w-6 h-6 bg-green-400 rounded-full animate-pulse delay-300 shadow-lg"></div>
+                <div className="absolute top-1/2 -left-10 w-6 h-6 bg-pink-400 rounded-full animate-pulse delay-500 shadow-lg"></div>
+              </div>
+              <div>
+                <h1 className="text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-purple-800 animate-gradient-x">CoCo</h1>
+                <p className="text-xl text-neutral-600 max-w-2xl mx-auto leading-relaxed">
+                  Create, collaborate, and share your drawings with AI-powered enhancements. 
+                  <span className="block mt-2 text-purple-600 font-medium">Where creativity meets technology.</span>
+                </p>
+              </div>
             </div>
-            <div className="p-4">
-              <div className="text-purple-600 mb-2">🤝</div>
-              <h3 className="font-medium text-neutral-800">Collaborate</h3>
-              <p className="text-sm text-neutral-500">Work together in real-time with others</p>
+
+            {/* Login Button */}
+            <div>
+              <LoginButton />
             </div>
-            <div className="p-4">
-              <div className="text-purple-600 mb-2">✨</div>
-              <h3 className="font-medium text-neutral-800">Hand Gestures</h3>
-              <p className="text-sm text-neutral-500">Draw naturally with hand tracking support</p>
+
+            {/* Feature Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+              <div className="bg-white/90 backdrop-blur-md p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 border border-purple-100 group hover:-translate-y-1">
+                <div className="text-5xl mb-4 transform group-hover:scale-110 transition-transform duration-300">🎨</div>
+                <h3 className="text-xl font-semibold text-neutral-800 mb-2">Draw Freely</h3>
+                <p className="text-neutral-600 leading-relaxed">Express your creativity with our intuitive drawing tools and hand gesture support</p>
+              </div>
+              <div className="bg-white/90 backdrop-blur-md p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 border border-purple-100 group hover:-translate-y-1">
+                <div className="text-5xl mb-4 transform group-hover:scale-110 transition-transform duration-300">🤝</div>
+                <h3 className="text-xl font-semibold text-neutral-800 mb-2">Real-time Collaboration</h3>
+                <p className="text-neutral-600 leading-relaxed">Work together seamlessly with live cursor tracking and instant updates</p>
+              </div>
+              <div className="bg-white/90 backdrop-blur-md p-6 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 border border-purple-100 group hover:-translate-y-1">
+                <div className="text-5xl mb-4 transform group-hover:scale-110 transition-transform duration-300">✨</div>
+                <h3 className="text-xl font-semibold text-neutral-800 mb-2">AI Enhancement</h3>
+                <p className="text-neutral-600 leading-relaxed">Transform your sketches into detailed artwork with our AI-powered tools</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-sm text-neutral-500">
+              <p className="flex items-center justify-center gap-2">
+                <span>Built with</span>
+                <svg className="w-4 h-4 text-red-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                </svg>
+                <span>for creative collaboration</span>
+              </p>
             </div>
           </div>
         </div>
@@ -219,16 +249,22 @@ function App() {
   }
 
   return (
-    <DrawingProvider>
-      <WebSocketProvider>
-        <ShapesProvider>
-          <HandGestureProvider>
-            <PostLoginAuth />
-            <ProtectedAppWithAuth />
-          </HandGestureProvider>
-        </ShapesProvider>
-      </WebSocketProvider>
-    </DrawingProvider>
+    <div className="min-h-screen bg-white">
+      <DrawingProvider>
+        <WebSocketProvider>
+          <ShapesProvider>
+            <HandGestureProvider>
+              {isAuthenticated && (
+                <>
+                  <ProtectedAppWithAuth />
+                  <PostLoginAuth />
+                </>
+              )}
+            </HandGestureProvider>
+          </ShapesProvider>
+        </WebSocketProvider>
+      </DrawingProvider>
+    </div>
   );
 }
 

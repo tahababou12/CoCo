@@ -4,6 +4,8 @@ import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
 import EnhancedImageActions from './EnhancedImageActions'
+import { Mic, MicOff, Volume2 } from 'lucide-react'
+import { useShapes } from '../ShapesContext'
 
 // Debug flag to control console logging
 const DEBUG = false;
@@ -36,12 +38,14 @@ interface EnhancedImageResult {
   prompt: string;
 }
 
-const Canvas: React.FC = () => {
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface CanvasProps extends Record<string, never> {}
+
+const Canvas: React.FC<CanvasProps> = () => {
   const { state, dispatch } = useDrawing()
-  const drawingCanvasRef = useRef<HTMLCanvasElement>(null)
-  const backgroundCanvasRef = useRef<HTMLCanvasElement>(null)
-  const drawingCtxRef = useRef<CanvasRenderingContext2D | null>(null)
-  const backgroundCtxRef = useRef<CanvasRenderingContext2D | null>(null)
+  const { setCanvas } = useShapes()
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isPanning, setIsPanning] = useState(false)
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null)
@@ -55,8 +59,8 @@ const Canvas: React.FC = () => {
     position: { x: 0, y: 0 },
     value: '',
   })
+  const [enhancementStatus, setEnhancementStatus] = useState<'idle' | 'processing' | 'complete' | 'error'>('idle')
   const [enhancedImage, setEnhancedImage] = useState<string | null>(null)
-  const [enhancementStatus, setEnhancementStatus] = useState<string>('idle')
 
   // Add state for interactive enhanced images
   const [interactiveEnhancedImages, setInteractiveEnhancedImages] = useState<EnhancedImage[]>([])
@@ -72,20 +76,38 @@ const Canvas: React.FC = () => {
     details: ''
   });
 
-  const renderBackground = () => {
-    const canvas = backgroundCanvasRef.current;
-    const context = backgroundCtxRef.current;
-    if (!canvas || !context) return;
-    context.fillStyle = '#fffbeb';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }
+  // Multimodal AI state
+  const [isMultimodalConnected, setIsMultimodalConnected] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false)
+  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  const [multimodalError, setMultimodalError] = useState<string | null>(null)
+  
+  // Multimodal refs
+  const multimodalWebSocketRef = useRef<WebSocket | null>(null)
+  const multimodalAudioContextRef = useRef<AudioContext | null>(null)
+  const multimodalMediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const multimodalPcmDataRef = useRef<number[]>([])
+  const multimodalAudioQueueRef = useRef<string[]>([])
+  const multimodalIsPlayingRef = useRef(false)
+  const multimodalStreamingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  const renderDrawing = () => {
-    const canvas = drawingCanvasRef.current;
-    const context = drawingCtxRef.current;
+  // Real-time canvas streaming to Gemini
+  const [isLiveStreaming, setIsLiveStreaming] = useState(false);
+
+  const renderCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = ctxRef.current;
     if (!canvas || !context) return;
     
+    // Clear the entire canvas
     context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw background
+    context.fillStyle = '#fffbeb';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Apply transform and draw shapes
     context.save();
     context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
     context.scale(state.viewTransform.scale, state.viewTransform.scale);
@@ -100,40 +122,59 @@ const Canvas: React.FC = () => {
       renderShape(context, currentShapeWithStyle);
     }
     context.restore();
+    
+    // Trigger immediate canvas capture after rendering is complete
+    const triggerCapture = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
+    if (triggerCapture && (isDrawing || state.currentShape)) {
+      console.log('🎨 Rendering complete, triggering canvas capture...');
+      // Small delay to ensure rendering is fully complete
+      setTimeout(() => {
+        const triggerCaptureInner = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
+        if (triggerCaptureInner) {
+          console.log('⚡ Triggering canvas capture after render...');
+          triggerCaptureInner();
+        }
+      }, 10);
+    }
+    
+    // Also trigger capture during drawing for more frequent updates
+    if (triggerCapture && isDrawing && state.currentShape) {
+      // Trigger additional captures during drawing for smoother streaming
+      setTimeout(() => {
+        const triggerCaptureInner = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
+        if (triggerCaptureInner && isDrawing) {
+          triggerCaptureInner();
+        }
+      }, 100);
+    }
   };
 
   useEffect(() => {
-    const drawingCanvas = drawingCanvasRef.current;
-    const backgroundCanvas = backgroundCanvasRef.current;
+    const canvas = canvasRef.current;
     const container = containerRef.current;
 
-    if (!drawingCanvas || !backgroundCanvas || !container) return;
+    if (!canvas || !container) return;
 
-    drawingCtxRef.current = drawingCanvas.getContext('2d');
-    backgroundCtxRef.current = backgroundCanvas.getContext('2d');
-    const drawingCtx = drawingCtxRef.current;
-    if (drawingCtx) {
-      drawingCtx.lineCap = 'round';
-      drawingCtx.lineJoin = 'round';
+    ctxRef.current = canvas.getContext('2d');
+    const ctx = ctxRef.current;
+    if (ctx) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
     }
 
     const resizeObserver = new ResizeObserver(() => {
       const width = container.clientWidth;
       const height = container.clientHeight;
-      drawingCanvas.width = width;
-      drawingCanvas.height = height;
-      backgroundCanvas.width = width;
-      backgroundCanvas.height = height;
-      renderBackground();
-      renderDrawing();
+      canvas.width = width;
+      canvas.height = height;
+      renderCanvas();
     });
     resizeObserver.observe(container);
 
     return () => resizeObserver.disconnect();
   }, []);
 
-  useLayoutEffect(renderDrawing, [state.shapes, state.currentShape, state.viewTransform]);
-  useLayoutEffect(renderBackground, [state.viewTransform]);
+  useLayoutEffect(renderCanvas, [state.shapes, state.currentShape, state.viewTransform]);
 
   // Add specific effect to handle drawing state changes
   useEffect(() => {
@@ -152,13 +193,13 @@ const Canvas: React.FC = () => {
 
   // Update cursor when tool changes
   useEffect(() => {
-    if (drawingCanvasRef.current) {
-      drawingCanvasRef.current.style.cursor = getCursorForTool(state.tool)
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = getCursorForTool(state.tool)
     }
   }, [state.tool])
 
   const getCanvasPoint = (clientX: number, clientY: number): Point => {
-    const canvas = drawingCanvasRef.current;
+    const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const x = (clientX - rect.left - state.viewTransform.offsetX) / state.viewTransform.scale
@@ -169,7 +210,7 @@ const Canvas: React.FC = () => {
   const handlePointerDown = (e: React.PointerEvent) => {
     void (DEBUG && console.log('React handlePointerDown triggered', e.type, e.clientX, e.clientY));
     
-    if (!drawingCanvasRef.current) {
+    if (!canvasRef.current) {
       void (DEBUG && console.error('Canvas ref not available in handlePointerDown'));
       return;
     }
@@ -191,7 +232,7 @@ const Canvas: React.FC = () => {
     
     try {
       // Capture pointer to ensure all events go to this element
-      drawingCanvasRef.current.setPointerCapture(e.pointerId);
+      canvasRef.current.setPointerCapture(e.pointerId);
       void (DEBUG && console.log('Pointer captured successfully', e.pointerId));
     } catch (err) {
       void (DEBUG && console.error('Failed to capture pointer', err));
@@ -236,6 +277,15 @@ const Canvas: React.FC = () => {
           type: 'START_DRAWING',
           payload: { point, type: 'pencil' },
         });
+        // Set erasing style by painting with background color
+        dispatch({
+          type: 'SET_STYLE',
+          payload: { 
+            strokeColor: '#fffbeb', // Use background color to "erase" by painting over
+            strokeWidth: (state.defaultStyle.strokeWidth || 2) * 2.5, // Larger width for erasing
+            globalCompositeOperation: 'source-over' // Normal drawing operation
+          }
+        });
         break;
 
       case 'text':
@@ -263,10 +313,31 @@ const Canvas: React.FC = () => {
         void (DEBUG && console.warn('Unknown tool:', state.tool));
         break;
     }
+    
+    // Capture canvas during drawing for real-time streaming
+    if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+        console.log('📷 [DRAWING] Drawing detected - capturing canvas...');
+        
+        const payload = {
+          realtime_input: {
+            media_chunks: [{
+              mime_type: "image/jpeg",
+              data: imageData,
+            }],
+          },
+        };
+        
+        multimodalWebSocketRef.current.send(JSON.stringify(payload));
+        console.log('📷 [DRAWING] Canvas frame sent to Gemini');
+      }
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!drawingCanvasRef.current) {
+    if (!canvasRef.current) {
       void (DEBUG && console.warn('Canvas ref not available in handlePointerMove'));
       return;
     }
@@ -289,8 +360,8 @@ const Canvas: React.FC = () => {
 
     // Handle enhanced image dragging and resizing
     if (dragStartPos && initialImageState) {
-      const dx = e.clientX - dragStartPos.x;
-      const dy = e.clientY - dragStartPos.y;
+      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
+      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
 
       setInteractiveEnhancedImages(images => images.map(img => {
         if (img.isDragging) {
@@ -309,17 +380,17 @@ const Canvas: React.FC = () => {
 
           // Handle different resize positions
           if (img.resizeHandle.includes('e')) {
-            newWidth = Math.max(50, initialImageState.width + dx);
+            newWidth = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
           }
           if (img.resizeHandle.includes('s')) {
-            newHeight = Math.max(50, initialImageState.height + dy);
+            newHeight = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
           }
           if (img.resizeHandle.includes('w')) {
-            newWidth = Math.max(50, initialImageState.width - dx);
+            newWidth = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
             newX = initialImageState.x + dx;
           }
           if (img.resizeHandle.includes('n')) {
-            newHeight = Math.max(50, initialImageState.height - dy);
+            newHeight = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
             newY = initialImageState.y + dy;
           }
 
@@ -371,15 +442,15 @@ const Canvas: React.FC = () => {
       // Continue drawing with current point
       dispatch({ type: 'CONTINUE_DRAWING', payload: point });
       
-      // No need to re-dispatch SET_STYLE here since renderDrawing will handle it
+      // No need to re-dispatch SET_STYLE here since renderCanvas will handle it
     }
 
     // Add this to the section handling image resizing
     const draggedImage = interactiveEnhancedImages.find(img => img.isDragging || img.isResizing);
     
     if (draggedImage && initialImageState && dragStartPos) {
-      const dx = e.clientX - dragStartPos.x;
-      const dy = e.clientY - dragStartPos.y;
+      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
+      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
       
       const draggedIndex = interactiveEnhancedImages.findIndex(img => 
         img.isDragging || img.isResizing
@@ -393,37 +464,37 @@ const Canvas: React.FC = () => {
           // Handle resizing based on which handle was grabbed
           switch (draggedImage.resizeHandle) {
             case 'bottom-right':
-              image.width = Math.max(50, initialImageState.width + dx);
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'bottom-left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'top-right':
-              image.width = Math.max(50, initialImageState.width + dx);
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
             case 'top-left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
             case 'right':
-              image.width = Math.max(50, initialImageState.width + dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
               break;
             case 'left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
               break;
             case 'bottom':
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'top':
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
           }
@@ -443,7 +514,7 @@ const Canvas: React.FC = () => {
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (!drawingCanvasRef.current) return;
+    if (!canvasRef.current) return;
     
     // Check if the target is a button or div with role="button"
     // If so, don't handle canvas pointer events
@@ -461,7 +532,7 @@ const Canvas: React.FC = () => {
     
     // Release pointer capture
     try {
-      drawingCanvasRef.current.releasePointerCapture(e.pointerId);
+      canvasRef.current.releasePointerCapture(e.pointerId);
     } catch (err) {
       void (DEBUG && console.error('Failed to release pointer capture', err));
     }
@@ -481,13 +552,33 @@ const Canvas: React.FC = () => {
     if (isPanning) {
       setIsPanning(false);
       setLastPanPoint(null);
-      return;
     }
-
+    
     if (isDrawing && state.currentShape) {
       void (DEBUG && console.log('Ending drawing', state.currentShape.type));
       setIsDrawing(false);
       dispatch({ type: 'END_DRAWING' });
+      
+      // Immediately send canvas update to Gemini when drawing stops
+      if (isLiveStreaming && multimodalWebSocketRef.current) {
+        setTimeout(() => {
+          const currentCanvas = getCanvasHash();
+          if (currentCanvas) {
+            const payload = {
+              realtime_input: {
+                media_chunks: [
+                  {
+                    mime_type: "image/jpeg",
+                    data: currentCanvas.split(',')[1],
+                  },
+                ],
+              },
+            };
+            multimodalWebSocketRef.current?.send(JSON.stringify(payload));
+            console.log('📡 Sent immediate canvas update after drawing');
+          }
+        }, 100); // Small delay to ensure canvas is fully rendered
+      }
     }
   };
 
@@ -561,32 +652,19 @@ const Canvas: React.FC = () => {
   }
 
   const handleClearAll = () => {
-    if (state.shapes.length > 0) {
-      // End any current drawing first
-      if (state.currentShape) {
-        dispatch({ type: 'END_DRAWING' });
-        setIsDrawing(false);
-      }
-      
-      // Get all shape IDs
-      const shapeIds = state.shapes.map(shape => shape.id);
-      
-      // Delete all shapes
-      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-    }
+    dispatch({ type: 'CLEAR_ALL' });
   }
 
   const saveCanvasAsPNG = async () => {
-    const drawingCanvas = drawingCanvasRef.current;
-    const backgroundCanvas = backgroundCanvasRef.current;
-    if (!drawingCanvas || !backgroundCanvas || state.shapes.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas || state.shapes.length === 0) return;
   
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return;
   
-    tempCanvas.width = drawingCanvas.width;
-    tempCanvas.height = drawingCanvas.height;
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
   
     // 1. Draw the background color
     tempCtx.fillStyle = '#fffbeb'; // Same as background canvas
@@ -853,8 +931,8 @@ const Canvas: React.FC = () => {
     setInitialImageState({...updatedImages[imageIndex]});
 
     // Ensure the pointer events are captured
-    if (drawingCanvasRef.current) {
-      drawingCanvasRef.current.setPointerCapture(e.pointerId);
+    if (canvasRef.current) {
+      canvasRef.current.setPointerCapture(e.pointerId);
     }
   };
 
@@ -914,18 +992,18 @@ const Canvas: React.FC = () => {
         key={image.id}
         className="absolute border-2 border-purple-500 bg-white shadow-lg rounded-lg overflow-hidden"
         style={{
-          left: image.x,
-          top: image.y,
-          width: image.width,
-          height: image.height,
-          cursor: image.isDragging ? 'grabbing' : 'grab',
-          zIndex: selectedImageIndex === index ? 25 : 20,
-          borderColor: selectedImageIndex === index ? '#8b5cf6' : '#a855f7',
-          borderWidth: selectedImageIndex === index ? '3px' : '2px',
-        }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          handlePointerDownOnEnhancedImage(e, index);
+          left: `${image.x}px`,
+          top: `${image.y}px`,
+          width: `${image.width}px`,
+          height: `${image.height}px`,
+          border: '2px solid #9333ea',
+          borderRadius: '4px',
+          overflow: 'hidden',
+          pointerEvents: 'auto',
+          touchAction: 'none',
+          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          zIndex: 20,
+          cursor: image.isDragging ? 'grabbing' : 'grab'
         }}
         onClick={(e) => {
           e.stopPropagation();
@@ -1022,6 +1100,254 @@ const Canvas: React.FC = () => {
         </div>
       </div>
     ));
+  };
+
+  // Multimodal AI functions
+  const connectMultimodal = () => {
+    console.log('Attempting to connect to multimodal server...');
+    try {
+      multimodalWebSocketRef.current = new WebSocket('ws://localhost:9083');
+      
+      multimodalWebSocketRef.current.onopen = () => {
+        console.log('✅ Connected to multimodal server');
+        setIsMultimodalConnected(true);
+        setMultimodalError(null);
+        sendMultimodalSetup();
+      };
+
+      multimodalWebSocketRef.current.onmessage = handleMultimodalMessage;
+      
+      multimodalWebSocketRef.current.onclose = () => {
+        console.log('❌ Disconnected from multimodal server');
+        setIsMultimodalConnected(false);
+        setIsRecording(false);
+      };
+
+      multimodalWebSocketRef.current.onerror = (error) => {
+        console.error('❌ WebSocket error:', error);
+        setMultimodalError('Failed to connect to AI assistant');
+        setIsMultimodalConnected(false);
+      };
+    } catch (err) {
+      console.error('❌ Failed to connect:', err);
+      setMultimodalError('Failed to connect to AI assistant');
+    }
+  };
+
+  const sendMultimodalSetup = () => {
+    if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      const setupMessage = {
+        setup: {
+          response_modalities: ["AUDIO", "TEXT"]
+        },
+      };
+      multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+    }
+  };
+
+  const handleMultimodalMessage = (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      
+      if (data.text) {
+        const newMessage = {
+          type: 'assistant' as const,
+          content: data.text,
+          timestamp: new Date(),
+        };
+        setMultimodalMessages(prev => [...prev, newMessage]);
+        
+        // Show a subtle notification for Gemini's response
+        if (window.showToast) {
+          window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
+        }
+      }
+      
+      if (data.audio) {
+        multimodalAudioQueueRef.current.push(data.audio);
+        playNextMultimodalAudio();
+      }
+    } catch (err) {
+      console.error('Error parsing WebSocket message:', err);
+    }
+  };
+
+  const initializeMultimodalAudio = async () => {
+    try {
+      multimodalAudioContextRef.current = new (window.AudioContext || (window as Window & { webkitAudioContext?: new () => AudioContext }).webkitAudioContext || AudioContext)({ 
+        sampleRate: 24000 
+      });
+      
+      await multimodalAudioContextRef.current.audioWorklet.addModule('/pcm-processor.js');
+    } catch (err) {
+      console.error('Failed to initialize audio context:', err);
+      setMultimodalError('Failed to initialize audio system');
+    }
+  };
+
+  const startMultimodalRecording = async () => {
+    console.log('🎤 Starting multimodal recording...');
+    console.log('Connection status:', isMultimodalConnected);
+    console.log('Audio context:', multimodalAudioContextRef.current);
+    
+    if (!isMultimodalConnected || !multimodalAudioContextRef.current) {
+      console.log('❌ Cannot start recording - not connected or no audio context');
+      setMultimodalError('Not connected to AI assistant');
+      return;
+    }
+
+    try {
+      console.log('🎤 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted');
+      
+      multimodalMediaRecorderRef.current = new MediaRecorder(stream);
+      multimodalPcmDataRef.current = [];
+
+      multimodalMediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const arrayBuffer = reader.result as ArrayBuffer;
+            const pcmData = new Int16Array(arrayBuffer);
+            multimodalPcmDataRef.current.push(...Array.from(pcmData));
+          };
+          reader.readAsArrayBuffer(event.data);
+        }
+      };
+
+      multimodalMediaRecorderRef.current.onstop = () => {
+        console.log('🎤 Recording stopped, sending voice message...');
+        sendMultimodalVoiceMessage();
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      multimodalMediaRecorderRef.current.start(100);
+      setIsRecording(true);
+      setMultimodalError(null);
+      console.log('✅ Recording started successfully');
+    } catch (err) {
+      console.error('❌ Failed to start recording:', err);
+      setMultimodalError('Failed to access microphone');
+    }
+  };
+
+  const stopMultimodalRecording = () => {
+    if (multimodalMediaRecorderRef.current && isRecording) {
+      multimodalMediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const sendMultimodalVoiceMessage = () => {
+    if (!multimodalWebSocketRef.current) return;
+
+    // Convert PCM data to base64
+    const buffer = new ArrayBuffer(multimodalPcmDataRef.current.length * 2);
+    const view = new DataView(buffer);
+    multimodalPcmDataRef.current.forEach((value, index) => {
+      view.setInt16(index * 2, value, true);
+    });
+
+    const base64Audio = btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
+
+    // Since we're live streaming the canvas, we can just send audio
+    // Gemini already has the latest canvas state
+    const payload = {
+      realtime_input: {
+        media_chunks: [
+          {
+            mime_type: "audio/pcm",
+            data: base64Audio,
+          },
+        ],
+      },
+    };
+
+    console.log('🎤 Sending voice message to Gemini (canvas already live-streamed)');
+    multimodalWebSocketRef.current.send(JSON.stringify(payload));
+    multimodalPcmDataRef.current = [];
+  };
+
+  // Disable browser audio playback
+  const playNextMultimodalAudio = async () => {
+    // No-op: audio playback disabled in browser
+    multimodalIsPlayingRef.current = false;
+    setIsPlayingAudio(false);
+  };
+
+  // Auto-start streaming when connected
+  useEffect(() => {
+    if (isMultimodalConnected && !isLiveStreaming) {
+      startLiveStreaming();
+    } else if (!isMultimodalConnected && isLiveStreaming) {
+      stopLiveStreaming();
+    }
+  }, [isMultimodalConnected]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopLiveStreaming();
+    };
+  }, []);
+
+  // Start continuous canvas streaming
+  const startLiveStreaming = () => {
+    console.log('📷 Starting continuous canvas streaming...');
+    setIsLiveStreaming(true);
+    
+    // Capture canvas every 500ms
+    const streamingInterval = setInterval(() => {
+      if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+          console.log('📷 [STREAMING] Capturing canvas...');
+          
+          const payload = {
+            realtime_input: {
+              media_chunks: [{
+                mime_type: "image/jpeg",
+                data: imageData,
+              }],
+            },
+          };
+          
+          multimodalWebSocketRef.current.send(JSON.stringify(payload));
+          console.log('📷 [STREAMING] Canvas frame sent to Gemini');
+        }
+      }
+    }, 500);
+    
+    // Store interval for cleanup
+    multimodalStreamingIntervalRef.current = streamingInterval;
+    console.log('📷 Canvas streaming interval started - will capture every 500ms');
+  };
+
+  // Stop continuous canvas streaming
+  const stopLiveStreaming = () => {
+    console.log('📷 Stopping continuous canvas streaming...');
+    setIsLiveStreaming(false);
+    
+    if (multimodalStreamingIntervalRef.current) {
+      clearInterval(multimodalStreamingIntervalRef.current);
+      multimodalStreamingIntervalRef.current = null;
+      console.log('📷 Canvas streaming interval stopped');
+    }
+  };
+
+  // Connect canvas to shapes context
+  useEffect(() => {
+    if (canvasRef.current) {
+      setCanvas(canvasRef.current);
+    }
+  }, [canvasRef.current, setCanvas]);
+
+  // Function to get canvas hash for change detection
+  const getCanvasHash = () => {
+    if (!canvasRef.current) return '';
+    return canvasRef.current.toDataURL('image/jpeg', 0.8);
   };
 
   const addToStoryboard = async (imageIndex: number) => {
@@ -1165,6 +1491,54 @@ const Canvas: React.FC = () => {
         </>
       )}
 
+      {/* Multimodal AI Assistant Button */}
+      <button
+        className={`absolute right-4 top-16 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
+          isMultimodalConnected 
+            ? 'bg-green-600 hover:bg-green-700 text-white' 
+            : 'bg-blue-600 hover:bg-blue-700 text-white'
+        }`}
+        onClick={isRecording ? stopMultimodalRecording : startMultimodalRecording}
+        disabled={!isMultimodalConnected}
+        title={isMultimodalConnected ? (isRecording ? "Stop Recording" : "Start Recording") : "Connect AI Assistant"}
+      >
+        {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+      </button>
+
+      {/* Live Streaming Status Indicator */}
+      {isLiveStreaming && (
+        <div className="absolute right-4 top-28 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+          <span>Gemini sees live canvas</span>
+        </div>
+      )}
+
+      {/* Connection Status Indicator */}
+      {!isMultimodalConnected && (
+        <button
+          className="absolute right-4 top-28 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs transition-colors duration-200"
+          onClick={connectMultimodal}
+          title="Connect to AI Assistant - Gemini will see your canvas live"
+        >
+          Connect AI
+        </button>
+      )}
+
+      {/* Audio Playback Indicator */}
+      {isPlayingAudio && (
+        <div className="absolute right-4 top-40 bg-blue-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
+          <Volume2 size={12} className="animate-pulse" />
+          <span>Gemini speaking...</span>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {multimodalError && (
+        <div className="absolute right-4 top-52 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
+          {multimodalError}
+        </div>
+      )}
+
       {/* Enhanced image display - replaced by interactive images */}
       {enhancedImage && (
         <div 
@@ -1260,9 +1634,8 @@ const Canvas: React.FC = () => {
         </div>
       )}
       
-      <canvas ref={backgroundCanvasRef} className="absolute top-0 left-0" style={{ zIndex: 0, pointerEvents: 'none' }} />
       <canvas
-        ref={drawingCanvasRef}
+        ref={canvasRef}
         className="absolute top-0 left-0 touch-none"
         style={{ zIndex: 1, cursor: getCursorForTool(state.tool) }}
         onPointerDown={handlePointerDown}

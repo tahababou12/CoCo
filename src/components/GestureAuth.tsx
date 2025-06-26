@@ -19,9 +19,16 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   const [currentGestureIndex, setCurrentGestureIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [isDebouncing, setIsDebouncing] = useState(false);
+  
+  // Add debounce mechanism to prevent same gesture detection
+  const lastGestureTimeRef = useRef<number>(0);
+  const lastDetectedGestureRef = useRef<string>('');
+  const GESTURE_DEBOUNCE_MS = 1000; // 1 second debounce
 
   // Available gestures for the challenge
-  const availableGestures = ['Drawing', 'Erasing', 'Clear All'];
+  const availableGestures = ['Drawing', 'Clicking', 'Clearing'];
 
   // Generate random gestures for the challenge
   const generateTargetGestures = () => {
@@ -32,6 +39,38 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       selected.push(gestures[randomIndex]);
     }
     setTargetGestures(selected);
+  };
+
+  // Reset gesture recognition state
+  const resetGestureState = () => {
+    setCurrentGestureIndex(0);
+    setCurrentGesture('');
+    setIsDebouncing(false);
+    lastGestureTimeRef.current = 0;
+    lastDetectedGestureRef.current = '';
+    setIsCompleted(false);
+    generateTargetGestures();
+  };
+
+  // Cleanup function
+  const cleanup = () => {
+    console.log('Cleaning up gesture auth resources...');
+    if (cameraRef.current) {
+      console.log('Stopping camera...');
+      cameraRef.current.stop();
+    }
+    if (mediapipeRef.current) {
+      console.log('Closing MediaPipe...');
+      mediapipeRef.current.close();
+    }
+    if (videoRef.current?.srcObject) {
+      console.log('Stopping video tracks...');
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => {
+        console.log('Stopping track:', track.kind);
+        track.stop();
+      });
+    }
   };
 
   useEffect(() => {
@@ -110,17 +149,47 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
         drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
 
         // Determine current gesture
-        const mode = determineHandMode(landmarks);
+        const { mode } = determineHandMode(landmarks);
         setCurrentGesture(mode);
 
-        // Check if the current gesture matches the target
-        if (mode === targetGestures[currentGestureIndex]) {
+        // Check if the current gesture matches the target with debouncing
+        const now = Date.now();
+        const isSameGesture = mode === lastDetectedGestureRef.current;
+        const isWithinDebounceTime = now - lastGestureTimeRef.current < GESTURE_DEBOUNCE_MS;
+        
+        console.log(`Gesture check: ${mode} vs target: ${targetGestures[currentGestureIndex]}`);
+        console.log(`Same gesture: ${isSameGesture}, Within debounce: ${isWithinDebounceTime}`);
+        
+        if (mode === targetGestures[currentGestureIndex] && 
+            (!isSameGesture || !isWithinDebounceTime)) {
+          
+          console.log('Gesture matched:', mode); // Debug log
+          setIsDebouncing(false);
+          
+          // Update last detected gesture and time
+          lastDetectedGestureRef.current = mode;
+          lastGestureTimeRef.current = now;
+          
           // Move to next gesture or complete
           if (currentGestureIndex < targetGestures.length - 1) {
+            console.log('Moving to next gesture'); // Debug log
             setCurrentGestureIndex(prev => prev + 1);
           } else {
+            console.log('All gestures completed'); // Debug log
+            setIsCompleted(true);
+            // Call onSuccess first to trigger state changes
             onSuccess();
+            
+            // Then cleanup after a small delay to ensure state changes are processed
+            setTimeout(() => {
+              cleanup();
+            }, 100);
           }
+        } else if (mode === targetGestures[currentGestureIndex] && isSameGesture && isWithinDebounceTime) {
+          console.log('Gesture matched but debounced - waiting for new gesture or timeout');
+          setIsDebouncing(true);
+        } else {
+          setIsDebouncing(false);
         }
       }
     };
@@ -128,17 +197,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
     initializeHandTracking();
 
     return () => {
-      if (cameraRef.current) {
-        cameraRef.current.stop();
-      }
-      if (mediapipeRef.current) {
-        mediapipeRef.current.close();
-      }
-      if (videoStream) {
-        videoStream.getTracks().forEach(track => track.stop());
+      if (!isCompleted) {
+        cleanup();
       }
     };
-  }, [targetGestures, currentGestureIndex, onSuccess]);
+  }, [targetGestures, currentGestureIndex, onSuccess, isCompleted]);
 
   if (isLoading) {
     return <div className="text-center">Loading gesture recognition...</div>;
@@ -146,6 +209,10 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
 
   if (error) {
     return <div className="text-red-500 text-center">{error}</div>;
+  }
+
+  if (isCompleted) {
+    return null;
   }
 
   return (
@@ -186,6 +253,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
         </div>
         <p className="text-sm text-gray-600">
           Current gesture: {currentGesture}
+          {isDebouncing && (
+            <span className="ml-2 text-orange-600 font-medium">
+              (Gesture detected - waiting for debounce...)
+            </span>
+          )}
         </p>
       </div>
     </div>

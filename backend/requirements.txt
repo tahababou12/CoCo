@@ -1,3 +1,16 @@
+flask
+flask-cors
+pillow
+opencv-python
+numpy
+python-dotenv
+google-genai
+mediapipe
+elevenlabs
+moviepy
+websockets
+pydub
+pyaudio
 absl-py==2.3.0
 annotated-types==0.7.0
 anyio==4.9.0

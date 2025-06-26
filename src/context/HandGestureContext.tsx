@@ -30,7 +30,7 @@ export const HandGestureProvider: React.FC<HandGestureProviderProps> = ({ childr
     0: 'None'
   });
   const [isHandTrackingActive, setIsHandTrackingActive] = useState(false);
-  const [showDebugPanels, setShowDebugPanels] = useState(true); // Default to true for development
+  const [showDebugPanels, setShowDebugPanels] = useState(false); // Default to false, can be toggled via debug icon in header
 
   return (
     <HandGestureContext.Provider value={{ 
