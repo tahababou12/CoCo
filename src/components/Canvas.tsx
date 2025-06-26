@@ -1,7 +1,5 @@
-import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { useHandGesture } from '../context/HandGestureContext'
-import { useWebSocket } from '../context/WebSocketContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
 import { hitTest } from '../utils/hitTest'
@@ -40,7 +38,8 @@ interface EnhancedImageResult {
   prompt: string;
 }
 
-interface CanvasProps {}
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface CanvasProps extends Record<string, never> {}
 
 const Canvas: React.FC<CanvasProps> = () => {
   const { state, dispatch } = useDrawing()
@@ -80,252 +79,93 @@ const Canvas: React.FC<CanvasProps> = () => {
   const multimodalAudioContextRef = useRef<AudioContext | null>(null)
   const multimodalMediaRecorderRef = useRef<MediaRecorder | null>(null)
   const multimodalPcmDataRef = useRef<number[]>([])
-  const multimodalCurrentFrameRef = useRef<string | null>(null)
   const multimodalAudioQueueRef = useRef<string[]>([])
   const multimodalIsPlayingRef = useRef(false)
   const multimodalStreamingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Real-time canvas streaming to Gemini
   const [isLiveStreaming, setIsLiveStreaming] = useState(false);
-  const lastCanvasHashRef = useRef<string>('');
-
-  // Define renderCanvas function before it's used in effects
-  const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const gridSize = 20 * state.viewTransform.scale
-    const offsetX = state.viewTransform.offsetX % gridSize
-    const offsetY = state.viewTransform.offsetY % gridSize
-    
-    // Draw dots at intersections
-    ctx.fillStyle = '#e5e5e5'
-    for (let x = offsetX; x < width; x += gridSize) {
-      for (let y = offsetY; y < height; y += gridSize) {
-        ctx.beginPath()
-        ctx.arc(x, y, 1, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    }
-  }
 
   const renderCanvas = () => {
-    void (DEBUG && console.log('renderCanvas called'));
     const canvas = canvasRef.current;
-    let ctx = ctxRef.current;
+    const context = ctxRef.current;
+    if (!canvas || !context) return;
     
-    if (!canvas) {
-      void (DEBUG && console.error('Cannot render: canvas not available'));
-      return;
-    }
+    // Clear the entire canvas
+    context.clearRect(0, 0, canvas.width, canvas.height);
     
-    if (!ctx) {
-      void (DEBUG && console.error('Cannot render: context not available'));
-      
-      // Try to reinitialize the context
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      if (context) {
-        void (DEBUG && console.log('Successfully reinitialized context'));
-        ctxRef.current = context;
-        ctx = context;
-      } else {
-        void (DEBUG && console.error('Failed to reinitialize context'));
-        return;
-      }
-    }
-
-    // At this point, we know ctx is not null
-    const context = ctx;
-
-    // Make sure canvas has dimensions
-    if (canvas.width === 0 || canvas.height === 0) {
-      void (DEBUG && console.warn('Canvas has zero dimensions, setting defaults'));
-      canvas.width = 800;
-      canvas.height = 600;
-    }
-
-    void (DEBUG && console.log(`Rendering canvas ${canvas.width}x${canvas.height} with ${state.shapes.length} shapes`));
-    
-    // Clear canvas with background color
-    // context.fillStyle = '#fafaf9'; // Dim white
-    context.fillStyle = '#fffbeb'; // Light yellow for night shift mode
+    // Draw background
+    context.fillStyle = '#fffbeb';
     context.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw grid
-    drawGrid(context, canvas.width, canvas.height);
-
-    // Apply view transform
+    
+    // Apply transform and draw shapes
     context.save();
     context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
     context.scale(state.viewTransform.scale, state.viewTransform.scale);
 
-    // Draw all shapes
-    if (state.shapes.length > 0) {
-      state.shapes.forEach((shape, index) => {
-        void (DEBUG && console.log(`Rendering shape ${index}: ${shape.type}`));
-        renderShape(context, shape);
-      });
-    }
+    state.shapes.forEach(shape => renderShape(context, shape));
 
-    // Set current stroke color and width from defaultStyle
-    context.strokeStyle = state.defaultStyle.strokeColor;
-    context.lineWidth = state.defaultStyle.strokeWidth;
-    
-    // Draw current shape being created
     if (state.currentShape) {
-      void (DEBUG && console.log('Drawing current shape:', state.currentShape.type));
-      void (DEBUG && console.log('Current shape has points:', state.currentShape.points.length));
-      void (DEBUG && console.log('Using color:', state.defaultStyle.strokeColor));
-      
-      // Extra validation to help debugging
-      if (state.currentShape.points.length === 0) {
-        void (DEBUG && console.warn('Current shape has no points!'));
-      }
-      
-      // Make sure current shape uses current style
       const currentShapeWithStyle = {
         ...state.currentShape,
-        style: {
-          ...state.currentShape.style,
-          strokeColor: state.defaultStyle.strokeColor,
-          strokeWidth: state.defaultStyle.strokeWidth
-        }
+        style: { ...state.defaultStyle, ...state.currentShape.style }
       };
-      
       renderShape(context, currentShapeWithStyle);
-      
-      // If we have a current shape, we should be in drawing mode
-      if (!isDrawing) {
-        void (DEBUG && console.log('Syncing drawing state to true'));
-        setIsDrawing(true);
-      }
-    } else if (isDrawing) {
-      // No current shape but drawing flag is true - sync state
-      void (DEBUG && console.log('No current shape but isDrawing=true, syncing state'));
-      setIsDrawing(false);
     }
-
     context.restore();
     
     // Trigger immediate canvas capture after rendering is complete
-    if ((window as any).triggerImmediateCanvasCapture && (isDrawing || state.currentShape)) {
+    const triggerCapture = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
+    if (triggerCapture && (isDrawing || state.currentShape)) {
       console.log('🎨 Rendering complete, triggering canvas capture...');
       // Small delay to ensure rendering is fully complete
       setTimeout(() => {
-        if ((window as any).triggerImmediateCanvasCapture) {
+        const triggerCaptureInner = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
+        if (triggerCaptureInner) {
           console.log('⚡ Triggering canvas capture after render...');
-          (window as any).triggerImmediateCanvasCapture();
+          triggerCaptureInner();
         }
       }, 10);
     }
     
     // Also trigger capture during drawing for more frequent updates
-    if ((window as any).triggerImmediateCanvasCapture && isDrawing && state.currentShape) {
+    if (triggerCapture && isDrawing && state.currentShape) {
       // Trigger additional captures during drawing for smoother streaming
       setTimeout(() => {
-        if ((window as any).triggerImmediateCanvasCapture && isDrawing) {
-          (window as any).triggerImmediateCanvasCapture();
+        const triggerCaptureInner = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
+        if (triggerCaptureInner && isDrawing) {
+          triggerCaptureInner();
         }
       }, 100);
     }
   };
 
-  // Initialize canvas and context
   useEffect(() => {
-    void (DEBUG && console.log('Canvas initialization effect running'));
-    
-    // Ensure we have references to both canvas and container
-    if (!canvasRef.current) {
-      void (DEBUG && console.error('Canvas element not available during initialization'));
-      return;
-    }
-    
     const canvas = canvasRef.current;
-    
-    // Set explicit dimensions - both via attributes and style
-    if (containerRef.current) {
-      const containerWidth = containerRef.current.clientWidth || 800;
-      const containerHeight = containerRef.current.clientHeight || 600;
-      
-      // Ensure non-zero dimensions
-      const width = Math.max(containerWidth, 800);
-      const height = Math.max(containerHeight, 600);
-      
-      // Set both the canvas attribute dimensions and CSS dimensions
+    const container = containerRef.current;
+
+    if (!canvas || !container) return;
+
+    ctxRef.current = canvas.getContext('2d');
+    const ctx = ctxRef.current;
+    if (ctx) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
       canvas.width = width;
       canvas.height = height;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-    } else {
-      canvas.width = 800;
-      canvas.height = 600;
-      canvas.style.width = '800px';
-      canvas.style.height = '600px';
-    }
-    
-    void (DEBUG && console.log(`Canvas dimensions set: ${canvas.width}x${canvas.height}`));
-    
-    // Use willReadFrequently for better performance with frequent reads
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    
-    if (!context) {
-      void (DEBUG && console.error('Failed to get canvas 2d context'));
-      return;
-    }
-    
-    // Set up context properties
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-    context.strokeStyle = state.defaultStyle.strokeColor || '#000';
-    context.lineWidth = state.defaultStyle.strokeWidth || 2;
-    
-    ctxRef.current = context;
-    void (DEBUG && console.log('Canvas context initialized'));
-    
-    // Force an initial render after a short delay to ensure everything is set up
-    setTimeout(() => {
-      void (DEBUG && console.log('Triggering delayed initial render'));
       renderCanvas();
-    }, 200);
-    
-    // Add extra debugging on the canvas element
-    canvas.addEventListener('pointerdown', () => {
-      void (DEBUG && console.log('Native pointerdown event fired'));
     });
-    
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
   }, []);
 
-  // Handle canvas resize
-  useEffect(() => {
-    const resizeCanvas = () => {
-      if (canvasRef.current && containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth || 800;
-        const containerHeight = containerRef.current.clientHeight || 600;
-        
-        // Ensure we never set zero dimensions
-        const width = Math.max(containerWidth, 1);
-        const height = Math.max(containerHeight, 1);
-        
-        void (DEBUG && console.log(`Resizing canvas to: ${width}x${height}`));
-        
-        canvasRef.current.width = width;
-        canvasRef.current.height = height;
-        
-        // Explicitly set the style as well to ensure visibility
-        canvasRef.current.style.width = `${width}px`;
-        canvasRef.current.style.height = `${height}px`;
-        
-        renderCanvas();
-      }
-    };
-
-    // Add a small delay to ensure container is properly sized
-    setTimeout(resizeCanvas, 100);
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, []);
-
-  // Render canvas whenever state changes
-  useLayoutEffect(() => {
-    renderCanvas();
-  }, [state.shapes, state.currentShape, state.viewTransform]);
+  useLayoutEffect(renderCanvas, [state.shapes, state.currentShape, state.viewTransform]);
 
   // Add specific effect to handle drawing state changes
   useEffect(() => {
@@ -350,13 +190,13 @@ const Canvas: React.FC<CanvasProps> = () => {
   }, [state.tool])
 
   const getCanvasPoint = (clientX: number, clientY: number): Point => {
-    if (!canvasRef.current) return { x: 0, y: 0 }
-
-    const rect = canvasRef.current.getBoundingClientRect()
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
     const x = (clientX - rect.left - state.viewTransform.offsetX) / state.viewTransform.scale
     const y = (clientY - rect.top - state.viewTransform.offsetY) / state.viewTransform.scale
-    return { x, y }
-  }
+    return { x, y };
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     void (DEBUG && console.log('React handlePointerDown triggered', e.type, e.clientX, e.clientY));
@@ -427,6 +267,15 @@ const Canvas: React.FC<CanvasProps> = () => {
         dispatch({
           type: 'START_DRAWING',
           payload: { point, type: 'pencil' },
+        });
+        // Set erasing style by painting with background color
+        dispatch({
+          type: 'SET_STYLE',
+          payload: { 
+            strokeColor: '#fffbeb', // Use background color to "erase" by painting over
+            strokeWidth: (state.defaultStyle.strokeWidth || 2) * 2.5, // Larger width for erasing
+            globalCompositeOperation: 'source-over' // Normal drawing operation
+          }
         });
         break;
 
@@ -502,8 +351,8 @@ const Canvas: React.FC<CanvasProps> = () => {
 
     // Handle enhanced image dragging and resizing
     if (dragStartPos && initialImageState) {
-      const dx = e.clientX - dragStartPos.x;
-      const dy = e.clientY - dragStartPos.y;
+      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
+      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
 
       setInteractiveEnhancedImages(images => images.map(img => {
         if (img.isDragging) {
@@ -522,17 +371,17 @@ const Canvas: React.FC<CanvasProps> = () => {
 
           // Handle different resize positions
           if (img.resizeHandle.includes('e')) {
-            newWidth = Math.max(50, initialImageState.width + dx);
+            newWidth = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
           }
           if (img.resizeHandle.includes('s')) {
-            newHeight = Math.max(50, initialImageState.height + dy);
+            newHeight = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
           }
           if (img.resizeHandle.includes('w')) {
-            newWidth = Math.max(50, initialImageState.width - dx);
+            newWidth = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
             newX = initialImageState.x + dx;
           }
           if (img.resizeHandle.includes('n')) {
-            newHeight = Math.max(50, initialImageState.height - dy);
+            newHeight = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
             newY = initialImageState.y + dy;
           }
 
@@ -565,6 +414,12 @@ const Canvas: React.FC<CanvasProps> = () => {
     if (state.tool === 'eraser' && isPrimaryButtonPressed) {
       // Object eraser - continuously erase whole shapes
       const shapeToErase = findShapeAtPoint(point);
+      
+      if (DEBUG) {
+        console.log('Mouse eraser at point:', point);
+        console.log('Mouse eraser found shape:', shapeToErase ? `${shapeToErase.id} (${shapeToErase.type})` : 'none');
+      }
+      
       if (shapeToErase) {
         dispatch({ type: 'DELETE_SHAPES', payload: [shapeToErase.id] });
       }
@@ -585,8 +440,8 @@ const Canvas: React.FC<CanvasProps> = () => {
     const draggedImage = interactiveEnhancedImages.find(img => img.isDragging || img.isResizing);
     
     if (draggedImage && initialImageState && dragStartPos) {
-      const dx = e.clientX - dragStartPos.x;
-      const dy = e.clientY - dragStartPos.y;
+      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
+      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
       
       const draggedIndex = interactiveEnhancedImages.findIndex(img => 
         img.isDragging || img.isResizing
@@ -600,37 +455,37 @@ const Canvas: React.FC<CanvasProps> = () => {
           // Handle resizing based on which handle was grabbed
           switch (draggedImage.resizeHandle) {
             case 'bottom-right':
-              image.width = Math.max(50, initialImageState.width + dx);
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'bottom-left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'top-right':
-              image.width = Math.max(50, initialImageState.width + dx);
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
             case 'top-left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
             case 'right':
-              image.width = Math.max(50, initialImageState.width + dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
               break;
             case 'left':
-              image.width = Math.max(50, initialImageState.width - dx);
+              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
               image.x = initialImageState.x + dx;
               break;
             case 'bottom':
-              image.height = Math.max(50, initialImageState.height + dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
               break;
             case 'top':
-              image.height = Math.max(50, initialImageState.height - dy);
+              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
               image.y = initialImageState.y + dy;
               break;
           }
@@ -788,109 +643,49 @@ const Canvas: React.FC<CanvasProps> = () => {
   }
 
   const handleClearAll = () => {
-    if (state.shapes.length > 0) {
-      // End any current drawing first
-      if (state.currentShape) {
-        dispatch({ type: 'END_DRAWING' });
-        setIsDrawing(false);
-      }
-      
-      // Get all shape IDs
-      const shapeIds = state.shapes.map(shape => shape.id);
-      
-      // Delete all shapes
-      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-    }
+    dispatch({ type: 'CLEAR_ALL' });
   }
 
   const saveCanvasAsPNG = async () => {
-    if (!canvasRef.current || state.shapes.length === 0) return;
-    
-    // Create a temporary canvas for rendering just the drawings
+    const canvas = canvasRef.current;
+    if (!canvas || state.shapes.length === 0) return;
+  
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     if (!tempCtx) return;
+  
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+  
+    // 1. Draw the background color
+    tempCtx.fillStyle = '#fffbeb'; // Same as background canvas
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     
-    // Find the bounding box of all shapes
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    // 2. Apply the view transform to match the current view
+    tempCtx.save();
+    tempCtx.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
+    tempCtx.scale(state.viewTransform.scale, state.viewTransform.scale);
     
-    // Calculate the bounds for all shapes
-    state.shapes.forEach(shape => {
-      shape.points.forEach(point => {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
-      });
-      
-      // For text, estimate the bounds based on the text and font size
-      if (shape.type === 'text' && shape.text) {
-        const fontSize = shape.style.fontSize || 16;
-        const textWidth = shape.text.length * fontSize * 0.6; // Rough estimate
-        const textHeight = fontSize * 1.2; // Rough estimate
-        
-        minX = Math.min(minX, shape.points[0].x);
-        minY = Math.min(minY, shape.points[0].y);
-        maxX = Math.max(maxX, shape.points[0].x + textWidth);
-        maxY = Math.max(maxY, shape.points[0].y + textHeight);
-      }
-    });
-    
-    // Add padding
-    const padding = 20;
-    minX -= padding;
-    minY -= padding;
-    maxX += padding;
-    maxY += padding;
-    
-    // Set canvas size to fit the bounding box
-    const width = Math.max(maxX - minX, 1);
-    const height = Math.max(maxY - minY, 1);
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    
-    // Fill with a white background
-    tempCtx.fillStyle = '#FFFFFF';
-    tempCtx.fillRect(0, 0, width, height);
-    
-    // Apply transform to center the drawings
-    tempCtx.translate(-minX, -minY);
-    
-    // Draw all shapes
+    // 3. Re-render all shapes (this will properly handle composite operations like erasing)
     state.shapes.forEach(shape => {
       renderShape(tempCtx, shape);
     });
     
-    // Convert to image
+    // 4. Restore the transform
+    tempCtx.restore();
+  
     try {
       const dataUrl = tempCanvas.toDataURL('image/png');
-      
-      // Send image data to server
       const response = await fetch('http://localhost:5001/api/save-image', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageData: dataUrl }),
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Server error: ${errorData.error || 'Unknown error'}`);
-      }
-      
+      if (!response.ok) throw new Error('Failed to save image');
       const result = await response.json();
-      void (DEBUG && console.log(`Image saved successfully to: ${result.absolutePath}`));
-      
-      // Show success message with toast instead of alert
       window.showToast(`Image saved as: ${result.filename}`, 'success', 3000);
-      
-    } catch (err) {
-      void (DEBUG && console.error('Error saving canvas:', err));
-      window.showToast(`Error saving image: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    } catch {
+      window.showToast(`Error saving image`, 'error', 3000);
     }
   }
 
@@ -1181,10 +976,10 @@ const Canvas: React.FC<CanvasProps> = () => {
         key={image.id}
         className="absolute"
         style={{
-          left: `${image.x}px`,
-          top: `${image.y}px`,
-          width: `${image.width}px`,
-          height: `${image.height}px`,
+          left: `${image.x * state.viewTransform.scale + state.viewTransform.offsetX}px`,
+          top: `${image.y * state.viewTransform.scale + state.viewTransform.offsetY}px`,
+          width: `${image.width * state.viewTransform.scale}px`,
+          height: `${image.height * state.viewTransform.scale}px`,
           border: '2px solid #9333ea',
           borderRadius: '4px',
           overflow: 'hidden',
@@ -1361,7 +1156,7 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   const initializeMultimodalAudio = async () => {
     try {
-      multimodalAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ 
+      multimodalAudioContextRef.current = new (window.AudioContext || (window as Window & { webkitAudioContext?: new () => AudioContext }).webkitAudioContext || AudioContext)({ 
         sampleRate: 24000 
       });
       
@@ -1436,7 +1231,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       view.setInt16(index * 2, value, true);
     });
 
-    const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)));
+    const base64Audio = btoa(String.fromCharCode(...Array.from(new Uint8Array(buffer))));
 
     // Since we're live streaming the canvas, we can just send audio
     // Gemini already has the latest canvas state
@@ -1538,16 +1333,7 @@ const Canvas: React.FC<CanvasProps> = () => {
   };
 
   return (
-    <div 
-      ref={containerRef}
-      className="flex-1 overflow-hidden bg-stone-50 relative select-none"
-      style={{ 
-        touchAction: 'none',
-        minHeight: '600px',
-        height: '100%',
-        width: '100%'
-      }}
-    >
+    <div ref={containerRef} className="absolute inset-0 bg-stone-50 select-none" style={{ touchAction: 'none' }}>
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
@@ -1672,18 +1458,8 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       <canvas
         ref={canvasRef}
-        width={800}
-        height={600}
-        className="absolute top-0 left-0 w-full h-full touch-none"
-        style={{ 
-          cursor: getCursorForTool(state.tool),
-          pointerEvents: 'auto',
-          touchAction: 'none',
-          WebkitUserSelect: 'none',
-          userSelect: 'none',
-          WebkitTapHighlightColor: 'rgba(0,0,0,0)',
-          zIndex: 1
-        }}
+        className="absolute top-0 left-0 touch-none"
+        style={{ zIndex: 1, cursor: getCursorForTool(state.tool) }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

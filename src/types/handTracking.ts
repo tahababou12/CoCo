@@ -1,7 +1,7 @@
 // Types related to hand tracking and gesture recognition
 
 // Define hand mode type for better type safety
-export type HandMode = 'Drawing' | 'Clicking' | 'Dragging' | 'Clearing' | 'None';
+export type HandMode = 'Drawing' | 'Clicking' | 'Dragging' | 'Clearing' | 'PixelErasing' | 'None';
 
 // Interface for MediaPipe hand landmarks
 export interface HandLandmark {

@@ -7,11 +7,27 @@ export const videoToCanvasCoords = (point: Point): Point => {
   // MediaPipe provides normalized coordinates (0-1)
   // We need to:
   // 1. Flip the x-coordinate for the mirrored view
-  // 2. Scale to window dimensions
+  // 2. Scale to window dimensions to get screen coordinates
+  // 3. Then use the same coordinate system as the canvas
   
+  // First, convert to screen coordinates (same as mouse events)
+  const screenX = (1 - point.x) * window.innerWidth;  // Flip x due to mirrored video
+  const screenY = point.y * window.innerHeight;
+  
+  // Now find the canvas element and get its position, just like getCanvasPoint does
+  const canvas = document.querySelector('canvas');
+  if (!canvas) {
+    // Fallback to screen coordinates if canvas not found
+    return { x: screenX, y: screenY };
+  }
+  
+  const rect = canvas.getBoundingClientRect();
+  
+  // Convert screen coordinates to canvas-relative coordinates
+  // This matches exactly what the Canvas component does in getCanvasPoint
   return {
-    x: (1 - point.x) * window.innerWidth,  // Flip x due to mirrored video
-    y: point.y * window.innerHeight + 5
+    x: screenX - rect.left,
+    y: screenY - rect.top
   };
 };
 

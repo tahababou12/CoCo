@@ -10,6 +10,13 @@ import { determineHandMode, getSmoothPoint, getStableHandMode } from '../utils/h
 import { ensureCursorExists, addCursorStyles, updateCursor, cleanupCursors } from '../utils/cursor';
 import { useHandGesture } from '../context/HandGestureContext';
 import { useWebSocket } from '../context/WebSocketContext';
+import { 
+  analyzeFingerSeparation, 
+  detectPeaceSign, 
+  getFingerTipDistances,
+  FingerSeparationAnalysis
+} from '../utils/fingerDistance';
+import DraggableDebugPanel from './DraggableDebugPanel';
 
 // Debug configuration
 const DEBUG = true;
@@ -18,7 +25,7 @@ const DEBUG_COLLAB = false;
 
 const HandDrawing: React.FC = () => {
   const { state, dispatch } = useDrawing();
-  const { isHandTrackingActive, setCurrentGestures, setIsHandTrackingActive } = useHandGesture();
+  const { isHandTrackingActive, setCurrentGestures, setIsHandTrackingActive, showDebugPanels } = useHandGesture();
   const webSocket = useWebSocket();
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -67,12 +74,6 @@ const HandDrawing: React.FC = () => {
     0: '#FF0000' // Red for the hand
   });
 
-  // Drawing thickness
-  const drawingThickness = 5;
-  
-  // Reference to style element for cursor
-  const styleElementRef = useRef<HTMLStyleElement | null>(null);
-  
   // Track finger states for debug display
   const [fingerStates, setFingerStates] = useState({
     thumb: false,
@@ -97,8 +98,122 @@ const HandDrawing: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<Point | null>(null);
   
-  // Add a state to track if we're in the process of toggling modes
-  const [isToggling, setIsToggling] = useState(false);
+  // Add finger distance tracking state
+  const [fingerDistances, setFingerDistances] = useState<{ [key: string]: number }>({});
+  const [peaceSignDetected, setPeaceSignDetected] = useState(false);
+  const [fingerSeparationAnalysis, setFingerSeparationAnalysis] = useState<FingerSeparationAnalysis | null>(null);
+  
+  // Mini toolset state for peace sign gesture
+  const [currentStrokeWidth, setCurrentStrokeWidth] = useState(5);
+  const [selectedColorIndex, setSelectedColorIndex] = useState(0);
+  const colorPalette = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080', '#000000', '#FFFFFF'];
+  
+  // Use a ref to track the latest stroke width to avoid stale closures in callbacks
+  const strokeWidthRef = useRef(currentStrokeWidth);
+  useEffect(() => {
+    strokeWidthRef.current = currentStrokeWidth;
+  }, [currentStrokeWidth]);
+  
+  // Toolset visibility toggle state
+  const [isToolsetVisible, setIsToolsetVisible] = useState(false);
+  const [lastPeaceSignState, setLastPeaceSignState] = useState(false);
+  const [toolsetPosition, setToolsetPosition] = useState({ x: 20, y: 120 });
+  
+  // Toggle toolset when peace sign is detected (edge detection)
+  useEffect(() => {
+    if (peaceSignDetected && !lastPeaceSignState) {
+      // Peace sign just detected - toggle toolset
+      const wasVisible = isToolsetVisible;
+      setIsToolsetVisible(prev => !prev);
+      
+      // If opening the toolset and we have a cursor position, set toolset position
+      if (!wasVisible && handCursors[0]) {
+        const canvasSpacePoint = videoToCanvasCoords(handCursors[0]);
+        const transformedPoint = canvasToDrawingCoords(
+          canvasSpacePoint,
+          state.viewTransform.scale,
+          state.viewTransform.offsetX,
+          state.viewTransform.offsetY
+        );
+        const screenX = transformedPoint.x * state.viewTransform.scale + state.viewTransform.offsetX;
+        const screenY = transformedPoint.y * state.viewTransform.scale + state.viewTransform.offsetY;
+        
+        // Get canvas position to add offset
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const finalX = Math.max(10, Math.min(window.innerWidth - 220, screenX + rect.left - 100));
+          const finalY = Math.max(10, screenY + rect.top - 120);
+          
+          setToolsetPosition({ x: finalX, y: finalY });
+        }
+      }
+    }
+    setLastPeaceSignState(peaceSignDetected);
+  }, [peaceSignDetected, lastPeaceSignState, isToolsetVisible, handCursors, state.viewTransform]);
+  
+  // Handle clicking mode interactions with toolset
+  useEffect(() => {
+    if (!isHandTrackingActive || !isToolsetVisible || !handCursors[0]) return;
+    
+    const currentMode = activeHandModesRef.current[0];
+    if (currentMode !== 'Clicking') return;
+    
+    // Get cursor screen position
+    const canvasSpacePoint = videoToCanvasCoords(handCursors[0]);
+    const transformedPoint = canvasToDrawingCoords(
+      canvasSpacePoint,
+      state.viewTransform.scale,
+      state.viewTransform.offsetX,
+      state.viewTransform.offsetY
+    );
+    const screenX = transformedPoint.x * state.viewTransform.scale + state.viewTransform.offsetX;
+    const screenY = transformedPoint.y * state.viewTransform.scale + state.viewTransform.offsetY;
+    
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const cursorX = screenX + rect.left;
+    const cursorY = screenY + rect.top;
+    
+    // Check if cursor is over the thickness slider
+    const sliderElement = document.getElementById('thickness-slider');
+    if (sliderElement) {
+      const sliderRect = sliderElement.getBoundingClientRect();
+      
+      if (cursorX >= sliderRect.left && cursorX <= sliderRect.right &&
+          cursorY >= sliderRect.top && cursorY <= sliderRect.bottom) {
+        
+        // Calculate slider position (0-1) based on cursor position
+        const sliderProgress = Math.max(0, Math.min(1, (cursorX - sliderRect.left) / sliderRect.width));
+        
+        // Convert to thickness value (1-100)
+        const newThickness = Math.round(1 + sliderProgress * 99);
+        
+        // Update thickness if it's different
+        if (newThickness !== currentStrokeWidth) {
+          setCurrentStrokeWidth(newThickness);
+        }
+      }
+    }
+    
+    // Check if cursor is over color buttons
+    const colorButtons = document.querySelectorAll('[data-color-index]');
+    colorButtons.forEach((button, index) => {
+      const buttonRect = button.getBoundingClientRect();
+      
+      if (cursorX >= buttonRect.left && cursorX <= buttonRect.right &&
+          cursorY >= buttonRect.top && cursorY <= buttonRect.bottom) {
+        
+        // Click the color button
+        if (index !== selectedColorIndex) {
+          setSelectedColorIndex(index);
+        }
+      }
+    });
+    
+  }, [handCursors, isHandTrackingActive, isToolsetVisible, activeHandModesRef.current, state.viewTransform, currentStrokeWidth, selectedColorIndex]);
   
   // Update cursor positions
   useEffect(() => {
@@ -106,7 +221,7 @@ const HandDrawing: React.FC = () => {
     if (!isHandTrackingActive) {
       return;
     }
-    
+
     // Otherwise, update the cursor positions based on handCursors state
     Object.entries(handCursors).forEach(([indexStr, point]) => {
       const index = parseInt(indexStr);
@@ -114,24 +229,45 @@ const HandDrawing: React.FC = () => {
       
       if (!cursorDiv || !point) return;
       
-      // Convert point to screen coordinates
-      const canvasPoint = videoToCanvasCoords(point);
+      // Use the same coordinate transformation as drawing operations
+      const canvasSpacePoint = videoToCanvasCoords(point);
+      const transformedPoint = canvasToDrawingCoords(
+        canvasSpacePoint,
+        state.viewTransform.scale,
+        state.viewTransform.offsetX,
+        state.viewTransform.offsetY
+      );
       
-      // Position and style cursor
-      const mode = activeHandModesRef.current[index] || 'None';
-      updateCursor(cursorDiv, canvasPoint.x, canvasPoint.y, mode);
+      // Convert the transformed drawing coordinates back to screen coordinates for cursor positioning
+      const screenX = transformedPoint.x * state.viewTransform.scale + state.viewTransform.offsetX;
+      const screenY = transformedPoint.y * state.viewTransform.scale + state.viewTransform.offsetY;
+      
+      // Get canvas position to add offset
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const finalX = screenX + rect.left;
+        const finalY = screenY + rect.top;
+        
+        // Position and style cursor
+        const mode = activeHandModesRef.current[index] || 'None';
+        updateCursor(cursorDiv, finalX, finalY, mode, strokeWidthRef.current);
+      }
       
       // Send hand cursor position to collaborators if connected
       if (webSocket?.isConnected && webSocket?.sendCursorMove) {
         const cursorPoint = {
-          x: canvasPoint.x,
-          y: canvasPoint.y,
+          x: canvasSpacePoint.x,
+          y: canvasSpacePoint.y,
           isHandTracking: true
         };
         webSocket.sendCursorMove(cursorPoint);
       }
     });
-  }, [handCursors, isHandTrackingActive, webSocket]);
+  }, [handCursors, isHandTrackingActive, webSocket, state.viewTransform, strokeWidthRef.current]);
+  
+  // Reference to style element for cursor
+  const styleElementRef = useRef<HTMLStyleElement | null>(null);
   
   // Initialize MediaPipe Hands and add cursor styles
   useEffect(() => {
@@ -146,23 +282,18 @@ const HandDrawing: React.FC = () => {
     styleElementRef.current = addCursorStyles();
     
     // Create initial cursor
-    ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000');
+    ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', strokeWidthRef.current);
     
     // Clean up on unmount
     return () => {
       // Remove cursor elements and styles
       cleanupCursors([0], styleElementRef.current || undefined);
     };
-  }, []);
+  }, [strokeWidthRef.current]);
 
   // Initialize MediaPipe Hands
   useEffect(() => {
     if (!isWebcamSupported || !isHandTrackingActive) {
-      return;
-    }
-    
-    // Skip reinitializing while toggling to prevent race conditions
-    if (isToggling) {
       return;
     }
     
@@ -181,8 +312,8 @@ const HandDrawing: React.FC = () => {
         };
         
         // Make sure cursor elements exist for both hands
-        ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000');
-        ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00');
+        ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', strokeWidthRef.current);
+        ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00', strokeWidthRef.current);
         
         // Make sure any previous instances are properly cleaned up
         if (cameraRef.current) {
@@ -320,6 +451,30 @@ const HandDrawing: React.FC = () => {
           // Determine hand mode based on finger positions
           const { mode, fingerState } = determineHandMode(landmarks);
           
+          // Add finger distance tracking for the first hand
+          if (index === 0) {
+            // Calculate finger distances
+            const distances = getFingerTipDistances(landmarks);
+            setFingerDistances(distances);
+            
+            // Detect peace sign gesture
+            const isPeaceSign = detectPeaceSign(landmarks);
+            setPeaceSignDetected(isPeaceSign);
+            
+            // Analyze finger separation
+            const separationAnalysis = analyzeFingerSeparation(landmarks);
+            setFingerSeparationAnalysis(separationAnalysis);
+            
+            // Log finger distance information for debugging
+            if (DEBUG) {
+              console.log('Finger distances:', distances);
+              console.log('Peace sign detected:', isPeaceSign);
+              console.log('Index-Middle distance:', distances.index_middle?.toFixed(4));
+              console.log('Fingers stuck together:', separationAnalysis.peaceStuckTogether);
+              console.log('Fingers separated (peace):', separationAnalysis.peaceSeparated);
+            }
+          }
+          
           // Update finger states for the debug display
           if (index === 0) {
             setFingerStates(fingerState);
@@ -413,7 +568,7 @@ const HandDrawing: React.FC = () => {
       // Start the safe cleanup process
       safeCleanup();
     };
-  }, [isHandTrackingActive, isWebcamSupported, dualHandMode, isToggling]);
+  }, [isHandTrackingActive, isWebcamSupported, dualHandMode]);
 
   // Handle different hand modes
   const handleHandMode = (
@@ -437,9 +592,20 @@ const HandDrawing: React.FC = () => {
     // Track previous mode to detect changes
     const prevMode = activeHandModesRef.current[handIndex];
     
-    // Handle mode change - always save drawing when switching from Drawing mode
-    if (prevMode === 'Drawing' && mode !== 'Drawing' && state.currentShape) {
+    // Handle mode change - always save drawing when switching from Drawing or PixelErasing mode
+    if ((prevMode === 'Drawing' || prevMode === 'PixelErasing') && mode !== prevMode && state.currentShape) {
       saveDrawing();
+    }
+
+    // Reset style when switching from PixelErasing to any other mode
+    if (prevMode === 'PixelErasing' && mode !== 'PixelErasing') {
+      // Reset only the composite operation to normal drawing
+      dispatch({
+        type: 'SET_STYLE',
+        payload: { 
+          globalCompositeOperation: 'source-over' // Reset to normal drawing
+        }
+      });
     }
 
     // Debug finger drawing issues
@@ -455,6 +621,9 @@ const HandDrawing: React.FC = () => {
     // Process current mode
     switch (mode) {
       case 'Drawing': {
+        // Set drawing state immediately when Drawing mode is detected
+        setIsDrawing(true);
+        
         // Get previous point for this hand - if none, use current point
         const prevPoint = prevPointsRef.current[handIndex] || transformedPoint;
         
@@ -473,6 +642,9 @@ const HandDrawing: React.FC = () => {
         // Update last drawing time
         lastDrawingUpdateRef.current = Date.now();
         
+        // Update local drawing state - this should already be true from above
+        // setIsDrawing(true); - Removed duplicate call
+        
         // Start drawing if not already doing so
         if (!state.currentShape) {
           // Switch to pencil tool
@@ -481,10 +653,8 @@ const HandDrawing: React.FC = () => {
             dispatch({ type: 'SET_TOOL', payload: 'pencil' });
           }
           
-          // Update local drawing state
-          setIsDrawing(true);
-          
           if (DEBUG_FINGER_DRAWING) console.log('Starting drawing from previous point', prevPoint);
+          if (DEBUG_FINGER_DRAWING) console.log('Current defaultStyle:', state.defaultStyle);
           
           // Start drawing from the previous point for continuity
           dispatch({
@@ -500,9 +670,12 @@ const HandDrawing: React.FC = () => {
             type: 'SET_STYLE',
             payload: { 
               strokeColor: drawingColorsRef.current[handIndex],
-              strokeWidth: drawingThickness
+              strokeWidth: strokeWidthRef.current,
+              globalCompositeOperation: 'source-over' // Ensure normal drawing mode
             }
           });
+          
+          if (DEBUG_FINGER_DRAWING) console.log('After setting style, defaultStyle:', state.defaultStyle);
           
           // Notify other users about the drawing start via WebSocket
           if (webSocket?.isConnected && webSocket?.startDrawing) {
@@ -532,11 +705,13 @@ const HandDrawing: React.FC = () => {
         
         // Periodically save drawing even while in drawing mode
         // This ensures strokes persist even if hand tracking is lost
+        /*
         const now = Date.now();
         if (now - lastDrawingUpdateRef.current > 200 && state.currentShape && state.currentShape.points.length > 5) {
           if (DEBUG_FINGER_DRAWING) console.log('Periodic save of drawing with', state.currentShape.points.length, 'points');
           saveDrawing();
         }
+        */
         break;
       }
       
@@ -606,6 +781,95 @@ const HandDrawing: React.FC = () => {
         break;
       }
       
+      case 'PixelErasing': {
+        // Set drawing state immediately when PixelErasing mode is detected
+        setIsDrawing(true);
+        
+        // Get previous point for this hand - if none, use current point
+        const prevPoint = prevPointsRef.current[handIndex] || transformedPoint;
+        
+        // Filter out erratic movements (very large jumps)
+        const distance = Math.sqrt(
+          Math.pow(transformedPoint.x - prevPoint.x, 2) + 
+          Math.pow(transformedPoint.y - prevPoint.y, 2)
+        );
+        
+        // Skip if the movement is too large (likely tracking error)
+        if (distance > 200) {
+          if (DEBUG_FINGER_DRAWING) console.log('Skipping large jump during erasing:', distance);
+          return;
+        }
+        
+        // Update last drawing time
+        lastDrawingUpdateRef.current = Date.now();
+        
+        // Start erasing if not already doing so
+        if (!state.currentShape) {
+          // Switch to pencil tool for erasing strokes
+          if (state.tool !== 'pencil') {
+            if (DEBUG_FINGER_DRAWING) console.log('Setting tool to pencil (during erasing)');
+            dispatch({ type: 'SET_TOOL', payload: 'pencil' });
+          }
+          
+          if (DEBUG_FINGER_DRAWING) console.log('Starting erasing from previous point', prevPoint);
+          
+          // Start erasing from the previous point for continuity
+          dispatch({
+            type: 'START_DRAWING',
+            payload: { 
+              point: prevPoint, 
+              type: 'pencil' 
+            }
+          });
+          
+          // Set erasing style with destination-out composite operation
+          dispatch({
+            type: 'SET_STYLE',
+            payload: { 
+              strokeColor: '#000000', // Color doesn't matter for erasing, but we need one
+              strokeWidth: strokeWidthRef.current * 2.5, // Larger width for erasing
+              globalCompositeOperation: 'destination-out' // This makes it erase
+            }
+          });
+          
+          // Notify other users about the erasing start via WebSocket
+          if (webSocket?.isConnected && webSocket?.startDrawing) {
+            if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand erasing start', prevPoint);
+            webSocket.startDrawing(prevPoint, 'pencil');
+          } else if (DEBUG_COLLAB) {
+            console.warn('[COLLAB] WebSocket not connected for erasing start');
+          }
+        } 
+        
+        if (DEBUG_FINGER_DRAWING) console.log('Continuing erasing at', transformedPoint);
+        
+        // Continue erasing - always update with new point
+        dispatch({
+          type: 'CONTINUE_DRAWING', 
+          payload: transformedPoint
+        });
+        
+        // Notify other users about the erasing continuation
+        if (webSocket?.isConnected && webSocket?.continueDrawing) {
+          if (DEBUG_COLLAB) console.log('[COLLAB] Broadcasting hand erasing update');
+          webSocket.continueDrawing(transformedPoint);
+        }
+        
+        // Store the current point for next frame
+        prevPointsRef.current[handIndex] = transformedPoint;
+        
+        // Periodically save erasing even while in erasing mode
+        // This ensures erasing strokes persist even if hand tracking is lost
+        /*
+        const now = Date.now();
+        if (now - lastDrawingUpdateRef.current > 200 && state.currentShape && state.currentShape.points.length > 5) {
+          if (DEBUG_FINGER_DRAWING) console.log('Periodic save of erasing with', state.currentShape.points.length, 'points');
+          saveDrawing();
+        }
+        */
+        break;
+      }
+      
       default:
         // If we were previously dragging, end the drag
         if (isDragging) {
@@ -669,8 +933,8 @@ const HandDrawing: React.FC = () => {
     
     // If turning on, make sure cursor exists
     if (newActiveState) {
-      ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000');
-      ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00');
+      ensureCursorExists(0, drawingColorsRef.current[0] || '#FF0000', strokeWidthRef.current);
+      ensureCursorExists(1, drawingColorsRef.current[1] || '#00FF00', strokeWidthRef.current);
     } else {
       // Hide cursor when turning off
       const cursor0 = document.getElementById('hand-cursor-0');
@@ -689,50 +953,7 @@ const HandDrawing: React.FC = () => {
 
   // Toggle dual hand mode
   const toggleDualHandMode = () => {
-    // If already toggling, prevent multiple calls
-    if (isToggling) return;
-    
-    // Set toggling state to prevent effect from firing early
-    setIsToggling(true);
-    
-    // End any active drawing
-    if (state.currentShape) {
-      dispatch({ type: 'END_DRAWING' });
-      setIsDrawing(false);
-    }
-
-    // Toggle the state
-    const newDualHandMode = !dualHandMode;
-    setDualHandMode(newDualHandMode);
-    
-    console.log(`Toggling dual hand mode: ${newDualHandMode ? 'ON' : 'OFF'}`);
-    
-    // Clear any active cursors
-    const cursor0 = document.getElementById('hand-cursor-0');
-    const cursor1 = document.getElementById('hand-cursor-1');
-    if (cursor0) cursor0.style.display = 'none';
-    if (cursor1) cursor1.style.display = 'none';
-    
-    // If hand tracking is active, we need to restart it with new settings
-    if (isHandTrackingActive) {
-      // Temporarily disable hand tracking
-      setIsHandTrackingActive(false);
-      
-      // Wait for a short time to ensure cleanup, then re-enable
-      setTimeout(() => {
-        setIsHandTrackingActive(true);
-        
-        // Reset toggling flag after a delay to ensure new effect has started
-        setTimeout(() => {
-          setIsToggling(false);
-        }, 200);
-      }, 1000); // Longer timeout to ensure proper cleanup
-    } else {
-      // If hand tracking is not active, just reset the toggling flag
-      setTimeout(() => {
-        setIsToggling(false);
-      }, 200);
-    }
+    setDualHandMode(prev => !prev);
   };
 
   // Add synchronization effect for drawing state
@@ -779,7 +1000,7 @@ const HandDrawing: React.FC = () => {
     const shapeId = state.currentShape.id;
     const shapePoints = [...state.currentShape.points]; // Make a copy of points
     
-    // First end the drawing in our local state
+    // End the drawing normally
     dispatch({ type: 'END_DRAWING' });
     
     // Reset transformedPoint for all hands
@@ -805,7 +1026,7 @@ const HandDrawing: React.FC = () => {
             points: shapePoints,
             style: { 
               strokeColor: drawingColorsRef.current[0],
-              strokeWidth: drawingThickness,
+              strokeWidth: strokeWidthRef.current,
               fillColor: 'transparent',
               opacity: 1,
               fontSize: 16,
@@ -827,65 +1048,35 @@ const HandDrawing: React.FC = () => {
   // Force clear all drawings
   const forceClearAll = () => {
     console.log('Force clearing all drawings');
-    
-    // Try to find and click the Clear All button in the Canvas component
-    const clearAllButton = document.querySelector('button[title="Clear All Drawings"]');
-    if (clearAllButton) {
-      console.log('Found Clear All button, clicking it');
-      (clearAllButton as HTMLButtonElement).click();
-      return;
-    }
-    
-    // Fallback: First make sure any current drawing is ended and saved
-    if (state.currentShape) {
-      console.log('Ending current drawing before clearing');
-      dispatch({ type: 'END_DRAWING' });
-      setIsDrawing(false);
-    }
-    
-    // Get all shape IDs
-    const shapeIds = state.shapes.map(shape => shape.id);
-    console.log('Shape IDs to delete:', shapeIds);
-    
-    // Delete all shapes if there are any
-    if (shapeIds.length > 0) {
-      console.log('Dispatching DELETE_SHAPES action with payload:', shapeIds);
-      dispatch({ type: 'DELETE_SHAPES', payload: shapeIds });
-      
-      // Verify the shapes were cleared after a short delay
-      setTimeout(() => {
-        console.log('After clearing, shapes count:', state.shapes.length);
-        
-        // If shapes weren't cleared, try again using a different approach
-        if (state.shapes.length > 0) {
-          console.log('Shapes not cleared on first attempt, trying individual deletion');
-          state.shapes.forEach(shape => {
-            dispatch({ 
-              type: 'DELETE_SHAPES', 
-              payload: [shape.id] 
-            });
-          });
-        }
-      }, 100);
-    } else {
-      console.log('No shapes to clear');
-    }
+    dispatch({ type: 'CLEAR_ALL' });
   };
 
-  // Update drawing colors
+  // Update drawing colors based on selected color
   useEffect(() => {
-    // Set colors for each hand
+    const selectedColor = colorPalette[selectedColorIndex];
     drawingColorsRef.current = {
-      0: '#FF0000', // Red for the first hand
-      1: '#00FF00'  // Green for the second hand
+      0: selectedColor, // Use selected color for the first hand
+      1: selectedColor  // Use selected color for the second hand too
     };
     
     // Make sure cursor elements have the right colors
     Object.entries(drawingColorsRef.current).forEach(([indexStr, color]) => {
       const index = parseInt(indexStr);
-      ensureCursorExists(index, color);
+      ensureCursorExists(index, color, strokeWidthRef.current);
     });
-  }, []);
+  }, [selectedColorIndex, colorPalette, strokeWidthRef.current]);
+
+  // Update stroke width in drawing context when currentStrokeWidth changes
+  useEffect(() => {
+    // Update the default style with the new stroke width from the toolset
+    dispatch({
+      type: 'SET_STYLE',
+      payload: { 
+        strokeWidth: strokeWidthRef.current,
+        strokeColor: drawingColorsRef.current[0] // Also update color to ensure consistency
+      }
+    });
+  }, [strokeWidthRef.current, selectedColorIndex]);
 
   return (
     <div className="hand-tracking-container">
@@ -942,121 +1133,271 @@ const HandDrawing: React.FC = () => {
       </div>
       
       {/* Hand mode legend */}
-      {isHandTrackingActive && (
-        <div className="absolute left-4 bottom-4 bg-white p-2 rounded shadow-md text-xs z-10">
-          <div className="text-sm font-bold mb-1">Hand Gestures:</div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
-            <span>Index Finger Only: Draw</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
-            <span>Closed Fist: Click Buttons</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
-            <span>Thumb + Index + Middle: Drag Canvas</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
-              <span className="text-red-500 font-bold text-xs">✕</span>
+      {isHandTrackingActive && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Hand Gestures"
+          initialPosition={{ x: 20, y: window.innerHeight - 200 }}
+        >
+          <div className="text-xs">
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
+              <span>Index Finger Only: Draw</span>
             </div>
-            <span>Thumb + Pinky: Clear All Drawings</span>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-2 flex items-center justify-center">
+                <span className="text-purple-500 font-bold text-xs">⌽</span>
+              </div>
+              <span>Index + Middle: Pixel Eraser</span>
+            </div>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
+              <span>Closed Fist: Click Buttons</span>
+            </div>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
+              <span>Thumb + Index + Middle: Drag Canvas</span>
+            </div>
+            <div className="flex items-center mb-1">
+              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
+                <span className="text-red-500 font-bold text-xs">✕</span>
+              </div>
+              <span>Thumb + Pinky: Clear All Drawings</span>
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
+            </div>
           </div>
-          <div className="text-xs text-gray-600 mt-1">
-            Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
-          </div>
-        </div>
+        </DraggableDebugPanel>
       )}
       
       {/* Debug panel for finger drawing - only shown when DEBUG_FINGER_DRAWING is enabled */}
-      {isHandTrackingActive && DEBUG_FINGER_DRAWING && (
-        <div className="absolute right-4 top-60 bg-white p-2 rounded shadow-md text-xs z-10 max-w-xs">
-          <div><strong>Finger Drawing Debug:</strong></div>
-          <div>Drawing mode: {activeHandModesRef.current[0]}</div>
-          <div>IsDrawing state: {isDrawing ? 'true' : 'false'}</div>
-          <div>Has currentShape: {state.currentShape ? 'yes' : 'no'}</div>
-          <div>Current tool: {state.tool}</div>
-          <div>Shapes in canvas: {state.shapes.length}</div>
-          {state.currentShape && (
-            <>
-              <div>Current points: {state.currentShape.points.length}</div>
-              <div>Stroke color: {state.currentShape.style.strokeColor}</div>
-              <div>Stroke width: {state.currentShape.style.strokeWidth}</div>
-            </>
-          )}
-          <div>Last cursor position: {handCursors[0] ? 
-            `x:${handCursors[0].x.toFixed(2)}, y:${handCursors[0].y.toFixed(2)}` : 
-            'none'
-          }</div>
-          <div>Last transformed point: {prevPointsRef.current[0] ? 
-            `x:${prevPointsRef.current[0].x.toFixed(2)}, y:${prevPointsRef.current[0].y.toFixed(2)}` : 
-            'none'
-          }</div>
-          <div>View transform: scale:{state.viewTransform.scale.toFixed(2)}, 
-            offset:({state.viewTransform.offsetX.toFixed(0)},{state.viewTransform.offsetY.toFixed(0)})</div>
-        </div>
+      {isHandTrackingActive && DEBUG_FINGER_DRAWING && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Finger Drawing Debug"
+          initialPosition={{ x: window.innerWidth - 400, y: 240 }}
+        >
+          <div className="text-xs">
+            <div>Drawing mode: {activeHandModesRef.current[0]}</div>
+            <div>IsDrawing state: {isDrawing ? 'true' : 'false'}</div>
+            <div>Has currentShape: {state.currentShape ? 'yes' : 'no'}</div>
+            <div>Current tool: {state.tool}</div>
+            <div>Shapes in canvas: {state.shapes.length}</div>
+            {state.currentShape && (
+              <>
+                <div>Current points: {state.currentShape.points.length}</div>
+                <div>Stroke color: {state.currentShape.style.strokeColor}</div>
+                <div>Stroke width: {state.currentShape.style.strokeWidth}</div>
+              </>
+            )}
+            <div>Last cursor position: {handCursors[0] ? 
+              `x:${handCursors[0].x.toFixed(2)}, y:${handCursors[0].y.toFixed(2)}` : 
+              'none'
+            }</div>
+            <div>Last transformed point: {prevPointsRef.current[0] ? 
+              `x:${prevPointsRef.current[0].x.toFixed(2)}, y:${prevPointsRef.current[0].y.toFixed(2)}` : 
+              'none'
+            }</div>
+            <div>View transform: scale:{state.viewTransform.scale.toFixed(2)}, 
+              offset:({state.viewTransform.offsetX.toFixed(0)},{state.viewTransform.offsetY.toFixed(0)})</div>
+          </div>
+        </DraggableDebugPanel>
       )}
       
       {/* Finger state debug panel */}
-      {isHandTrackingActive && (
-        <div className="absolute left-4 top-60 bg-white p-2 rounded shadow-md z-10">
-          <div className="text-sm font-bold mb-1">
-            Hand Finger States: 
-            <span className="text-xs font-normal ml-2">
+      {isHandTrackingActive && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Hand Finger States"
+          initialPosition={{ x: 20, y: 240 }}
+        >
+          <div className="text-xs">
+            <div className="text-sm font-bold mb-1">
               ({dualHandMode ? "Dual Hand Mode" : "Single Hand Mode"})
-            </span>
-          </div>
-          
-          {/* First hand */}
-          <div className="mb-2">
-            <div className="mb-1">Hand 1: {fingerStates.handType}</div>
-            <div className="flex space-x-2">
-              <div className={`w-8 h-12 border ${fingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">👍</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">☝️</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">🖕</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">💍</span>
-              </div>
-              <div className={`w-8 h-12 border ${fingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
-                <span className="text-xs font-bold">🤙</span>
-              </div>
             </div>
-          </div>
-          
-          {/* Second hand - only show in dual hand mode */}
-          {dualHandMode && (
-            <div>
-              <div className="mb-1">Hand 2: {secondHandFingerStates.handType}</div>
+            
+            {/* First hand */}
+            <div className="mb-2">
+              <div className="mb-1">Hand 1: {fingerStates.handType}</div>
               <div className="flex space-x-2">
-                <div className={`w-8 h-12 border ${secondHandFingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">👍</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">☝️</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">🖕</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">💍</span>
                 </div>
-                <div className={`w-8 h-12 border ${secondHandFingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                <div className={`w-8 h-12 border ${fingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
                   <span className="text-xs font-bold">🤙</span>
                 </div>
               </div>
             </div>
-          )}
+            
+            {/* Second hand - only show in dual hand mode */}
+            {dualHandMode && (
+              <div>
+                <div className="mb-1">Hand 2: {secondHandFingerStates.handType}</div>
+                <div className="flex space-x-2">
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.thumb ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">👍</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.index ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">☝️</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.middle ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">🖕</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.ring ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">💍</span>
+                  </div>
+                  <div className={`w-8 h-12 border ${secondHandFingerStates.pinky ? 'bg-green-300 border-green-600' : 'bg-red-300 border-red-600'} flex items-center justify-center rounded`}>
+                    <span className="text-xs font-bold">🤙</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </DraggableDebugPanel>
+      )}
+      
+      {/* Finger Distance Tracking Panel */}
+      {isHandTrackingActive && showDebugPanels && (
+        <DraggableDebugPanel 
+          title="Finger Distance Tracking 🤏"
+          initialPosition={{ x: 20, y: 20 }}
+        >
+          <div className="text-xs max-w-xs">
+            {/* Peace Sign Detection */}
+            <div className={`mb-2 p-2 rounded ${peaceSignDetected ? 'bg-green-100 border border-green-400' : 'bg-gray-100 border border-gray-300'}`}>
+              <div className="font-bold text-center">
+                {peaceSignDetected ? '✌️ Peace Sign Detected!' : '✌️ Peace Sign: Not Detected'}
+              </div>
+            </div>
+            
+            {/* Finger Separation Analysis */}
+            {fingerSeparationAnalysis && (
+              <div className="mb-2">
+                <div className="font-bold">Finger Analysis:</div>
+                <div className={`text-xs ${fingerSeparationAnalysis.peaceSeparated ? 'text-green-600' : 'text-gray-500'}`}>
+                  • Peace (Separated): {fingerSeparationAnalysis.peaceSeparated ? 'Yes ✓' : 'No'}
+                </div>
+                <div className={`text-xs ${fingerSeparationAnalysis.peaceStuckTogether ? 'text-orange-600' : 'text-gray-500'}`}>
+                  • Peace (Stuck Together): {fingerSeparationAnalysis.peaceStuckTogether ? 'Yes ⚠️' : 'No'}
+                </div>
+              </div>
+            )}
+            
+            {/* Finger Distances */}
+            <div className="mb-2">
+              <div className="font-bold">Finger Distances:</div>
+              <div className="max-h-32 overflow-y-auto">
+                {Object.entries(fingerDistances).map(([pair, distance]) => {
+                  const isStuck = distance < 0.03;
+                  const isSeparated = distance > 0.05;
+                  
+                  return (
+                    <div key={pair} className="text-xs flex justify-between items-center py-0.5">
+                      <span className="flex-1">
+                        • {pair.replace('_', ' ↔ ')}: 
+                        <span className="font-mono ml-1">{distance.toFixed(4)}</span>
+                      </span>
+                      <span className={`ml-2 px-1 rounded text-xs font-bold ${
+                        isStuck ? 'bg-orange-200 text-orange-800' : 
+                        isSeparated ? 'bg-green-200 text-green-800' : 
+                        'bg-gray-200 text-gray-700'
+                      }`}>
+                        {isStuck ? '🤏 Stuck' : isSeparated ? '✋ Apart' : '👌 Normal'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Instructions */}
+            <div className="text-xs text-gray-600 mt-2 border-t pt-1">
+              <div className="font-bold">Try these gestures:</div>
+              <div>• ✌️ Peace sign (separated fingers)</div>
+              <div>• 🤏 Index + middle stuck together</div>
+              <div>• 👆 Single finger pointing</div>
+            </div>
+          </div>
+        </DraggableDebugPanel>
+      )}
+       
+      {/* Mini Toolset - toggles on/off with peace sign */}
+      {isHandTrackingActive && isToolsetVisible && (
+        <div 
+          className="fixed z-30 bg-white rounded-lg shadow-lg border border-gray-300 p-3 pointer-events-auto"
+          style={{
+            top: toolsetPosition.y,
+            left: toolsetPosition.x,
+            minWidth: '200px'
+          }}
+        >
+          <div className="text-xs font-bold text-center mb-2 text-gray-700 flex items-center justify-between">
+            <span>✌️ CoCo Toolset</span>
+            <button
+              onClick={() => setIsToolsetVisible(false)}
+              className="ml-2 text-gray-400 hover:text-gray-600 text-sm"
+              title="Close toolset"
+            >
+              ✕
+            </button>
+          </div>
+          
+          {/* Stroke Width Slider */}
+          <div className="mb-3">
+            <div className="text-xs text-gray-600 mb-1">
+              Stroke Width: {strokeWidthRef.current}px
+            </div>
+            <input
+              id="thickness-slider"
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={strokeWidthRef.current}
+              onChange={(e) => setCurrentStrokeWidth(parseInt(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              style={{
+                background: `linear-gradient(to right, #4F46E5 0%, #4F46E5 ${((strokeWidthRef.current - 1) / 99) * 100}%, #D1D5DB ${((strokeWidthRef.current - 1) / 99) * 100}%, #D1D5DB 100%)`
+              }}
+            />
+          </div>
+          
+          {/* Color Palette */}
+          <div className="mb-2">
+            <div className="text-xs text-gray-600 mb-1">Colors:</div>
+            <div className="grid grid-cols-5 gap-1">
+              {colorPalette.map((color, index) => (
+                <button
+                  key={index}
+                  data-color-index={index}
+                  className={`w-6 h-6 rounded-full border-2 transition-all ${
+                    selectedColorIndex === index 
+                      ? 'border-gray-800 scale-110' 
+                      : 'border-gray-300 hover:border-gray-500'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => setSelectedColorIndex(index)}
+                  title={`Color ${index + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+          
+          {/* Current Mode Display */}
+          <div className="text-xs text-center text-gray-500 mt-2 pt-2 border-t border-gray-200">
+            Mode: {activeHandModesRef.current[0] || 'None'}
+          </div>
         </div>
       )}
     </div>
   );
 };
 
-export default HandDrawing; 
+export default HandDrawing;

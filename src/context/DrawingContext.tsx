@@ -21,8 +21,8 @@ interface DrawingState {
     offsetY: number
   }
   history: {
-    past: DrawingState[]
-    future: DrawingState[]
+    past: Shape[][]
+    future: Shape[][]
   }
 }
 
@@ -31,6 +31,7 @@ type DrawingAction =
   | { type: 'START_DRAWING'; payload: { point: Point; type: Shape['type'] } }
   | { type: 'CONTINUE_DRAWING'; payload: Point }
   | { type: 'END_DRAWING' }
+  | { type: 'DISCARD_CURRENT_SHAPE' }
   | { type: 'ADD_SHAPE'; payload: Shape }
   | { type: 'UPDATE_SHAPE'; payload: { id: string; updates: Partial<Shape> } }
   | { type: 'DELETE_SHAPES'; payload: string[] }
@@ -59,6 +60,7 @@ type DrawingAction =
   | { type: 'START_SELECTION_BOX'; payload: Point }
   | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
   | { type: 'END_SELECTION_BOX' }
+  | { type: 'CLEAR_ALL' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -226,6 +228,12 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       }
     }
 
+    case 'DISCARD_CURRENT_SHAPE':
+      return {
+        ...state,
+        currentShape: null,
+      }
+
     case 'ADD_SHAPE':
       return {
         ...state,
@@ -331,14 +339,27 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
       }
     }
 
-    case 'SET_STYLE':
+    case 'SET_STYLE': {
+      const newDefaultStyle = {
+        ...state.defaultStyle,
+        ...action.payload,
+      };
+      
+      // Also update the current shape's style if there's an active drawing
+      const updatedCurrentShape = state.currentShape ? {
+        ...state.currentShape,
+        style: {
+          ...state.currentShape.style,
+          ...action.payload,
+        }
+      } : null;
+      
       return {
         ...state,
-        defaultStyle: {
-          ...state.defaultStyle,
-          ...action.payload,
-        },
-      }
+        defaultStyle: newDefaultStyle,
+        currentShape: updatedCurrentShape,
+      };
+    }
 
     case 'SET_FILL_COLOR':
       return {
@@ -538,7 +559,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         }
       }
       
-    case 'END_SELECTION_BOX':
+    case 'END_SELECTION_BOX': {
       if (!state.selectionBox || !state.selectionBox.start || !state.selectionBox.end) {
         return {
           ...state,
@@ -559,7 +580,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
           switch (shape.type) {
             case 'rectangle':
             case 'ellipse':
-            case 'image':
+            case 'image': {
               // Check if any corner of the shape is inside the selection box
               const [start, end] = shape.points
               const shapeMinX = Math.min(start.x, end.x)
@@ -574,6 +595,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
                 shapeMaxY < startY ||
                 shapeMinY > endY
               )
+            }
               
             case 'line':
             case 'pencil':
@@ -601,6 +623,24 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         selectionBox: null,
         selectedShapeIds
       }
+    }
+
+    case 'CLEAR_ALL': {
+      // End any current drawing first
+      if (state.currentShape) {
+        // We don't save the current drawing, just discard it.
+      }
+      return {
+        ...state,
+        shapes: [],
+        currentShape: null,
+        selectedShapeIds: [],
+        history: {
+          past: [...state.history.past, state.shapes],
+          future: [],
+        },
+      }
+    }
 
     default:
       return state
