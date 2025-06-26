@@ -92,6 +92,20 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [isLiveStreaming, setIsLiveStreaming] = useState(false);
   const lastCanvasHashRef = useRef<string>('');
 
+  // Add state to track if we should pause streaming during critical operations
+  const [isStreamingPaused, setIsStreamingPaused] = useState(false);
+
+  // Add a ref to always get the latest state
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // Debug effect to log when shapes change
+  useEffect(() => {
+    console.log('🔄 SHAPES CHANGED - Current count:', state.shapes.length);
+    console.log('🔄 SHAPES CHANGED - Shapes:', state.shapes);
+    console.log('🔄 SHAPES CHANGED - Is AI connected:', isMultimodalConnected);
+  }, [state.shapes, isMultimodalConnected]);
+
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
     const gridSize = 20 * state.viewTransform.scale
@@ -708,6 +722,9 @@ const Canvas: React.FC<CanvasProps> = () => {
       setIsDrawing(false);
       dispatch({ type: 'END_DRAWING' });
       
+      // Pause streaming during critical operations
+      setIsStreamingPaused(true);
+      
       // Immediately send canvas update to Gemini when drawing stops
       if (isLiveStreaming && multimodalWebSocketRef.current) {
         setTimeout(async () => {
@@ -726,7 +743,17 @@ const Canvas: React.FC<CanvasProps> = () => {
             multimodalWebSocketRef.current?.send(JSON.stringify(payload));
             console.log('📡 Sent immediate canvas update after drawing');
           }
+          
+          // Resume streaming after a short delay
+          setTimeout(() => {
+            setIsStreamingPaused(false);
+          }, 500);
         }, 100); // Small delay to ensure canvas is fully rendered
+      } else {
+        // Resume streaming if not live streaming
+        setTimeout(() => {
+          setIsStreamingPaused(false);
+        }, 500);
       }
     }
   };
@@ -908,44 +935,39 @@ const Canvas: React.FC<CanvasProps> = () => {
   }
 
   // Wrapper function for multimodal server to use
-  const enhanceDrawingWithGeminiWithPrompt = async (prompt: string, fromMultimodal: boolean = false) => {
-    console.log('🚀 Starting enhancement process with prompt:', prompt, 'fromMultimodal:', fromMultimodal);
-    console.log('📊 Current shapes on canvas:', state.shapes.length);
-    console.log('📋 Shapes details:', state.shapes.map(s => ({ type: s.type, points: s.points.length })));
-    console.log('🎨 Current drawing state:', { 
-      isDrawing, 
-      currentShape: state.currentShape ? { type: state.currentShape.type, points: state.currentShape.points.length } : null 
-    });
+  const enhanceDrawingWithGeminiWithPrompt = useCallback(async (prompt: string, fromMultimodal: boolean = false) => {
+    console.log('🚀 Starting enhancement with prompt:', prompt);
+    console.log('🚀 From multimodal:', fromMultimodal);
+    console.log('🚀 Current shapes count:', stateRef.current.shapes.length);
     
-    // Add a small delay to ensure drawing state is fully updated
-    if (isDrawing || state.currentShape) {
-      console.log('⏳ Drawing in progress, waiting for completion...');
-      await new Promise(resolve => setTimeout(resolve, 100));
-      console.log('📊 After delay - shapes on canvas:', state.shapes.length);
-    }
-    
-    // Check if there are shapes to save
-    if (state.shapes.length === 0) {
-      console.log('❌ No shapes to enhance - please draw something first');
-      window.showToast('Draw something first before enhancing', 'info', 3000);
-      
-      // If called from multimodal server, send error back
-      if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-        console.log('📤 Sending "no shapes" error back to multimodal server');
-        multimodalWebSocketRef.current.send(JSON.stringify({
-          type: 'enhancement_error',
-          error: 'No shapes to enhance - please draw something first',
-          success: false
-        }));
-      }
-      return;
-    }
-
-    console.log('✅ Shapes found, starting enhancement process');
-    setEnhancementStatus('processing');
-    setEnhancedImage(null);
+    // Pause streaming during enhancement to prevent interference
+    setIsStreamingPaused(true);
     
     try {
+      // Check if there are shapes to save (including any that might have been completed)
+      if (stateRef.current.shapes.length === 0) {
+        console.log('❌ No shapes to enhance - please draw something first');
+        window.showToast('Draw something first before enhancing', 'info', 3000);
+        
+        // If called from multimodal server, send error back
+        if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          console.log('📤 Sending "no shapes" error back to multimodal server');
+          multimodalWebSocketRef.current.send(JSON.stringify({
+            type: 'enhancement_error',
+            error: 'No shapes to enhance - please draw something first',
+            success: false
+          }));
+        }
+        
+        // Resume streaming
+        setIsStreamingPaused(false);
+        return;
+      }
+
+      console.log('✅ Shapes found, starting enhancement process');
+      setEnhancementStatus('processing');
+      setEnhancedImage(null);
+      
       // Always save the drawing first before enhancing
       console.log('💾 Creating temporary canvas for drawing...');
       // Create a temporary canvas for rendering just the drawings
@@ -962,7 +984,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       let maxY = -Infinity;
       
       // Calculate the bounds for all shapes
-      state.shapes.forEach(shape => {
+      stateRef.current.shapes.forEach(shape => {
         shape.points.forEach(point => {
           minX = Math.min(minX, point.x);
           minY = Math.min(minY, point.y);
@@ -1006,7 +1028,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       tempCtx.translate(-minX, -minY);
       
       // Draw all shapes
-      state.shapes.forEach(shape => {
+      stateRef.current.shapes.forEach(shape => {
         renderShape(tempCtx, shape);
       });
       
@@ -1094,10 +1116,13 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       window.showToast(`Error enhancing drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
       setEnhancementStatus('error');
+    } finally {
+      // Always resume streaming after enhancement operations
+      setIsStreamingPaused(false);
     }
-  }
+  }, [state.shapes]);
 
-  const pollEnhancementStatus = async (requestId: string) => {
+  const pollEnhancementStatus = useCallback(async (requestId: string) => {
     console.log('🔄 Polling enhancement status for requestId:', requestId);
     try {
       const response = await fetch(`http://localhost:5001/api/enhancement-status/${requestId}`);
@@ -1146,7 +1171,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       setEnhancementStatus('error');
       window.showToast(`Error checking enhancement status: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
     }
-  }
+  }, []);
 
   const getCursorForTool = (tool: string): string => {
     switch (tool) {
@@ -1380,50 +1405,65 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   // Multimodal AI functions
   const connectMultimodal = () => {
-    console.log('Attempting to connect to multimodal server...');
+    console.log('🔌 Connecting to multimodal server...');
+    
+    if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      console.log('✅ Already connected to multimodal server');
+      return;
+    }
+    
     try {
       multimodalWebSocketRef.current = new WebSocket('ws://localhost:9083');
       
       multimodalWebSocketRef.current.onopen = () => {
         console.log('✅ Connected to multimodal server');
-        
-        // Send setup message immediately - backend expects this as first message
-        const setupMessage = {
-          setup: {
-            response_modalities: ["AUDIO", "TEXT"]
-          },
-        };
-        multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
-        
-        // Also send current mute status
-        multimodalWebSocketRef.current.send(JSON.stringify({
-          type: 'mute_toggle',
-          muted: isMuted
-        }));
-        
-        // Now set connection state
         setIsMultimodalConnected(true);
         setMultimodalError(null);
         
-        // Initialize audio context for automatic recording
+        // Send setup message
+        const setupMessage = {
+          setup: {
+            response_modalities: ["AUDIO", "TEXT"]
+          }
+        };
+        console.log('📤 Sending setup message:', setupMessage);
+        multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+        
+        // Send mute state
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: "mute_toggle",
+          muted: isMuted
+        }));
+        
+        // Initialize audio system
         initializeMultimodalAudio();
+        
+        // Start live streaming
+        startLiveStreaming();
       };
-
-      multimodalWebSocketRef.current.onmessage = handleMultimodalMessage;
+      
+      multimodalWebSocketRef.current.onmessage = (event) => {
+        console.log('📨 RAW WEBSOCKET MESSAGE RECEIVED:', event.data);
+        handleMultimodalMessage(event);
+      };
       
       multimodalWebSocketRef.current.onclose = () => {
-        console.log('❌ Disconnected from multimodal server');
+        console.log('🔌 Disconnected from multimodal server');
         setIsMultimodalConnected(false);
         setIsRecording(false);
+        setIsPlayingAudio(false);
+        setVoiceStatus('idle');
+        stopLiveStreaming();
       };
-
+      
       multimodalWebSocketRef.current.onerror = (error) => {
         console.error('❌ WebSocket error:', error);
         setMultimodalError('Failed to connect to AI assistant');
         setIsMultimodalConnected(false);
       };
-    } catch (err) {
-      console.error('❌ Failed to connect:', err);
+      
+    } catch (error) {
+      console.error('❌ Failed to create WebSocket connection:', error);
       setMultimodalError('Failed to connect to AI assistant');
     }
   };
@@ -1467,11 +1507,12 @@ const Canvas: React.FC<CanvasProps> = () => {
     });
   };
 
-  const handleMultimodalMessage = (event: MessageEvent) => {
+  const handleMultimodalMessage = useCallback(async (event: MessageEvent) => {
+    console.log('📨 MULTIMODAL MESSAGE RECEIVED:', event.data);
+    
     try {
       const data = JSON.parse(event.data);
-      console.log('🔍 [DEBUG] Raw message:', event.data);
-      console.log('🔍 [DEBUG] Parsed message:', data);
+      console.log('📨 PARSED MESSAGE DATA:', data);
       
       // If muted, ignore all voice/audio related messages
       if (isMuted) {
@@ -1492,13 +1533,13 @@ const Canvas: React.FC<CanvasProps> = () => {
       if (data.type === 'save_and_enhance') {
         console.log('🎯 Save and enhance request from multimodal server:', data);
         console.log('🔍 DEBUG: Current state when enhancement requested:');
-        console.log('  - Shapes count:', state.shapes.length);
-        console.log('  - Shapes:', state.shapes);
+        console.log('  - Shapes count:', stateRef.current.shapes.length);
+        console.log('  - Shapes:', stateRef.current.shapes);
         console.log('  - Is drawing:', isDrawing);
-        console.log('  - Current shape:', state.currentShape);
-        console.log('  - Tool:', state.tool);
-        console.log('  - All state keys:', Object.keys(state));
-        console.log('  - Would show enhance button:', state.shapes.length > 0);
+        console.log('  - Current shape:', stateRef.current.currentShape);
+        console.log('  - Tool:', stateRef.current.tool);
+        console.log('  - All state keys:', Object.keys(stateRef.current));
+        console.log('  - Would show enhance button:', stateRef.current.shapes.length > 0);
         
         // Call EXACTLY the same as the button - no differences at all
         console.log('🚀 Starting enhancement with EXACT same call as button');
@@ -1509,15 +1550,18 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       // Handle save_drawing request from multimodal server
       if (data.type === 'save_drawing') {
-        console.log('💾 Save drawing request from multimodal server');
+        console.log('🎤 VOICE COMMAND - Save drawing request from multimodal server');
+        console.log('🎤 VOICE COMMAND - Shapes count:', stateRef.current.shapes.length);
+        console.log('🎤 VOICE COMMAND - Shapes:', stateRef.current.shapes);
+        console.log('🎤 VOICE COMMAND - Is drawing:', isDrawing);
+        console.log('🎤 VOICE COMMAND - Current shape:', stateRef.current.currentShape);
+        console.log('🎤 VOICE COMMAND - Tool:', stateRef.current.tool);
+        console.log('🎤 VOICE COMMAND - View transform:', stateRef.current.viewTransform);
+        console.log('🎤 VOICE COMMAND - All state keys:', Object.keys(stateRef.current));
         
-        // Automatically save the current drawing
-        if (state.shapes.length > 0) {
-          console.log('💾 Auto-saving current drawing...');
-          saveCanvasAsPNG();
-        } else {
-          console.log('❌ No shapes to save');
-        }
+        // Call EXACTLY the same function as the button - no differences at all
+        console.log('🚀 Calling EXACT same function as button: enhanceDrawingWithGeminiWithPrompt');
+        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
       }
       
       if (data.text) {
@@ -1528,10 +1572,10 @@ const Canvas: React.FC<CanvasProps> = () => {
         };
         setMultimodalMessages(prev => [...prev, newMessage]);
         
-        // Show a subtle notification for Gemini's response
-        if (window.showToast) {
-          window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
-        }
+        // Remove the Gemini text response toast to avoid unwanted messages
+        // if (window.showToast) {
+        //   window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
+        // }
       }
       
       // Handle enhancement commands triggered by voice
@@ -1547,10 +1591,10 @@ const Canvas: React.FC<CanvasProps> = () => {
             window.showToast('Enhancement started via voice command!', 'success', 3000);
           }
         } else if (data.enhancement_error) {
-          // Show error message
-          if (window.showToast) {
-            window.showToast('Enhancement failed via voice command', 'error', 3000);
-          }
+          // Remove the error message toast to avoid unwanted messages
+          // if (window.showToast) {
+          //   window.showToast('Enhancement failed via voice command', 'error', 3000);
+          // }
         }
       }
       
@@ -1566,7 +1610,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     } catch (err) {
       console.error('Error parsing WebSocket message:', err);
     }
-  };
+  }, [isDrawing, isMuted, setMultimodalMessages, setVoiceStatus, enhanceDrawingWithGeminiWithPrompt, pollEnhancementStatus]);
 
   const initializeMultimodalAudio = async () => {
     try {
@@ -1693,21 +1737,26 @@ const Canvas: React.FC<CanvasProps> = () => {
     console.log('📷 Starting continuous canvas streaming...');
     setIsLiveStreaming(true);
     
-    // Capture canvas container every 500ms
+    // Capture canvas container every 2 seconds (increased from 500ms to reduce interference)
     const streamingInterval = setInterval(() => {
-      if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-        const canvasContainer = document.querySelector('[data-canvas-container]');
-        if (canvasContainer) {
-          html2canvas(canvasContainer as HTMLElement, {
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: '#fafaf9',
-            scale: 1,
-            logging: false
-          }).then(canvas => {
-          const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-            console.log('📷 [STREAMING] Capturing canvas container...');
-          
+      // Don't stream if paused or if WebSocket is not ready
+      if (isStreamingPaused || multimodalWebSocketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      
+      const canvasContainer = document.querySelector('[data-canvas-container]');
+      if (canvasContainer) {
+        // Use a more conservative approach to avoid interfering with canvas rendering
+        html2canvas(canvasContainer as HTMLElement, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#fafaf9',
+          scale: 0.8, // Reduced scale to reduce processing load
+          logging: false
+        }).then(canvas => {
+          const imageData = canvas.toDataURL('image/jpeg', 0.7).split(',')[1]; // Reduced quality
+          console.log('📷 [STREAMING] Capturing canvas container...');
+        
           const payload = {
             realtime_input: {
               media_chunks: [{
@@ -1716,19 +1765,21 @@ const Canvas: React.FC<CanvasProps> = () => {
               }],
             },
           };
-          
-          multimodalWebSocketRef.current.send(JSON.stringify(payload));
+        
+          if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+            multimodalWebSocketRef.current.send(JSON.stringify(payload));
             console.log('📷 [STREAMING] Canvas container frame sent to Gemini');
-          }).catch(err => {
-            console.error('❌ [STREAMING] Failed to capture canvas container:', err);
-          });
-        }
+          }
+        }).catch(err => {
+          console.error('❌ [STREAMING] Failed to capture canvas container:', err);
+          // Don't let streaming errors affect the main canvas functionality
+        });
       }
-    }, 500);
+    }, 2000); // Increased from 500ms to 2000ms to reduce interference
     
     // Store interval for cleanup
     multimodalStreamingIntervalRef.current = streamingInterval;
-    console.log('📷 Canvas container streaming interval started - will capture every 500ms');
+    console.log('📷 Canvas container streaming interval started - will capture every 2 seconds');
   };
 
   // Stop continuous canvas streaming
@@ -1809,7 +1860,14 @@ const Canvas: React.FC<CanvasProps> = () => {
       {state.shapes.length > 0 && (
         <button
           className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={() => enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail')}
+          onClick={() => {
+            console.log('🔘 BUTTON CLICK - Starting enhancement');
+            console.log('🔘 BUTTON CLICK - Shapes count:', state.shapes.length);
+            console.log('🔘 BUTTON CLICK - Shapes:', state.shapes);
+            console.log('🔘 BUTTON CLICK - Is drawing:', isDrawing);
+            console.log('🔘 BUTTON CLICK - Current shape:', state.currentShape);
+            enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+          }}
           disabled={enhancementStatus === 'processing'}
           title="Enhance with Gemini"
         >

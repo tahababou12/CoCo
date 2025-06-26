@@ -11,6 +11,7 @@ from google.genai import types
 from PIL import Image
 import platform
 import subprocess
+import time
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -676,6 +677,9 @@ def enhance_image_voice():
                 "status": "busy"
             }), 429  # Too Many Requests
         
+        # Wait a moment for any pending saves to complete
+        time.sleep(0.5)
+        
         # Find the most recent image in the img directory
         img_files = [f for f in os.listdir(img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if not img_files:
@@ -686,7 +690,17 @@ def enhance_image_voice():
         latest_image = img_files[0]
         filepath = os.path.join(img_dir, latest_image)
         
+        # Get the file modification time to verify it's recent
+        file_mtime = os.path.getmtime(filepath)
+        current_time = time.time()
+        time_diff = current_time - file_mtime
+        
         print(f"Using latest image for voice enhancement: {latest_image}")
+        print(f"Image was modified {time_diff:.2f} seconds ago")
+        
+        # If the image is older than 10 seconds, it might not be the current drawing
+        if time_diff > 10:
+            print(f"Warning: Latest image is {time_diff:.2f} seconds old - may not be current drawing")
         
         # Generate a unique request ID
         request_id = f"voice_req_{datetime.now().timestamp()}"
@@ -700,7 +714,8 @@ def enhance_image_voice():
             "success": True,
             "requestId": request_id,
             "message": "Voice-triggered enhancement started",
-            "imageUsed": latest_image
+            "imageUsed": latest_image,
+            "imageAge": f"{time_diff:.2f} seconds"
         })
     except Exception as e:
         error_msg = f"Error requesting voice-triggered image enhancement: {str(e)}"
@@ -709,6 +724,72 @@ def enhance_image_voice():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to process voice enhancement request", "details": str(e)}), 500
+
+# API endpoint to save and enhance current canvas via voice command
+@app.route('/api/save-and-enhance-voice', methods=['POST'])
+def save_and_enhance_voice():
+    global is_processing
+    
+    try:
+        data = request.json
+        prompt = data.get('prompt', 'Enhance this drawing with more detail and artistic flair')
+        canvas_data = data.get('canvasData')  # Base64 canvas data from frontend
+        
+        print(f"Received save-and-enhance voice request with prompt: {prompt}")
+        
+        # Check if another enhancement is already in progress
+        if is_processing:
+            print("Save-and-enhance request rejected: Another enhancement is already in progress")
+            return jsonify({
+                "error": "Another enhancement is already in progress", 
+                "status": "busy"
+            }), 429  # Too Many Requests
+        
+        if not canvas_data:
+            return jsonify({"error": "No canvas data provided"}), 400
+        
+        # Save the canvas data first
+        try:
+            # Extract the base64 data from the data URL
+            base64_data = canvas_data.replace('data:image/png;base64,', '')
+            
+            # Generate a unique filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"voice-enhanced-{timestamp}.png"
+            filepath = os.path.join(img_dir, filename)
+            
+            # Save the file
+            with open(filepath, 'wb') as f:
+                f.write(base64.b64decode(base64_data))
+            
+            print(f"Canvas saved to {filepath}")
+            
+        except Exception as save_error:
+            error_msg = f"Error saving canvas: {str(save_error)}"
+            print(error_msg)
+            return jsonify({"error": error_msg}), 500
+        
+        # Generate a unique request ID
+        request_id = f"voice_req_{datetime.now().timestamp()}"
+        print(f"Starting save-and-enhance with request ID: {request_id}")
+        
+        # Trigger the enhancement in a background thread
+        enhance_drawing_with_gemini(filepath, prompt, request_id)
+        
+        # Return immediately with the request ID for status polling
+        return jsonify({
+            "success": True,
+            "requestId": request_id,
+            "message": "Save and enhance started",
+            "savedImage": filename
+        })
+    except Exception as e:
+        error_msg = f"Error in save-and-enhance: {str(e)}"
+        print(error_msg)
+        # Log detailed error information for debugging
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Failed to process save-and-enhance request", "details": str(e)}), 500
 
 # Serve static files from the various directories
 @app.route('/img/<path:filename>')
