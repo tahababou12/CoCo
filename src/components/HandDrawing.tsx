@@ -1166,20 +1166,6 @@ const HandDrawing: React.FC = () => {
             <div className="text-xs text-gray-600 mt-1">
               Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
             </div>
-      {isHandTrackingActive && (
-        <div className="absolute left-4 bottom-4 bg-white p-2 rounded shadow-md text-xs z-10">
-          <div className="text-sm font-bold mb-1">Hand Gestures:</div>
-          <div className="flex items-center mb-1">
-            <span className="text-lg mr-2">🖐️</span>
-            <span>Open palm - all fingers extended: Draw</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <span className="text-lg mr-2">🤙</span>
-            <span>Thumb + pinky extended: Clear</span>
-          </div>
-          <div className="flex items-center mb-1">
-            <span className="text-lg mr-2">✊</span>
-            <span>Closed fist - all fingers curled: Click</span>
           </div>
         </DraggableDebugPanel>
       )}

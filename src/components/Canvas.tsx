@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
+import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { useDrawing } from '../context/DrawingContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
@@ -809,18 +809,23 @@ const Canvas: React.FC<CanvasProps> = () => {
       console.log('✅ Image saved successfully:', saveResult);
       
 
-      // Use a default enhancement prompt
-      const defaultPrompt = 'Enhance this sketch into a more interesting image with a little bit more detail. Make sure to follow the artstyle, mood, and extra details if provided, othewise just stick to a normal enhancement.';
+      // Build the enhancement prompt with generation settings
+      const defaultPrompt = 'Enhance this sketch into a more interesting image with a little bit more detail. Make sure to follow the artstyle, mood, and extra details if provided, otherwise just stick to a normal enhancement.';
 
-      let customPrompt = defaultPrompt;
+      let finalPrompt = defaultPrompt;
       const customParts = [];
       if (genSettings.style.trim()) customParts.push(`Artstyle: ${genSettings.style.trim()}.`);
       if (genSettings.mood.trim()) customParts.push(`Mood/emotion: ${genSettings.mood.trim()}.`);
       if (genSettings.details.trim()) customParts.push(`Extra details: ${genSettings.details.trim()}.`);
-      if (customParts.length > 0) customPrompt = `${defaultPrompt}\n${customParts.join(' ')}`;
-      // Use the provided prompt or default enhancement prompt
-      const enhancementPrompt = prompt || 'Enhance this sketch into an image with more detail';
-      console.log('🎨 Enhancement prompt:', enhancementPrompt);
+      
+      // If we have custom settings, use them; otherwise use the passed prompt or default
+      if (customParts.length > 0) {
+        finalPrompt = `${defaultPrompt}\n${customParts.join(' ')}`;
+        console.log('🎨 Using custom prompt with generation settings:', finalPrompt);
+      } else {
+        finalPrompt = prompt || defaultPrompt;
+        console.log('🎨 Using default/passed prompt:', finalPrompt);
+      }
 
       // Request image enhancement from Flask server
       console.log('🚀 Calling enhancement API...');
@@ -831,11 +836,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         },
         body: JSON.stringify({ 
           filename: saveResult.filename,
-<<<<<<< HEAD
-          prompt: customPrompt
-=======
-          prompt: enhancementPrompt
->>>>>>> voice-enhance
+          prompt: finalPrompt
         }),
       });
 
@@ -888,7 +889,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       // Always resume streaming after enhancement operations
       setIsStreamingPaused(false);
     }
-  }, [state.shapes]);
+  }, [state.shapes, genSettings]);
 
   const pollEnhancementStatus = useCallback(async (requestId: string) => {
     console.log('🔄 Polling enhancement status for requestId:', requestId);
@@ -1117,7 +1118,6 @@ const Canvas: React.FC<CanvasProps> = () => {
             e.nativeEvent.stopImmediatePropagation();
           }}
           aria-label="Close enhanced image"
->>>>>>> voice-enhance
         >
           ✕
         </button>
@@ -1658,9 +1658,6 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   return (
     <div 
-      ref={containerRef} 
-      className="absolute inset-0 bg-stone-50 select-none" 
-      style={{ touchAction: 'none' }}
       ref={containerRef}
       data-canvas-container
       className="flex-1 overflow-hidden bg-stone-50 relative select-none"
@@ -1698,7 +1695,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         <>
           <button
             className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-            onClick={enhanceDrawingWithGemini}
+            onClick={() => enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail')}
             disabled={enhancementStatus === 'processing'}
             title="Enhance with Gemini"
           >
@@ -1749,21 +1746,6 @@ const Canvas: React.FC<CanvasProps> = () => {
             </div>
           )}
         </>
-        <button
-          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={() => {
-            console.log('🔘 BUTTON CLICK - Starting enhancement');
-            console.log('🔘 BUTTON CLICK - Shapes count:', state.shapes.length);
-            console.log('🔘 BUTTON CLICK - Shapes:', state.shapes);
-            console.log('🔘 BUTTON CLICK - Is drawing:', isDrawing);
-            console.log('🔘 BUTTON CLICK - Current shape:', state.currentShape);
-            enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
-          }}
-          disabled={enhancementStatus === 'processing'}
-          title="Enhance with Gemini"
-        >
-          {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
-        </button>
       )}
 
       {/* Multimodal AI Assistant Button */}
