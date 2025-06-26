@@ -75,7 +75,8 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false)
   const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date, isTranscript?: boolean}>>([])
   const [multimodalError, setMultimodalError] = useState<string | null>(null)
-  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening'>('idle')
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'muted'>('idle')
+  const [isMuted, setIsMuted] = useState(false)
   
   // Multimodal refs
   const multimodalWebSocketRef = useRef<WebSocket | null>(null)
@@ -1238,20 +1239,20 @@ const Canvas: React.FC<CanvasProps> = () => {
     // Add the image to the state
     setInteractiveEnhancedImages(prev => {
       const newImages = [
-        ...prev,
-        {
-          id,
+      ...prev,
+      {
+        id,
           url: imageUrl,
-          x,
-          y,
-          width: displayWidth,
-          height: displayHeight,
-          prompt: result.prompt,
-          base64Data: result.base64Data,
-          isDragging: false,
-          isResizing: false,
-          resizeHandle: null
-        }
+        x,
+        y,
+        width: displayWidth,
+        height: displayHeight,
+        prompt: result.prompt,
+        base64Data: result.base64Data,
+        isDragging: false,
+        isResizing: false,
+        resizeHandle: null
+      }
       ];
       console.log('📊 Total enhanced images now:', newImages.length);
       return newImages;
@@ -1385,9 +1386,27 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       multimodalWebSocketRef.current.onopen = () => {
         console.log('✅ Connected to multimodal server');
+        
+        // Send setup message immediately - backend expects this as first message
+        const setupMessage = {
+          setup: {
+            response_modalities: ["AUDIO", "TEXT"]
+          },
+        };
+        multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+        
+        // Also send current mute status
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: 'mute_toggle',
+          muted: isMuted
+        }));
+        
+        // Now set connection state
         setIsMultimodalConnected(true);
         setMultimodalError(null);
-        sendMultimodalSetup();
+        
+        // Initialize audio context for automatic recording
+        initializeMultimodalAudio();
       };
 
       multimodalWebSocketRef.current.onmessage = handleMultimodalMessage;
@@ -1409,73 +1428,43 @@ const Canvas: React.FC<CanvasProps> = () => {
     }
   };
 
-  const disconnectMultimodal = () => {
-    console.log('🔌 Disconnecting from multimodal server...');
-    
-    // Stop recording if active
-    if (isRecording) {
-      stopMultimodalRecording();
-    }
-    
-    // Stop live streaming
-    stopLiveStreaming();
-    
-    // Close WebSocket connection
-    if (multimodalWebSocketRef.current) {
-      // Remove all event listeners to prevent memory leaks
-      multimodalWebSocketRef.current.onopen = null;
-      multimodalWebSocketRef.current.onmessage = null;
-      multimodalWebSocketRef.current.onclose = null;
-      multimodalWebSocketRef.current.onerror = null;
+  // Auto-start recording when connected and not muted
+  useEffect(() => {
+    if (isMultimodalConnected && !isMuted && multimodalAudioContextRef.current && !isRecording) {
+      // Small delay to ensure everything is initialized
+      const timer = setTimeout(() => {
+        startMultimodalRecording();
+      }, 1000);
       
-      // Close the connection properly
-      if (multimodalWebSocketRef.current.readyState === WebSocket.OPEN) {
-        multimodalWebSocketRef.current.close(1000, 'User disconnected');
+      return () => clearTimeout(timer);
+    }
+  }, [isMultimodalConnected, isMuted, isRecording]);
+
+  const toggleMute = () => {
+    setIsMuted((prev) => {
+      const newMuted = !prev;
+      setVoiceStatus(newMuted ? 'muted' : 'idle');
+      if (newMuted && isRecording) {
+        stopMultimodalRecording();
       }
       
-      multimodalWebSocketRef.current = null;
-    }
-    
-    // Reset all states
-    setIsMultimodalConnected(false);
-    setIsRecording(false);
-    setVoiceStatus('idle');
-    setMultimodalError(null);
-    setMultimodalMessages([]);
-    setIsPlayingAudio(false);
-    multimodalIsPlayingRef.current = false;
-    
-    // Clear audio queue
-    multimodalAudioQueueRef.current = [];
-    
-    // Signal backend about disconnection
-    try {
-      fetch('http://localhost:5001/api/browser-closed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'disconnect' }),
-      }).catch(err => console.log('📡 Disconnect signal sent to backend'));
-    } catch (err) {
-      console.log('📡 Disconnect signal failed:', err);
-    }
-    
-    console.log('✅ Multimodal server disconnected and cleaned up');
-    
-    // Show success message
-    if (window.showToast) {
-      window.showToast('AI Assistant disconnected', 'success', 3000);
-    }
-  };
-
-  const sendMultimodalSetup = () => {
-    if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-      const setupMessage = {
-        setup: {
-          response_modalities: ["AUDIO", "TEXT"]
-        },
-      };
-      multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
-    }
+      // Send mute/unmute signal to backend
+      if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: 'mute_toggle',
+          muted: newMuted
+        }));
+      }
+      
+      // Auto-start recording when unmuting
+      if (!newMuted && isMultimodalConnected && multimodalAudioContextRef.current && !isRecording) {
+        setTimeout(() => {
+          startMultimodalRecording();
+        }, 500);
+      }
+      
+      return newMuted;
+    });
   };
 
   const handleMultimodalMessage = (event: MessageEvent) => {
@@ -1483,6 +1472,21 @@ const Canvas: React.FC<CanvasProps> = () => {
       const data = JSON.parse(event.data);
       console.log('🔍 [DEBUG] Raw message:', event.data);
       console.log('🔍 [DEBUG] Parsed message:', data);
+      
+      // If muted, ignore all voice/audio related messages
+      if (isMuted) {
+        // Only allow non-voice messages when muted
+        if (data.type === 'save_and_enhance' || 
+            data.type === 'enhancement_started' || 
+            data.type === 'enhancement_error' ||
+            data.command_detected === 'enhance') {
+          // Allow enhancement-related messages even when muted
+        } else {
+          // Block all other messages (audio, voice_status, text responses, etc.)
+          console.log('🔇 Message blocked due to mute:', data);
+          return;
+        }
+      }
       
       // Handle save_and_enhance request from multimodal server
       if (data.type === 'save_and_enhance') {
@@ -1817,16 +1821,16 @@ const Canvas: React.FC<CanvasProps> = () => {
       <button
         className={`absolute right-4 top-16 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
           isMultimodalConnected 
-            ? 'bg-red-600 hover:bg-red-700 text-white' 
+            ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
             : 'bg-blue-600 hover:bg-blue-700 text-white'
         }`}
-        onClick={isMultimodalConnected ? disconnectMultimodal : connectMultimodal}
-        title={isMultimodalConnected ? "Disconnect AI Assistant" : "Connect AI Assistant"}
+        onClick={isMultimodalConnected ? toggleMute : connectMultimodal}
+        title={isMultimodalConnected ? (isMuted ? "Unmute AI Assistant" : "Mute AI Assistant") : "Connect AI Assistant"}
       >
         {isMultimodalConnected ? (
           <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-white rounded-full"></div>
-            <span className="text-sm font-medium">Disconnect AI</span>
+            {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
+            <span className="text-sm font-medium">{isMuted ? "Unmute AI" : "Mute AI"}</span>
           </div>
         ) : (
           <div className="flex items-center space-x-2">
@@ -1836,48 +1840,25 @@ const Canvas: React.FC<CanvasProps> = () => {
         )}
       </button>
 
-      {/* Recording Button - only show when connected */}
+      {/* Consolidated AI Status Indicator - only show when connected */}
       {isMultimodalConnected && (
-        <button
-          className={`absolute right-4 top-28 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
-            isRecording
-              ? 'bg-red-500 hover:bg-red-600 text-white'
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
-          onClick={isRecording ? stopMultimodalRecording : startMultimodalRecording}
-          title={isRecording ? "Stop Recording" : "Start Recording"}
-        >
-          {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-        </button>
-      )}
-
-      {/* Live Streaming Status Indicator */}
-      {isLiveStreaming && (
-        <div className="absolute right-4 top-40 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-          <span>Gemini sees live canvas</span>
-        </div>
-      )}
-
-      {/* Audio Playback Indicator */}
-      {isPlayingAudio && (
-        <div className="absolute right-4 top-52 bg-blue-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
-          <Volume2 size={12} className="animate-pulse" />
-          <span>Gemini speaking...</span>
-        </div>
-      )}
-
-      {/* Voice Activity Indicator */}
-      {voiceStatus === 'listening' && (
-        <div className="absolute right-4 top-64 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-          <span>Listening...</span>
+        <div className="absolute right-4 top-28 bg-green-600 text-white px-3 py-2 rounded-lg shadow-md z-50 text-xs">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+            <span>
+              {isMuted ? "AI Muted" : 
+               voiceStatus === 'listening' ? "Listening..." :
+               isPlayingAudio ? "Gemini speaking..." :
+               isLiveStreaming ? "Gemini sees live canvas" :
+               "AI Ready"}
+            </span>
+          </div>
         </div>
       )}
 
       {/* Error Display */}
       {multimodalError && (
-        <div className="absolute right-4 top-76 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
+        <div className="absolute right-4 top-44 bg-red-600 text-white px-3 py-2 rounded-lg shadow-md z-50 text-xs max-w-48">
           {multimodalError}
         </div>
       )}

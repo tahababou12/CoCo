@@ -115,7 +115,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         style: { ...state.defaultStyle },
         isSelected: false,
       }
-      
+
       return {
         ...state,
         currentShape: newShape,
@@ -203,7 +203,7 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         // Add as a new shape
         newShapes = [...state.shapes, shapeToSave];
       }
-      
+
       return {
         ...state,
         shapes: newShapes,
