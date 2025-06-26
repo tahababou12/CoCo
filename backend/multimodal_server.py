@@ -67,72 +67,211 @@ MODEL = "gemini-2.0-flash-exp"
 FORMAT = pyaudio.paInt16  # Audio format: 16-bit PCM
 SEND_SAMPLE_RATE = 24000  # Sample rate for audio sent to Gemini (Hz)
 RECEIVE_SAMPLE_RATE = 24000 # Sample rate for audio received from Gemini (Hz)
-CHUNK_SIZE = 1024         # Size of audio chunks to process
+CHUNK_SIZE = 512          # Reduced from 1024 to 512 for faster processing
 CHANNELS = 1              # Mono audio
 
-# Voice Activity Detection (VAD) configuration
-VAD_SILENCE_THRESHOLD = 3     # Lower threshold for silence detection (was 5)
-VAD_VOICE_THRESHOLD = 8       # Higher threshold for voice detection (was 10)
-VAD_MIN_VOICE_DURATION = 0.3  # Minimum speaking time before starting (seconds)
-VAD_MAX_SILENCE_DURATION = 2.0  # Maximum silence before stopping (seconds) - increased from 0.8
-VAD_SPEECH_BUFFER = 0.5       # Buffer time to continue speech after silence (seconds)
+# Voice Activity Detection (VAD) configuration - optimized for faster response
+VAD_SILENCE_THRESHOLD = 2     # Lower threshold for faster silence detection (was 3)
+VAD_VOICE_THRESHOLD = 6       # Lower threshold for faster voice detection (was 8)
+VAD_MIN_VOICE_DURATION = 0.2  # Reduced minimum speaking time (was 0.3)
+VAD_MAX_SILENCE_DURATION = 1.5  # Reduced maximum silence before stopping (was 2.0)
+VAD_SPEECH_BUFFER = 0.3       # Reduced buffer time for faster response (was 0.5)
 
 # Remove hardcoded regex patterns and replace with AI processing
 # ENHANCE_COMMANDS = [...]  # Remove this entire list
 
 async def process_voice_command_with_ai(text, websocket, session):
-    """Use simple pattern matching to detect voice commands (AI approach temporarily disabled due to session conflicts)"""
+    """Use Gemini AI to understand and process voice commands naturally with a separate session"""
+    try:
+        # Use the global client instead of creating a new one
+        command_prompt = f"""
+You are a voice command processor for a drawing application. The user said: "{text}"
+
+Analyze this and respond with ONLY a JSON object in this exact format:
+{{
+    "action": "enhance|modify|clear|save|other",
+    "confidence": 0.0-1.0,
+    "parameters": {{
+        "prompt": "specific instructions for the action",
+        "style": "any style preferences mentioned",
+        "modifications": ["list of specific changes requested"]
+    }},
+    "response": "natural response to tell the user what you're doing"
+}}
+
+CRITICAL RULES:
+- ONLY use "enhance" action if the user EXPLICITLY says "enhance", "enhancement", or "enhance with gemini"
+- For general conversation, drawing descriptions, questions, or casual talk, use "other" action
+- If the user asks "what do you think" or "what should I add", use "other" action
+- If the user mentions a specific character, style, or transformation, use "modify" action
+- If the user just wants general improvement without saying "enhance", use "other" action
+
+Examples:
+- "enhance with gemini" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing with Gemini AI now!"}}
+- "enhance this drawing" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing now!"}}
+- "what do you think I should add to make my book look real?" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That's a great question! For a realistic book, you might want to add more detail to the cover, some texture, and maybe some lighting effects."}}
+- "I'm trying to draw a face" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That sounds like a great drawing project! Faces can be challenging but rewarding to draw."}}
+- "make it more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll make your drawing more colorful!"}}
+- "modify it to be more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll modify your drawing to be more colorful!"}}
+- "make it look more like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll transform your drawing to look like Lightning McQueen!"}}
+- "modify it to look like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll modify your drawing to look like Lightning McQueen!"}}
+- "make it look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll make it look like a robot!"}}
+- "modify it to look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll modify your drawing to look like a robot!"}}
+- "add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll add more detail to your drawing."}}
+- "modify to add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll modify your drawing to add more detail."}}
+- "make it darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll make it darker for you."}}
+- "modify it to be darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll modify your drawing to be darker."}}
+- "make it look more realistic and less cartoon-y" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into a realistic, photorealistic style with natural lighting, textures, and less cartoon-like features", "modifications": ["realistic style", "natural lighting", "photorealistic rendering", "remove cartoon elements"]}}, "response": "I'll make your drawing look more realistic and less cartoon-like!"}}
+
+IMPORTANT: 
+- ONLY use "enhance" if the user EXPLICITLY says "enhance" or "enhancement"
+- For questions, suggestions, or general conversation, use "other" action
+- If the user mentions a specific character, style, or transformation, use "modify" action
+- Only respond with the JSON object, no other text or explanation.
+"""
+
+        # Use the global client with the correct API method
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-1.5-flash",
+            contents=[{"text": command_prompt}]
+        )
+        
+        if response.text:
+            try:
+                # Clean the response - remove any markdown formatting
+                cleaned_response = response.text.strip()
+                if cleaned_response.startswith("```json"):
+                    cleaned_response = cleaned_response[7:]
+                if cleaned_response.endswith("```"):
+                    cleaned_response = cleaned_response[:-3]
+                cleaned_response = cleaned_response.strip()
+                
+                # Parse Gemini's JSON response
+                command_data = json.loads(cleaned_response)
+                
+                print(f"🤖 AI command analysis: {command_data}")
+                
+                # Process the command based on AI understanding
+                if command_data["action"] == "enhance" and command_data["confidence"] >= 0.95:
+                    print(f"🤖 AI detected enhancement command: {command_data}")
+                    await call_enhancement_api(command_data["parameters"]["prompt"], websocket)
+                    return command_data["response"]
+                    
+                elif command_data["action"] == "modify" and command_data["confidence"] >= 0.7:
+                    print(f"🤖 AI detected modification command: {command_data}")
+                    await call_modification_api(command_data["parameters"]["prompt"], websocket)
+                    return command_data["response"]
+                    
+                elif command_data["action"] == "clear" and command_data["confidence"] >= 0.7:
+                    print(f"🤖 AI detected clear command: {command_data}")
+                    await websocket.send(json.dumps({
+                        "type": "clear_canvas",
+                        "command_detected": "clear"
+                    }))
+                    return command_data["response"]
+                    
+                else:
+                    print(f"🤖 AI detected other command or low confidence: {command_data}")
+                    # Let Gemini respond naturally
+                    return None
+                    
+            except json.JSONDecodeError as e:
+                print(f"🤖 AI didn't return valid JSON: {e}")
+                print(f"🤖 Raw response: {response.text}")
+                # Fallback to regex patterns
+                return await process_voice_command_with_regex(text, websocket)
+                
+    except Exception as e:
+        print(f"❌ Error processing voice command with AI: {e}")
+        # Fallback to regex patterns
+        return await process_voice_command_with_regex(text, websocket)
+
+async def process_voice_command_with_regex(text, websocket):
+    """Fallback regex-based command processing when AI fails"""
     try:
         # Convert to lowercase for easier matching
         text_lower = text.lower().strip()
         
-        # Simple pattern matching for enhancement commands
+        # Simple pattern matching for enhancement commands - ONLY explicit "enhance" commands
         enhancement_patterns = [
             r"enhance.*gemini",
             r"gemini.*enhance", 
-            r"enhance.*this",
-            r"enhance.*drawing",
-            r"enhance.*sketch",
+            r"enhance.*this.*drawing",
+            r"enhance.*this.*sketch",
+            r"enhance.*the.*drawing",
+            r"enhance.*the.*sketch",
             r"can you enhance",
             r"please enhance",
             r"enhance with",
             r"enhance it",
-            r"make it better",
-            r"improve.*drawing",
-            r"improve.*sketch"
+            r"enhance.*now",
+            r"enhance.*please"
         ]
         
-        # Check if any enhancement pattern matches
+        # Check for enhancement commands
         for pattern in enhancement_patterns:
             if re.search(pattern, text_lower):
-                print(f"🎯 Enhancement command detected: {text}")
+                print(f"🎯 Regex detected enhancement command: {text}")
                 await call_enhancement_api("Enhance this sketch into an image with more detail", websocket)
                 return "I'll enhance your drawing with Gemini AI now!"
+        
+        # Check for modification commands
+        modification_patterns = [
+            r"make.*colorful",
+            r"add.*color",
+            r"more.*color",
+            r"make.*darker",
+            r"make.*lighter",
+            r"add.*detail",
+            r"more.*detail",
+            r"change.*style",
+            r"modify.*drawing",
+            r"modify.*it.*to",
+            r"modify.*to.*be",
+            r"modify.*to.*look",
+            r"make.*look.*like",
+            r"transform.*into",
+            r"look.*like.*lightning",
+            r"lightning.*mcqueen",
+            r"make.*it.*look.*like",
+            r"style.*like",
+            r"character.*like",
+            r"make.*it.*more.*like",
+            r"turn.*into",
+            r"change.*to.*look.*like",
+            r"realistic",
+            r"less.*cartoon",
+            r"more.*realistic"
+        ]
+        
+        for pattern in modification_patterns:
+            if re.search(pattern, text_lower):
+                print(f"🎯 Regex detected modification command: {text}")
+                await call_modification_api(text, websocket)
+                return f"I'll modify your drawing: {text}"
         
         # Check for clear commands
         clear_patterns = [
             r"clear.*canvas",
             r"clear.*drawing",
-            r"clear.*everything",
-            r"start over",
-            r"new drawing",
-            r"reset canvas"
+            r"start.*over",
+            r"new.*drawing",
+            r"erase.*everything"
         ]
         
         for pattern in clear_patterns:
             if re.search(pattern, text_lower):
-                print(f"🎯 Clear command detected: {text}")
+                print(f"🎯 Regex detected clear command: {text}")
                 await websocket.send(json.dumps({
                     "type": "clear_canvas",
                     "command_detected": "clear"
                 }))
                 return "I'll clear the canvas for you!"
         
-        # No command detected
-        return None
-                    
+        return None  # No command detected
     except Exception as e:
-        print(f"❌ Error processing voice command: {e}")
+        print(f"❌ Error in regex command processing: {e}")
         return None
 
 async def process_user_speech_for_commands(audio_data):
@@ -210,6 +349,69 @@ async def call_enhancement_api(prompt="", websocket=None):
                 "command_detected": "enhance",
                 "enhancement_started": False,
                 "enhancement_error": True
+            }))
+        return None
+
+async def call_modification_api(prompt="", websocket=None):
+    """Call the Flask modification API to modify the current enhanced image"""
+    try:
+        import aiohttp
+        
+        print("🎨 Starting voice modification process")
+            
+        # First, request the frontend to save the current drawing (enhanced image)
+        print("💾 Requesting frontend to save current enhanced image...")
+        save_message = {
+            "type": "save_drawing"
+        }
+        print(f"📤 Sending save request to frontend: {save_message}")
+        await websocket.send(json.dumps(save_message))
+        
+        # Wait a moment for the save to complete
+        await asyncio.sleep(1)
+        
+        # Now call the modification API - it will find the most recent saved image
+        print("🎨 Calling modification API with most recent saved image...")
+        async with aiohttp.ClientSession() as session:
+            url = "http://localhost:5001/api/modify-image"
+            data = {"prompt": prompt}
+            
+            print(f"📤 Calling modification API: {url} with prompt: {prompt}")
+            async with session.post(url, json=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    print(f"✅ Modification started: {result}")
+                    
+                    # Send success message back to frontend
+                    if websocket:
+                        await websocket.send(json.dumps({
+                            "text": f"Perfect! I'll modify your drawing: {prompt}",
+                            "command_detected": "modify",
+                            "modification_started": True,
+                            "modification_error": False,
+                            "request_id": result.get("request_id")
+                        }))
+                    
+                    return result
+                else:
+                    print(f"❌ Modification failed: {response.status}")
+                    if websocket:
+                        await websocket.send(json.dumps({
+                            "text": "Sorry, I couldn't modify your drawing. Please try again.",
+                            "command_detected": "modify",
+                            "modification_started": False,
+                            "modification_error": True
+                        }))
+                    return None
+        
+    except Exception as e:
+        print(f"❌ Error calling modification API: {e}")
+        if websocket:
+            await websocket.send(json.dumps({
+                "text": "Sorry, there was an error modifying your drawing.",
+                "command_detected": "modify",
+                "modification_started": False,
+                "modification_error": True
             }))
         return None
 
@@ -386,12 +588,16 @@ Your role:
 - Focus on drawing techniques, artistic concepts, and creative suggestions
 - Don't mention any buttons, features, or technical tools - just focus on the art
 
+CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, one moment!" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
+
 Example responses:
 - "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
 - "I love the colors you're using! The way you've blended them creates a really nice effect."
 - "That's a great start! What if you added some more details in the background?"
 - "The composition is really interesting! You could try varying the line weights to add more depth."
 - "Those shapes work well together! Maybe experiment with some different textures or patterns?"
+- "Can you enhance this with Gemini?" → "Sure, one moment!"
+- "Enhance my drawing" → "I'll enhance that for you!"
 
 Just be helpful and encouraging about the drawing itself!"""
             )
@@ -517,7 +723,7 @@ Just be helpful and encouraging about the drawing itself!"""
                             pass
 
                 async def process_and_send_audio():
-                    """Sends audio chunks to Gemini"""
+                    """Sends audio chunks to Gemini with optimized buffering for faster responses"""
                     print("📤 Starting to send audio to Gemini...")
                     audio_buffer = []  # Buffer to accumulate audio for better quality
                     
@@ -528,8 +734,9 @@ Just be helpful and encouraging about the drawing itself!"""
                             # Add to buffer for better quality
                             audio_buffer.append(data)
                             
-                            # Send accumulated audio when buffer is large enough for better transcription
-                            if len(audio_buffer) >= 5 or len(b''.join(audio_buffer)) >= 5120:  # ~5 chunks or 5KB
+                            # Send accumulated audio more frequently for faster response
+                            # Reduced buffer size from 5 chunks to 2 chunks for faster processing
+                            if len(audio_buffer) >= 2 or len(b''.join(audio_buffer)) >= 2048:  # ~2 chunks or 2KB
                                 combined_audio = b''.join(audio_buffer)
                                 audio_buffer.clear()
                                 
@@ -637,7 +844,7 @@ Just be helpful and encouraging about the drawing itself!"""
                         # Buffer for accumulating transcription
                         transcription_buffer = ""
                         last_transcription_time = 0
-                        transcription_timeout = 1.0  # 1 second timeout
+                        transcription_timeout = 0.5  # Reduced from 1.0 to 0.5 seconds for faster response
                         
                         while True:
                             try:
@@ -661,7 +868,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                                 "input_transcription": transcript_text
                                             }))
                                             
-                                            # Buffer the transcription
+                                            # Buffer the transcription with shorter timeout for faster processing
                                             current_time = asyncio.get_event_loop().time()
                                             if current_time - last_transcription_time > transcription_timeout:
                                                 # Reset buffer if too much time has passed
@@ -707,21 +914,12 @@ Just be helpful and encouraging about the drawing itself!"""
                                             if hasattr(part, 'text') and part.text is not None:
                                                 text_content = part.text
                                                 print(f"📝 Received text from Gemini: {text_content}")
-                                                # Check if this is an enhancement command
-                                                command_result = await process_voice_command_with_ai(text_content, websocket, session)
-                                                if command_result:
-                                                    print(f"🎯 AI command detected: {text_content}")
-                                                    # Send the AI's response to frontend
-                                                    await websocket.send(json.dumps({
-                                                        "text": command_result,
-                                                        "command_detected": "ai_processed"
-                                                    }))
+                                                # Don't process Gemini's responses as commands - only process user input
+                                                # Regular text response - send to frontend only if not muted
+                                                if not client_muted:
+                                                    await websocket.send(json.dumps({"text": text_content}))
                                                 else:
-                                                    # Regular text response - send to frontend only if not muted
-                                                    if not client_muted:
-                                                        await websocket.send(json.dumps({"text": text_content}))
-                                                    else:
-                                                        print("🔇 Client muted - ignoring text response")
+                                                    print("🔇 Client muted - ignoring text response")
                                             elif hasattr(part, 'inline_data') and part.inline_data is not None:
                                                 print("audio mime_type:", part.inline_data.mime_type)
                                                 # Only send audio if not muted
@@ -730,9 +928,6 @@ Just be helpful and encouraging about the drawing itself!"""
                                                     await websocket.send(json.dumps({"audio": base64_audio}))
                                                     # Play the audio through speakers
                                                     audio_manager.add_audio(part.inline_data.data)
-                                                    print("audio received and queued for playback")
-                                                else:
-                                                    print("🔇 Client muted - ignoring audio response")
 
                                     if response.server_content.turn_complete:
                                         print('\n<Turn complete>')

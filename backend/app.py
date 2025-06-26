@@ -82,6 +82,11 @@ is_video_processing = False
 def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
     global is_processing
     
+    print(f"🔍 DEBUG: enhance_drawing_with_gemini called with:")
+    print(f"   - image_path: {image_path}")
+    print(f"   - prompt: '{prompt}'")
+    print(f"   - request_id: {request_id}")
+    
     if not GEMINI_API_KEY:
         error_msg = "Error: Gemini API key is not set. Cannot enhance drawing."
         print(error_msg)
@@ -115,9 +120,14 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
         def process_with_gemini(prompt_text):
             global is_processing
             try:
+                print(f"🔍 DEBUG: process_with_gemini called with prompt_text: '{prompt_text}'")
+                
                 # Default prompt if none provided
                 if not prompt_text:
                     prompt_text = "Enhance this sketch into an image with more detail."
+                    print(f"🔍 DEBUG: Using default prompt: '{prompt_text}'")
+                else:
+                    print(f"🔍 DEBUG: Using provided prompt: '{prompt_text}'")
                 
                 print(f"Processing with prompt: {prompt_text}")
                 print(f"Using model: {GEMINI_MODEL}")
@@ -790,6 +800,115 @@ def save_and_enhance_voice():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to process save-and-enhance request", "details": str(e)}), 500
+
+# API endpoint to modify an existing enhanced image based on voice commands
+@app.route('/api/modify-image', methods=['POST'])
+def modify_image():
+    """Modify an existing enhanced image based on voice commands"""
+    global is_processing
+    
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        
+        print(f"🎨 Modification request received with prompt: {prompt}")
+        
+        # Generate a unique request ID
+        request_id = f"modify_{int(time.time())}"
+        
+        # Check if we're already processing
+        if is_processing:
+            return jsonify({
+                "status": "error",
+                "message": "Another modification is already in progress. Please wait.",
+                "request_id": request_id
+            }), 400
+        
+        # Find the most recent enhanced image
+        enhanced_files = [f for f in os.listdir(enhanced_dir) if f.startswith('enhanced_') and f.endswith('.png')]
+        if not enhanced_files:
+            return jsonify({
+                "status": "error",
+                "message": "No enhanced image found to modify. Please enhance an image first.",
+                "request_id": request_id
+            }), 404
+        
+        # Get the most recent enhanced image
+        enhanced_files.sort(reverse=True)  # Sort by filename (timestamp-based)
+        latest_enhanced = enhanced_files[0]
+        enhanced_path = os.path.join(enhanced_dir, latest_enhanced)
+        
+        print(f"🎨 Found latest enhanced image: {latest_enhanced}")
+        
+        # Set processing state
+        is_processing = True
+        processing_status[request_id] = {"status": "processing", "message": "Modifying image..."}
+        
+        # Start processing in a separate thread
+        def process_modification():
+            global is_processing
+            try:
+                # Use the same enhancement function but with modification prompt
+                result = enhance_drawing_with_gemini(enhanced_path, prompt, request_id)
+                
+                if result:
+                    processing_status[request_id] = {
+                        "status": "completed",
+                        "message": "Image modification completed successfully",
+                        "enhanced_image": result.get("enhanced_image"),
+                        "filename": result.get("filename")
+                    }
+                else:
+                    processing_status[request_id] = {
+                        "status": "error",
+                        "message": "Failed to modify image"
+                    }
+                    
+            except Exception as e:
+                error_msg = f"Error during modification: {str(e)}"
+                print(error_msg)
+                processing_status[request_id] = {"status": "error", "message": error_msg}
+            finally:
+                is_processing = False
+        
+        # Start the processing thread
+        thread = threading.Thread(target=process_modification)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "status": "processing",
+            "message": "Modification started",
+            "request_id": request_id
+        })
+        
+    except Exception as e:
+        error_msg = f"Error in modification API: {str(e)}"
+        print(error_msg)
+        is_processing = False
+        return jsonify({
+            "status": "error",
+            "message": error_msg
+        }), 500
+
+# API endpoint to check modification status
+@app.route('/api/modification-status/<request_id>', methods=['GET'])
+def check_modification_status(request_id):
+    """Check the status of a modification request"""
+    try:
+        if request_id in processing_status:
+            status_info = processing_status[request_id]
+            return jsonify(status_info)
+        else:
+            return jsonify({
+                "status": "not_found",
+                "message": "Modification request not found"
+            }), 404
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Error checking modification status: {str(e)}"
+        }), 500
 
 # Serve static files from the various directories
 @app.route('/img/<path:filename>')

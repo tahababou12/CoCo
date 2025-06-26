@@ -62,7 +62,7 @@ class StoryVideoGenerator:
             raise FileNotFoundError(f"Enhanced images directory '{self.enhanced_dir}' not found!")
         
         image_files = [f for f in os.listdir(self.enhanced_dir) 
-                      if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                    if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         
         # Sort by creation date (newest first)
         image_files.sort(key=lambda x: os.path.getctime(os.path.join(self.enhanced_dir, x)), 
@@ -319,8 +319,8 @@ class StoryVideoGenerator:
             title_frames = self.create_scene_clip(image_paths[0], durations[0], 'ken_burns')
             title_text = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
             cv2.putText(title_text, story_data["title"], 
-                       (self.resolution[0]//4, self.resolution[1]//2),
-                       cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+                    (self.resolution[0]//4, self.resolution[1]//2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
             all_frames.extend(title_frames)
             current_time += durations[0]
             

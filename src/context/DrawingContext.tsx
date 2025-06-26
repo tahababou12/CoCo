@@ -59,6 +59,8 @@ type DrawingAction =
   | { type: 'START_SELECTION_BOX'; payload: Point }
   | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
   | { type: 'END_SELECTION_BOX' }
+  | { type: 'SAVE_DRAWING_REQUEST' }
+  | { type: 'CLEAR_CANVAS' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -590,6 +592,14 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         selectionBox: null,
         selectedShapeIds
       }
+
+    case 'SAVE_DRAWING_REQUEST':
+      // Implementation of save drawing request
+      return state;
+
+    case 'CLEAR_CANVAS':
+      // Implementation of clear canvas
+      return initialState;
 
     default:
       return state
