@@ -93,6 +93,7 @@ export type WebSocketMessage =
   | { type: 'WEBCAM_OFFER'; payload: { userId: string; targetUserId: string; offer: RTCSessionDescriptionInit } }
   | { type: 'WEBCAM_ANSWER'; payload: { userId: string; targetUserId: string; answer: RTCSessionDescriptionInit } }
   | { type: 'WEBCAM_ICE_CANDIDATE'; payload: { userId: string; targetUserId: string; candidate: RTCIceCandidateInit } }
+  | { type: 'AI_IMAGE_GENERATED'; payload: { userId: string; imageData: string; prompt: string; timestamp: number } }
 
 export type WebSocketMessageType = 
   | 'JOIN_ROOM'
@@ -117,7 +118,8 @@ export type WebSocketMessageType =
   | 'USER_STATUS_UPDATE'
   | 'WEBCAM_OFFER'
   | 'WEBCAM_ANSWER'
-  | 'WEBCAM_ICE_CANDIDATE';
+  | 'WEBCAM_ICE_CANDIDATE'
+  | 'AI_IMAGE_GENERATED';
 
 export interface BrushSettings {
   size: number
@@ -171,6 +173,8 @@ export type DrawingState = {
   peerConnections: Record<string, RTCPeerConnection>
   remoteStreams: Record<string, MediaStream>
   selectionBox?: SelectionBox
+  // AI image sharing
+  sharedAIImages: Array<{ userId: string; imageData: string; prompt: string; timestamp: number }>
 }
 
 export type DrawingAction =
@@ -207,6 +211,8 @@ export type DrawingAction =
   | { type: 'REMOVE_PEER_CONNECTION'; payload: { userId: string } }
   | { type: 'ADD_REMOTE_STREAM'; payload: { userId: string; stream: MediaStream } }
   | { type: 'REMOVE_REMOTE_STREAM'; payload: { userId: string } }
+  // AI Image sharing
+  | { type: 'ADD_SHARED_AI_IMAGE'; payload: { userId: string; imageData: string; prompt: string; timestamp: number } }
   | { type: 'UPDATE_HAND_TRACKING_STATUS'; payload: { userId: string; isEnabled: boolean } }
   | { type: 'SET_SELECTION_BOX'; payload: SelectionBox | null }
 

@@ -1,11 +1,17 @@
 const WebSocket = require('ws');
+require('dotenv').config();
 
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+
+// Import fetch for Node.js
+const fetch = require('node-fetch');
 
 // Initialize Express
 const app = express();
@@ -27,15 +33,132 @@ app.get('/api/ping', (req, res) => {
   res.json({ message: 'Server is running' });
 });
 
-// Create HTTP server with Express app
-const server = http.createServer(app);
+// Gemini API endpoint for image generation
+app.post('/api/generate-image', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    const requestBody = {
+      contents: [
+        {
+          parts: [
+            { text: prompt }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseModalities: ["Text", "Image"]
+      }
+    };
+
+    console.log('Sending request to Gemini API:', requestBody);
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${process.env.GOOGLE_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Gemini API error:', errorData);
+      return res.status(response.status).json({ 
+        error: errorData.error?.message || `API responded with status ${response.status}` 
+      });
+    }
+
+    const data = await response.json();
+    console.log('Gemini API response received');
+    
+    if (data.candidates && data.candidates.length > 0) {
+      const candidate = data.candidates[0];
+      
+      // Check for blocked content
+      if (candidate.finishReason === 'RECITATION' || candidate.finishReason === 'SAFETY') {
+        return res.status(400).json({ 
+          error: `Content was blocked due to ${candidate.finishReason.toLowerCase()} concerns. Please try a different prompt.` 
+        });
+      }
+      
+      if (candidate.content) {
+        const parts = candidate.content.parts || [];
+        let imageData = null;
+        let textResponse = null;
+        
+        for (const part of parts) {
+          if (part.text) {
+            textResponse = part.text;
+          } else if (part.inline_data) {
+            imageData = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+          }
+        }
+        
+        res.json({
+          success: true,
+          imageData,
+          textResponse
+        });
+      } else {
+        console.error('No content in candidate:', candidate);
+        res.status(500).json({ 
+          error: `Generation failed with reason: ${candidate.finishReason || 'unknown'}` 
+        });
+      }
+    } else {
+      console.error('Unexpected API response format:', data);
+      res.status(500).json({ error: 'Received an unexpected response format from the API' });
+    }
+  } catch (error) {
+    console.error('Error calling Gemini API:', error);
+    res.status(500).json({ 
+      error: `Server error: ${error.message}` 
+    });
+  }
+});
+
+// Create HTTP/HTTPS server with Express app
+let server;
+let wss;
+
+// Try to create HTTPS server if SSL certificates exist, otherwise fall back to HTTP
+try {
+  // Check if SSL certificate files exist (these would be created by the Vite basicSsl plugin)
+  const certPath = path.join(__dirname, '../node_modules/.vite/basic-ssl/_cert.pem');
+  const certData = fs.readFileSync(certPath, 'utf8');
+  
+  // Split the combined certificate file into key and cert parts
+  const keyMatch = certData.match(/-----BEGIN RSA PRIVATE KEY-----[\s\S]*?-----END RSA PRIVATE KEY-----/);
+  const certMatch = certData.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/);
+  
+  if (keyMatch && certMatch) {
+    const httpsOptions = {
+      key: keyMatch[0],
+      cert: certMatch[0]
+    };
+    
+    server = https.createServer(httpsOptions, app);
+    console.log('Using HTTPS server for WebSocket');
+  } else {
+    throw new Error('Could not parse certificate file');
+  }
+} catch (error) {
+  // If SSL certificates don't exist, fall back to HTTP
+  console.log('SSL certificates not found, using HTTP server for WebSocket:', error.message);
+  server = http.createServer(app);
+}
 
 // Create WebSocket server
-const wss = new WebSocket.Server({ server });
+wss = new WebSocket.Server({ server });
 
 // Store for active connections, shapes, and rooms
 const connections = new Map();
-const shapes = [];
+const roomShapes = new Map(); // roomId -> shapes array
 const rooms = new Map(); // roomId -> Room object
 const publicRooms = new Set(); // Set of public room IDs
 
@@ -317,11 +440,15 @@ wss.on('connection', (ws) => {
         }
         
         case 'REQUEST_SYNC': {
-          // Send all shapes to the requesting client
-          ws.send(JSON.stringify({
-            type: 'SYNC_SHAPES',
-            payload: { shapes }
-          }));
+          // Send room-specific shapes to the requesting client
+          const client = connections.get(clientId);
+          if (client && client.roomId) {
+            const shapes = roomShapes.get(client.roomId) || [];
+            ws.send(JSON.stringify({
+              type: 'SYNC_SHAPES',
+              payload: { shapes }
+            }));
+          }
           break;
         }
         
@@ -347,12 +474,15 @@ wss.on('connection', (ws) => {
         case 'SHAPE_ADDED': {
           const { shape, userId } = message.payload;
           
-          // Add shape to our collection
-          shapes.push(shape);
-          
-          // Broadcast to room members only
+          // Add shape to room-specific collection
           const client = connections.get(clientId);
           if (client && client.roomId) {
+            if (!roomShapes.has(client.roomId)) {
+              roomShapes.set(client.roomId, []);
+            }
+            roomShapes.get(client.roomId).push(shape);
+            
+            // Broadcast to room members only
             broadcastToRoom(client.roomId, message, ws);
           }
           break;
@@ -361,15 +491,16 @@ wss.on('connection', (ws) => {
         case 'SHAPE_UPDATED': {
           const { shapeId, updates, userId } = message.payload;
           
-          // Update shape in our collection
-          const shapeIndex = shapes.findIndex(s => s.id === shapeId);
-          if (shapeIndex !== -1) {
-            shapes[shapeIndex] = { ...shapes[shapeIndex], ...updates };
-          }
-          
-          // Broadcast to room members only
+          // Update shape in room-specific collection
           const client = connections.get(clientId);
           if (client && client.roomId) {
+            const shapes = roomShapes.get(client.roomId) || [];
+            const shapeIndex = shapes.findIndex(s => s.id === shapeId);
+            if (shapeIndex !== -1) {
+              shapes[shapeIndex] = { ...shapes[shapeIndex], ...updates };
+            }
+            
+            // Broadcast to room members only
             broadcastToRoom(client.roomId, message, ws);
           }
           break;
@@ -378,17 +509,18 @@ wss.on('connection', (ws) => {
         case 'SHAPES_DELETED': {
           const { shapeIds, userId } = message.payload;
           
-          // Remove shapes from our collection
-          for (const id of shapeIds) {
-            const index = shapes.findIndex(s => s.id === id);
-            if (index !== -1) {
-              shapes.splice(index, 1);
-            }
-          }
-          
-          // Broadcast to room members only
+          // Remove shapes from room-specific collection
           const client = connections.get(clientId);
           if (client && client.roomId) {
+            const shapes = roomShapes.get(client.roomId) || [];
+            for (const id of shapeIds) {
+              const index = shapes.findIndex(s => s.id === id);
+              if (index !== -1) {
+                shapes.splice(index, 1);
+              }
+            }
+            
+            // Broadcast to room members only
             broadcastToRoom(client.roomId, message, ws);
           }
           break;
@@ -520,6 +652,16 @@ wss.on('connection', (ws) => {
           break;
         }
         
+        case 'AI_IMAGE_GENERATED': {
+          // Forward AI-generated image to room members only
+          const client = connections.get(clientId);
+          if (client && client.roomId) {
+            console.log(`Broadcasting AI-generated image from ${client.username} to room ${client.roomId}`);
+            broadcastToRoom(client.roomId, message, ws);
+          }
+          break;
+        }
+        
         default:
           console.warn(`Unknown message type: ${message.type}`);
       }
@@ -636,6 +778,7 @@ function broadcastToRoom(roomId, message, excludeClient = null) {
 
 // Start server
 const PORT = process.env.PORT || 8081;
-server.listen(PORT, () => {
-  console.log(`WebSocket server and Express API are running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0'; // Explicitly bind to all interfaces
+server.listen(PORT, HOST, () => {
+  console.log(`WebSocket server and Express API are running on ${HOST}:${PORT}`);
 }); 

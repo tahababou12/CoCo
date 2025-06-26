@@ -14,6 +14,7 @@ import SimpleWebcam from './components/SimpleWebcam'
 import UserCursor from './components/UserCursor'
 import BrushTool from './components/BrushTool'
 import VoiceChat from './components/VoiceChat'
+import SharedAIImages from './components/SharedAIImages'
 import { WebSocketProvider } from './context/WebSocketContext'
 import { useDrawing } from './context/DrawingContext'
 import { useWebSocket } from './context/WebSocketContext'
@@ -133,6 +134,7 @@ function ProtectedApp() {
         <CollaboratorCursors />
         <BrushTool />
         <VoiceChat />
+        <SharedAIImages />
         
 
         
@@ -181,8 +183,18 @@ function App() {
   // For disabling auth during development, set this to true
   const DISABLE_AUTH = true; // Set to false to enable authentication
   
-  // Always call hooks at the top level, regardless of whether we use the results
-  const { isAuthenticated } = useAuth0();
+  // Check if we're in an Auth0 context before calling useAuth0
+  let isAuthenticated = false;
+  try {
+    // Only call useAuth0 if we're not disabling auth and Auth0 is configured
+    if (!DISABLE_AUTH) {
+      const auth0Result = useAuth0();
+      isAuthenticated = auth0Result.isAuthenticated;
+    }
+  } catch (error) {
+    console.log('Auth0 not configured, running without authentication');
+    isAuthenticated = false;
+  }
   
   if (DISABLE_AUTH) {
     return <NoAuthApp />;

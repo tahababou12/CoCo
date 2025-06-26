@@ -135,10 +135,49 @@ const HandDrawing: React.FC = () => {
   
   // Initialize MediaPipe Hands and add cursor styles
   useEffect(() => {
-    // Check browser compatibility
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setIsWebcamSupported(false);
-      setErrorMessage('Your browser does not support webcam access');
+    // Enhanced browser compatibility check
+    const checkCompatibility = () => {
+      // Check if we're on HTTPS or localhost
+      const isSecureContext = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost';
+      
+      if (!isSecureContext) {
+        setIsWebcamSupported(false);
+        setErrorMessage('Hand tracking requires HTTPS or localhost. Please access via HTTPS.');
+        return false;
+      }
+      
+      // Check MediaDevices API support
+      if (!navigator.mediaDevices) {
+        setIsWebcamSupported(false);
+        setErrorMessage('MediaDevices API not supported in this browser');
+        return false;
+      }
+      
+      // Check getUserMedia support
+      if (!navigator.mediaDevices.getUserMedia) {
+        setIsWebcamSupported(false);
+        setErrorMessage('Camera access not supported in this browser');
+        return false;
+      }
+      
+      // Check if MediaPipe dependencies can be loaded
+      try {
+        // Test if we can create the required objects
+        if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+          setIsWebcamSupported(false);
+          setErrorMessage('MediaPipe libraries not loaded properly');
+          return false;
+        }
+      } catch (error) {
+        setIsWebcamSupported(false);
+        setErrorMessage('MediaPipe not supported on this device');
+        return false;
+      }
+      
+      return true;
+    };
+    
+    if (!checkCompatibility()) {
       return;
     }
     
@@ -900,14 +939,29 @@ const HandDrawing: React.FC = () => {
     <div className="hand-tracking-container">
       {/* Toggle button */}
       <button 
-        className="absolute top-4 right-4 bg-purple-600 text-white p-2 rounded-lg shadow-lg z-20"
+        className={`absolute top-4 right-4 p-2 rounded-lg shadow-lg z-20 ${
+          !isWebcamSupported ? 'bg-red-500 text-white cursor-not-allowed' : 
+          'bg-purple-600 text-white hover:bg-purple-700'
+        }`}
         onClick={toggleHandTracking}
         disabled={isLoading || !isWebcamSupported}
+        title={!isWebcamSupported ? errorMessage || 'Hand tracking not supported' : undefined}
       >
         {isLoading ? 'Loading...' : 
          !isWebcamSupported ? 'Not Supported' :
          isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable Hand Tracking'}
       </button>
+
+      {/* Error message for unsupported devices */}
+      {!isWebcamSupported && errorMessage && (
+        <div className="absolute top-16 right-4 bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded shadow-lg z-20 max-w-xs">
+          <div className="font-bold text-sm mb-1">Hand Tracking Unavailable</div>
+          <div className="text-xs">{errorMessage}</div>
+          <div className="text-xs mt-2 text-red-600">
+            Try using a different browser or ensure you're accessing via HTTPS.
+          </div>
+        </div>
+      )}
       
       {/* Video with overlay canvas for visualization */}
       <div className={`absolute top-4 right-4 ${isHandTrackingActive ? 'block' : 'hidden'} z-10`}>

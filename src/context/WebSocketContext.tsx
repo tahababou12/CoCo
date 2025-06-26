@@ -3,8 +3,25 @@ import { useDrawing } from './DrawingContext';
 import { WebSocketMessage, Shape, User, UserPosition, Point } from '../types';
 import { v4 as uuidv4 } from '../utils/uuid';
 
-// URL of the WebSocket server
-const WS_URL = 'ws://localhost:8081';
+// URL of the WebSocket server - dynamically determine based on current host
+const getWebSocketURL = () => {
+  const hostname = window.location.hostname;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${hostname}:8081`;
+  
+  // Add debugging information
+  console.log('WebSocket Configuration:', {
+    currentHostname: hostname,
+    currentOrigin: window.location.origin,
+    currentProtocol: window.location.protocol,
+    wsProtocol: protocol,
+    wsUrl: wsUrl
+  });
+  
+  return wsUrl;
+};
+
+const WS_URL = getWebSocketURL();
 
 // Array of colors for different users
 const USER_COLORS = [
@@ -54,6 +71,7 @@ export type WebSocketContextType = {
   setSharedWebcamStream: React.Dispatch<React.SetStateAction<MediaStream | null>>;
   sendMessage: (message: WebSocketMessage) => void;
   toggleHandTracking: (isEnabled: boolean) => void;
+  shareAIImage: (imageData: string, prompt: string) => void;
 };
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
@@ -238,6 +256,22 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         payload: { 
           userId: userIdRef.current, 
           isEnabled 
+        }
+      });
+    }
+  };
+
+  // Function to share AI-generated image with collaborators
+  const shareAIImage = (imageData: string, prompt: string) => {
+    if (isConnected && currentUser) {
+      console.log('Sharing AI-generated image with collaborators');
+      sendMessage({
+        type: 'AI_IMAGE_GENERATED',
+        payload: {
+          userId: currentUser.id,
+          imageData,
+          prompt,
+          timestamp: Date.now()
         }
       });
     }
@@ -673,6 +707,26 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         console.error('Error from server:', message.payload.message);
         break;
         
+      case 'AI_IMAGE_GENERATED':
+        if (message.payload.userId !== userIdRef.current) {
+          console.log('Received AI-generated image from collaborator:', message.payload);
+          // Show the AI image in a notification or modal
+          window.showToast(`${message.payload.userId} generated an AI image: "${message.payload.prompt}"`, 'info', 5000);
+          
+          // You could also display the image in a dedicated component
+          // For now, we'll dispatch an action to store the shared image
+          dispatch({
+            type: 'ADD_SHARED_AI_IMAGE',
+            payload: {
+              userId: message.payload.userId,
+              imageData: message.payload.imageData,
+              prompt: message.payload.prompt,
+              timestamp: message.payload.timestamp
+            }
+          });
+        }
+        break;
+        
       default:
         console.warn('Unknown message type:', message);
     }
@@ -893,6 +947,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     sendMessage,
     sendCursorMove,
     toggleHandTracking,
+    shareAIImage,
     startWebcamSharing,
     stopWebcamSharing,
     sharedWebcamStream,
@@ -917,6 +972,7 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     sendMessage,
     sendCursorMove,
     toggleHandTracking,
+    shareAIImage,
     startWebcamSharing,
     stopWebcamSharing,
     sharedWebcamStream,

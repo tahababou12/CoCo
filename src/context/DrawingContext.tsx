@@ -46,6 +46,8 @@ interface DrawingState {
     past: Shape[][]
     future: Shape[][]
   }
+  // AI image sharing
+  sharedAIImages: Array<{ userId: string; imageData: string; prompt: string; timestamp: number }>
 }
 
 type DrawingAction =
@@ -90,6 +92,8 @@ type DrawingAction =
   | { type: 'TOGGLE_VOICE_CHAT'; payload?: boolean }
   | { type: 'SET_VOICE_MUTE'; payload: boolean }
   | { type: 'SET_ADVANCED_GESTURES'; payload: Partial<{ twoHandMode: boolean; pressureSensitivity: boolean; gestureToolSelection: boolean; airWriting: boolean }> }
+  // AI image sharing
+  | { type: 'ADD_SHARED_AI_IMAGE'; payload: { userId: string; imageData: string; prompt: string; timestamp: number } }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -140,7 +144,9 @@ const initialState: DrawingState = {
   peerConnections: {},
   remoteStreams: {},
   selectionBox: null,
-  currentUser: null
+  currentUser: null,
+  // AI image sharing
+  sharedAIImages: []
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
@@ -700,6 +706,15 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
           ...state.advancedGestures,
           ...action.payload
         }
+      }
+
+    case 'ADD_SHARED_AI_IMAGE':
+      return {
+        ...state,
+        sharedAIImages: [
+          ...state.sharedAIImages,
+          action.payload
+        ]
       }
 
     default:

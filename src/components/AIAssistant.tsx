@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useDrawing } from '../context/DrawingContext';
+import { useWebSocket } from '../context/WebSocketContext';
 import { Sparkles, Download } from 'lucide-react';
 
 interface AIAssistantProps {
@@ -9,6 +10,7 @@ interface AIAssistantProps {
 
 const AIAssistant: React.FC<AIAssistantProps> = ({ isOpen, onClose }) => {
   const { state } = useDrawing();
+  const webSocket = useWebSocket();
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState('');
   const [prompt, setPrompt] = useState('Create an image based on my drawing');
@@ -24,62 +26,50 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ isOpen, onClose }) => {
     setGeneratedImage(null);
 
     try {
-      // Prepare a request to the image generation model
-      const requestBody = {
-        contents: [
-          {
-            parts: [
-              { text: prompt }
-            ]
-          }
-        ],
-        generationConfig: {
-          responseModalities: ["Text", "Image"]
-        }
-      };
+      console.log('Sending request to backend API for image generation');
 
-      console.log('Sending request to Gemini image generation API:', requestBody);
-
-      // Call Gemini API with the correct model for image generation
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=AIzaSyA8h1TQVustGawTluFlQi4KNSZsdIbPtBU', {
+      // Call our backend API instead of Gemini directly
+      const response = await fetch('https://192.168.1.16:8081/api/generate-image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({ prompt })
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error?.message || `API responded with status ${response.status}`);
+        throw new Error(errorData.error || `API responded with status ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('Gemini API response:', data);
+      console.log('Backend API response:', data);
       
-      if (data.candidates && data.candidates.length > 0 && data.candidates[0].content) {
-        // Process both text and image parts from the response
-        const parts = data.candidates[0].content.parts || [];
+      if (data.success) {
+        if (data.textResponse) {
+          setResponse(data.textResponse);
+        }
         
-        for (const part of parts) {
-          if (part.text) {
-            setResponse(part.text);
-          } else if (part.inline_data) {
-            // Handle image data
-            setGeneratedImage(`data:${part.inline_data.mime_type};base64,${part.inline_data.data}`);
+        if (data.imageData) {
+          setGeneratedImage(data.imageData);
+          
+          // Share the AI-generated image with collaborators
+          if (webSocket?.shareAIImage) {
+            webSocket.shareAIImage(data.imageData, prompt);
+            console.log('Shared AI-generated image with collaborators');
           }
         }
         
-        if (!generatedImage && !response) {
+        if (!data.imageData && !data.textResponse) {
           setError('No text or image was generated. Please try a different prompt.');
         }
       } else {
-        console.error('Unexpected API response format:', data);
-        setError('Received an unexpected response format from the API');
+        console.error('Backend API returned unsuccessful response:', data);
+        setError('Failed to generate content. Please try again.');
       }
     } catch (error) {
-      console.error('Error calling Gemini API:', error);
-      setError(`Error: ${error instanceof Error ? error.message : 'Unknown error occurred'}`);
+      console.error('Error calling backend API:', error);
+      setError(`Error: ${error instanceof Error ? error.message : 'Failed to connect to server'}`);
     } finally {
       setIsLoading(false);
     }
