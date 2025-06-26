@@ -11,6 +11,7 @@ moviepy
 websockets
 pydub
 pyaudio
+aiohttp
 absl-py==2.3.0
 annotated-types==0.7.0
 anyio==4.9.0

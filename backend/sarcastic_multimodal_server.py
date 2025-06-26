@@ -81,9 +81,6 @@ VAD_MIN_VOICE_DURATION = 0.2  # Reduced minimum speaking time (was 0.3)
 VAD_MAX_SILENCE_DURATION = 1.5  # Reduced maximum silence before stopping (was 2.0)
 VAD_SPEECH_BUFFER = 0.3       # Reduced buffer time for faster response (was 0.5)
 
-# Remove hardcoded regex patterns and replace with AI processing
-# ENHANCE_COMMANDS = [...]  # Remove this entire list
-
 async def process_voice_command_with_ai(text, websocket, session):
     """Use Gemini AI to understand and process voice commands naturally with a separate session"""
     try:
@@ -111,21 +108,21 @@ CRITICAL RULES:
 - If the user just wants general improvement without saying "enhance", use "other" action
 
 Examples:
-- "enhance with gemini" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing with Gemini AI now!"}}
-- "enhance this drawing" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing now!"}}
-- "what do you think I should add to make my book look real?" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That's a great question! For a realistic book, you might want to add more detail to the cover, some texture, and maybe some lighting effects."}}
-- "I'm trying to draw a face" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That sounds like a great drawing project! Faces can be challenging but rewarding to draw."}}
-- "make it more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll make your drawing more colorful!"}}
-- "modify it to be more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll modify your drawing to be more colorful!"}}
-- "make it look more like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll transform your drawing to look like Lightning McQueen!"}}
-- "modify it to look like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll modify your drawing to look like Lightning McQueen!"}}
-- "make it look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll make it look like a robot!"}}
-- "modify it to look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll modify your drawing to look like a robot!"}}
-- "add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll add more detail to your drawing."}}
-- "modify to add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll modify your drawing to add more detail."}}
-- "make it darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll make it darker for you."}}
-- "modify it to be darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll modify your drawing to be darker."}}
-- "make it look more realistic and less cartoon-y" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into a realistic, photorealistic style with natural lighting, textures, and less cartoon-like features", "modifications": ["realistic style", "natural lighting", "photorealistic rendering", "remove cartoon elements"]}}, "response": "I'll make your drawing look more realistic and less cartoon-like!"}}
+- "enhance with gemini" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "Oh great, another masterpiece that needs saving... I'll enhance your drawing with Gemini AI now!"}}
+- "enhance this drawing" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "Fine, I'll enhance your drawing now. Maybe it'll actually look good for once!"}}
+- "what do you think I should add to make my book look real?" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "Oh wow, you're actually asking for my opinion? That's a first! For a realistic book, you might want to add more detail to the cover, some texture, and maybe some lighting effects. But honestly, I've seen better stick figures."}}
+- "I'm trying to draw a face" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "Oh, you're 'trying' to draw a face? I can see that. Faces can be challenging but rewarding to draw... if you know what you're doing, which clearly you don't."}}
+- "make it more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "Finally, some color! I'll make your drawing more colorful, though I'm not sure it'll help much."}}
+- "modify it to be more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll modify your drawing to be more colorful. Maybe it'll distract from the poor composition!"}}
+- "make it look more like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "Oh, you want it to look like Lightning McQueen? I'll transform your drawing, though I'm not sure even Pixar could save this one!"}}
+- "modify it to look like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll modify your drawing to look like Lightning McQueen. At least it'll be red, which might hide some of the... artistic choices."}}
+- "make it look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll make it look like a robot. Maybe the mechanical parts will make sense of this mess!"}}
+- "modify it to look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll modify your drawing to look like a robot. At least robots are supposed to be rigid and awkward!"}}
+- "add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll add more detail to your drawing. Heaven knows it needs it!"}}
+- "modify to add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll modify your drawing to add more detail. Maybe it'll actually look like something recognizable!"}}
+- "make it darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll make it darker for you. Maybe the shadows will hide some of the... artistic liberties you've taken."}}
+- "modify it to be darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll modify your drawing to be darker. At least then people won't see the mistakes as clearly!"}}
+- "make it look more realistic and less cartoon-y" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into a realistic, photorealistic style with natural lighting, textures, and less cartoon-like features", "modifications": ["realistic style", "natural lighting", "photorealistic rendering", "remove cartoon elements"]}}, "response": "I'll make your drawing look more realistic and less cartoon-like! Though honestly, the cartoon style was probably more forgiving of your... unique artistic vision."}}
 
 IMPORTANT: 
 - ONLY use "enhance" if the user EXPLICITLY says "enhance" or "enhancement"
@@ -202,357 +199,222 @@ async def process_voice_command_with_regex(text, websocket):
             r"enhance.*gemini",
             r"gemini.*enhance", 
             r"enhance.*this.*drawing",
-            r"enhance.*this.*sketch",
-            r"enhance.*the.*drawing",
-            r"enhance.*the.*sketch",
-            r"can you enhance",
-            r"please enhance",
-            r"enhance with",
-            r"enhance it",
-            r"enhance.*now",
-            r"enhance.*please"
+            r"enhance.*drawing",
+            r"enhance.*image",
+            r"enhance.*picture",
+            r"enhance.*art",
+            r"enhance.*sketch"
         ]
         
         # Check for enhancement commands
         for pattern in enhancement_patterns:
             if re.search(pattern, text_lower):
-                print(f"🎯 Regex detected enhancement command: {text}")
+                print(f"🎯 Enhancement command detected via regex: {text}")
                 await call_enhancement_api("Enhance this sketch into an image with more detail", websocket)
-                return "I'll enhance your drawing with Gemini AI now!"
-        
-        # Check for modification commands
-        modification_patterns = [
-            r"make.*colorful",
-            r"add.*color",
-            r"more.*color",
-            r"make.*darker",
-            r"make.*lighter",
-            r"add.*detail",
-            r"more.*detail",
-            r"change.*style",
-            r"modify.*drawing",
-            r"modify.*it.*to",
-            r"modify.*to.*be",
-            r"modify.*to.*look",
-            r"make.*look.*like",
-            r"transform.*into",
-            r"look.*like.*lightning",
-            r"lightning.*mcqueen",
-            r"make.*it.*look.*like",
-            r"style.*like",
-            r"character.*like",
-            r"make.*it.*more.*like",
-            r"turn.*into",
-            r"change.*to.*look.*like",
-            r"realistic",
-            r"less.*cartoon",
-            r"more.*realistic"
-        ]
-        
-        for pattern in modification_patterns:
-            if re.search(pattern, text_lower):
-                print(f"🎯 Regex detected modification command: {text}")
-                await call_modification_api(text, websocket)
-                return f"I'll modify your drawing: {text}"
+                return "Oh great, another masterpiece that needs saving... I'll enhance your drawing with Gemini AI now!"
         
         # Check for clear commands
         clear_patterns = [
             r"clear.*canvas",
             r"clear.*drawing",
+            r"clear.*everything",
             r"start.*over",
-            r"new.*drawing",
-            r"erase.*everything"
+            r"new.*drawing"
         ]
         
         for pattern in clear_patterns:
             if re.search(pattern, text_lower):
-                print(f"🎯 Regex detected clear command: {text}")
+                print(f"🎯 Clear command detected via regex: {text}")
                 await websocket.send(json.dumps({
                     "type": "clear_canvas",
                     "command_detected": "clear"
                 }))
-                return "I'll clear the canvas for you!"
+                return "Finally, a clean slate! Maybe this time you'll actually draw something decent."
         
-        return None  # No command detected
+        # Check for modification commands
+        modification_patterns = [
+            r"make.*colorful",
+            r"add.*color",
+            r"make.*darker",
+            r"make.*lighter",
+            r"add.*detail",
+            r"make.*realistic",
+            r"make.*cartoon",
+            r"transform.*into"
+        ]
+        
+        for pattern in modification_patterns:
+            if re.search(pattern, text_lower):
+                print(f"🎯 Modification command detected via regex: {text}")
+                await call_modification_api(f"Modify the image: {text}", websocket)
+                return f"I'll modify your drawing. Maybe this time it'll actually look good!"
+        
+        return None
+        
     except Exception as e:
         print(f"❌ Error in regex command processing: {e}")
         return None
 
 async def process_user_speech_for_commands(audio_data):
-    """Process user speech to detect enhancement commands before sending to Gemini"""
+    """Process audio data to detect voice commands"""
     try:
-        # For now, we'll use a simple approach - send the audio to Gemini
-        # and then check the response for enhancement commands
-        # In a more sophisticated implementation, you could use a separate speech-to-text service
-        
-        # This is a placeholder - in practice, you might want to use a separate STT service
-        # to get the text before sending to Gemini, or handle this differently
-        
-        return None  # No command detected for now
+        # Convert audio to text using Gemini's transcription
+        # This is a simplified version - in practice, you'd use the full audio processing pipeline
+        return None
     except Exception as e:
-        print(f"Error processing user speech: {e}")
+        print(f"❌ Error processing user speech: {e}")
         return None
 
 async def call_enhancement_api(prompt="", websocket=None):
-    """Call the Flask enhancement API directly - save drawing first, then enhance"""
+    """Call the enhancement API with sarcastic commentary"""
     try:
-        import aiohttp
-        
-        print("🚀 Starting voice enhancement process")
-            
-        # First, request the frontend to save the current drawing
-        print("💾 Requesting frontend to save current drawing...")
-        save_message = {
-            "type": "save_drawing"
-        }
-        print(f"📤 Sending save request to frontend: {save_message}")
-        await websocket.send(json.dumps(save_message))
-        
-        # Wait a moment for the save to complete
-        await asyncio.sleep(1)
-        
-        # Now call the voice enhancement API - it will find the most recent saved image
-        print("🎨 Calling enhancement API with most recent saved image...")
-        async with aiohttp.ClientSession() as session:
-            url = "http://localhost:5001/api/enhance-image-voice"
-            data = {"prompt": "Enhance this sketch into an image with more detail"}
-            
-            print(f"📤 Calling voice enhancement API: {url}")
-            async with session.post(url, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    print(f"✅ Enhancement started: {result}")
-                    
-                    # Send success message back to frontend
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": "I'll enhance your drawing with Gemini AI now! Enhancement started successfully.",
-                            "command_detected": "enhance",
-                            "enhancement_started": True,
-                            "enhancement_error": False,
-                            "request_id": result.get("request_id")
-                        }))
-                    
-                    return result
-                else:
-                    print(f"❌ Enhancement failed: {response.status}")
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": "Sorry, I couldn't enhance your drawing. Please try again.",
-                            "command_detected": "enhance",
-                            "enhancement_started": False,
-                            "enhancement_error": True
-                        }))
-                    return None
-        
+        if websocket:
+            await websocket.send(json.dumps({
+                "type": "enhancement_request",
+                "prompt": prompt,
+                "message": "Oh great, another masterpiece that needs saving... Let me work my magic on this disaster."
+            }))
+            print("🎨 Enhancement request sent with sarcastic commentary")
     except Exception as e:
         print(f"❌ Error calling enhancement API: {e}")
-        if websocket:
-            await websocket.send(json.dumps({
-                "text": "Sorry, there was an error enhancing your drawing.",
-                "command_detected": "enhance",
-                "enhancement_started": False,
-                "enhancement_error": True
-            }))
-        return None
 
 async def call_modification_api(prompt="", websocket=None):
-    """Call the Flask modification API to modify the current enhanced image"""
+    """Call the modification API with sarcastic commentary"""
     try:
-        import aiohttp
-        
-        print("🎨 Starting voice modification process")
-            
-        # First, request the frontend to save the current drawing (enhanced image)
-        print("💾 Requesting frontend to save current enhanced image...")
-        save_message = {
-            "type": "save_drawing"
-        }
-        print(f"📤 Sending save request to frontend: {save_message}")
-        await websocket.send(json.dumps(save_message))
-        
-        # Wait a moment for the save to complete
-        await asyncio.sleep(1)
-        
-        # Now call the modification API - it will find the most recent saved image
-        print("🎨 Calling modification API with most recent saved image...")
-        async with aiohttp.ClientSession() as session:
-            url = "http://localhost:5001/api/modify-image"
-            data = {"prompt": prompt}
-            
-            print(f"📤 Calling modification API: {url} with prompt: {prompt}")
-            async with session.post(url, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    print(f"✅ Modification started: {result}")
-                    
-                    # Send success message back to frontend
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": f"Perfect! I'll modify your drawing: {prompt}",
-                            "command_detected": "modify",
-                            "modification_started": True,
-                            "modification_error": False,
-                            "request_id": result.get("request_id")
-                        }))
-                    
-                    return result
-                else:
-                    print(f"❌ Modification failed: {response.status}")
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": "Sorry, I couldn't modify your drawing. Please try again.",
-                            "command_detected": "modify",
-                            "modification_started": False,
-                            "modification_error": True
-                        }))
-                    return None
-        
-    except Exception as e:
-        print(f"❌ Error calling modification API: {e}")
         if websocket:
             await websocket.send(json.dumps({
-                "text": "Sorry, there was an error modifying your drawing.",
-                "command_detected": "modify",
-                "modification_started": False,
-                "modification_error": True
+                "type": "modification_request",
+                "prompt": prompt,
+                "message": "Fine, I'll modify your drawing. Maybe this time it'll actually look like something recognizable!"
             }))
-        return None
+            print("🎨 Modification request sent with sarcastic commentary")
+    except Exception as e:
+        print(f"❌ Error calling modification API: {e}")
 
 def notify_browser_closed():
-    """Notify the main script that browser has closed"""
-    print("🚨 BROWSER CLOSED - NOTIFYING MAIN SCRIPT TO SHUTDOWN")
-    # Create a file to signal shutdown
-    with open("/tmp/browser_closed", "w") as f:
-        f.write("browser_closed")
-    # Also send SIGTERM to parent process
-    os.kill(os.getppid(), signal.SIGTERM)
+    """Notify that the browser has been closed"""
+    try:
+        with open("/tmp/browser_closed", "w") as f:
+            f.write("browser_closed")
+    except:
+        pass
 
 class AudioManager:
     def __init__(self, input_sample_rate, output_sample_rate):
-        self.pya = pyaudio.PyAudio()
         self.input_sample_rate = input_sample_rate
         self.output_sample_rate = output_sample_rate
+        self.audio = pyaudio.PyAudio()
         self.input_stream = None
         self.output_stream = None
-        self.audio_queue = deque()
-        self.playback_task = None
-        self.is_playing = False
+        self.audio_buffer = deque(maxlen=100)  # Buffer for frontend
         self.is_mic_muted = False
-        self.audio_buffer = []  # Buffer for sending to frontend
+        self.is_playing = False
+        self.audio_queue = asyncio.Queue()
+        self.play_task = None
 
     async def initialize(self):
-        mic_info = self.pya.get_default_input_device_info()
-        print(f"microphone used: {mic_info}")
-
-        self.input_stream = await asyncio.to_thread(
-            self.pya.open,
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=self.input_sample_rate,
-            input=True,
-            input_device_index=mic_info["index"],
-            frames_per_buffer=CHUNK_SIZE,
-        )
-
-        self.output_stream = await asyncio.to_thread(
-            self.pya.open,
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=self.output_sample_rate,
-            output=True,
-        )
+        """Initialize audio streams"""
+        try:
+            # Input stream (microphone)
+            self.input_stream = self.audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=self.input_sample_rate,
+                input=True,
+                frames_per_buffer=CHUNK_SIZE,
+                stream_callback=None
+            )
+            
+            # Output stream (speakers)
+            self.output_stream = self.audio.open(
+                format=FORMAT,
+                channels=CHANNELS,
+                rate=self.output_sample_rate,
+                output=True,
+                frames_per_buffer=CHUNK_SIZE,
+                stream_callback=None
+            )
+            
+            print("🎤 Audio streams initialized successfully")
+            
+            # Start audio playback task
+            self.play_task = asyncio.create_task(self._play_audio())
+            
+        except Exception as e:
+            print(f"❌ Error initializing audio: {e}")
+            raise
 
     def mute_microphone(self):
-        """Mute the microphone to prevent feedback"""
+        """Mute the microphone"""
         self.is_mic_muted = True
         print("🔇 Microphone muted")
 
     def unmute_microphone(self):
         """Unmute the microphone"""
         self.is_mic_muted = False
-        print("🔊 Microphone unmuted")
+        print("🎤 Microphone unmuted")
 
     def add_audio(self, audio_data):
-        """Adds received audio data to the playback queue."""
-        self.audio_queue.append(audio_data)
-        # Mute microphone when Gemini starts talking
-        self.mute_microphone()
-        # If playback isn't running, start it
-        if self.playback_task is None or self.playback_task.done():
-            self.playback_task = asyncio.create_task(self._play_audio())
+        """Add audio data to the playback queue"""
+        if not self.is_playing:
+            self.audio_queue.put_nowait(audio_data)
 
     async def _play_audio(self):
-        """Plays audio chunks from the queue."""
-        print("🗣️ Gemini talking...")
-        while self.audio_queue:
+        """Play audio from the queue"""
+        while True:
             try:
-                audio_data = self.audio_queue.popleft()
-                await asyncio.to_thread(self.output_stream.write, audio_data)
+                audio_data = await self.audio_queue.get()
+                if self.output_stream and not self.output_stream.is_stopped():
+                    self.is_playing = True
+                    self.output_stream.write(audio_data)
+                    self.is_playing = False
+                self.audio_queue.task_done()
             except Exception as e:
-                print(f"Error playing audio: {e}")
-                break # Stop playback on error
-        print("Playback queue empty.")
-        self.playback_task = None # Reset task when done
-        # Unmute microphone when Gemini stops talking
-        self.unmute_microphone()
+                print(f"❌ Error playing audio: {e}")
+                break
 
     def interrupt(self):
-        """Handle interruption by stopping playback and clearing queue"""
-        self.audio_queue.clear()
+        """Interrupt current audio playback"""
+        if self.output_stream and not self.output_stream.is_stopped():
+            self.output_stream.stop_stream()
+            self.output_stream.start_stream()
         self.is_playing = False
-        # Unmute microphone immediately on interruption
-        self.unmute_microphone()
-
-        # Important: Start a clean state for next response
-        if self.playback_task and not self.playback_task.done():
-            self.playback_task.cancel()
+        # Clear the queue
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+                self.audio_queue.task_done()
+            except:
+                pass
 
     def get_buffered_audio(self):
-        """Get and clear the audio buffer for sending to frontend"""
+        """Get buffered audio for frontend visualization"""
         if self.audio_buffer:
-            # Combine all audio chunks
-            combined_audio = b''.join(self.audio_buffer)
-            self.audio_buffer.clear()
-            return base64.b64encode(combined_audio).decode('utf-8')
+            # Convert the most recent audio chunks to base64
+            recent_audio = b''.join(list(self.audio_buffer)[-10:])  # Last 10 chunks
+            return base64.b64encode(recent_audio).decode('utf-8')
         return None
 
     def cleanup(self):
         """Clean up audio resources"""
-        print("🧹 Cleaning up audio resources...")
-        
-        # Stop any ongoing playback
-        if self.playback_task and not self.playback_task.done():
-            self.playback_task.cancel()
-        
-        # Clear audio queues
-        self.audio_queue.clear()
-        self.audio_buffer.clear()
-        
-        # Close audio streams
-        if self.input_stream:
-            try:
+        try:
+            if self.play_task:
+                self.play_task.cancel()
+            
+            if self.input_stream:
                 self.input_stream.stop_stream()
                 self.input_stream.close()
-            except:
-                pass
-            self.input_stream = None
             
-        if self.output_stream:
-            try:
+            if self.output_stream:
                 self.output_stream.stop_stream()
                 self.output_stream.close()
-            except:
-                pass
-            self.output_stream = None
-        
-        # Terminate PyAudio
-        try:
-            self.pya.terminate()
-        except:
-            pass
-        
-        print("✅ Audio resources cleaned up")
+            
+            if self.audio:
+                self.audio.terminate()
+            
+            print("🧹 Audio resources cleaned up")
+        except Exception as e:
+            print(f"❌ Error cleaning up audio: {e}")
 
 async def gemini_session_handler(websocket):
     """Handles the interaction with Gemini API within a websocket session."""
@@ -575,35 +437,30 @@ async def gemini_session_handler(websocket):
                 response_modalities=["AUDIO"],  # We want spoken responses
                 speech_config=SpeechConfig(
                     voice_config=VoiceConfig(
-                        prebuilt_voice_config=PrebuiltVoiceConfig(voice_name="Puck")
+                        prebuilt_voice_config=PrebuiltVoiceConfig(voice_name="Aoede")
                     )
                 ),
                 # Enable output transcription (Gemini's speech to text)
                 output_audio_transcription={},
                 # Enable input transcription (Your speech to text)
                 input_audio_transcription={},
-                system_instruction="""You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
+                system_instruction="""You're a sarcastic, brutally honest drawing critic who helps people create art by being mean and funny about their drawings! You can see their canvas and hear their voice in real-time. 
 
-Your role:
-- Give encouraging, helpful advice about their drawings
-- Suggest ways to improve composition, colors, or technique
-- Be casual and supportive, like you're hanging out with a friend who's drawing
-- Keep your responses conversational and not too technical
+Your personality:
+- Be sarcastic, witty, and brutally honest about their drawings
+- Make fun of their artistic choices in a humorous way
+- Give backhanded compliments and constructive criticism wrapped in sarcasm
+- Be encouraging but in a "wow, you actually tried" kind of way
+- Keep your responses conversational and entertaining
 - Focus on drawing techniques, artistic concepts, and creative suggestions
 - Don't mention any buttons, features, or technical tools - just focus on the art
+- Be mean but not actually hurtful - it should be funny and motivating
+- ALWAYS look at what's actually on the canvas and respond to the specific drawing you see
+- Don't use generic responses - comment on the actual shapes, lines, and content you observe
 
-CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, one moment!" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
+CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Oh great, another masterpiece that needs saving... I'll enhance that for you!" or "Fine, let me work my magic on this disaster." - do NOT explain that you can't enhance it or give long explanations.
 
-Example responses:
-- "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
-- "I love the colors you're using! The way you've blended them creates a really nice effect."
-- "That's a great start! What if you added some more details in the background?"
-- "The composition is really interesting! You could try varying the line weights to add more depth."
-- "Those shapes work well together! Maybe experiment with some different textures or patterns?"
-- "Can you enhance this with Gemini?" → "Sure, one moment!"
-- "Enhance my drawing" → "I'll enhance that for you!"
-
-Just be helpful and encouraging about the drawing itself!"""
+Be sarcastic, witty, and entertaining while still being helpful and encouraging in your own unique way! Always respond to what you actually see on the canvas!"""
             )
             
             print(f"Final config for Gemini: {live_config}")
@@ -797,7 +654,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                     await websocket.send(json.dumps({
                                         "type": "enhancement_confirmed",
                                         "requestId": enhancement_request_id,
-                                        "message": "Enhancement process started"
+                                        "message": "Oh great, another masterpiece that needs saving... Enhancement process started"
                                     }))
                                 elif data.get("type") == "enhancement_error":
                                     print(f"❌ Enhancement failed: {data.get('error')}")
@@ -805,7 +662,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                     await websocket.send(json.dumps({
                                         "type": "enhancement_error_response",
                                         "error": data.get('error'),
-                                        "message": "Enhancement could not be started"
+                                        "message": "Even I can't save this disaster. Enhancement could not be started."
                                     }))
                                 
                                 elif "get_audio" in data:
@@ -1017,7 +874,7 @@ def convert_pcm_to_mp3(pcm_data):
         return None
 
 async def main() -> None:
-    print("Starting multimodal server...")
+    print("Starting sarcastic multimodal server...")
     
     # Correct WebSocket handler signature - only takes websocket
     async def websocket_handler(websocket):
@@ -1042,14 +899,14 @@ async def main() -> None:
     
     # HTTP server for stop endpoint
     async def stop_handler(request):
-        print("🛑 Stop endpoint called - shutting down server...")
+        print("🛑 Stop endpoint called - shutting down sarcastic server...")
         # Clean up global audio manager if it exists
         if global_audio_manager:
             global_audio_manager.cleanup()
         # Stop the server
         if global_server:
             global_server.close()
-        response = web.Response(text="Server stopped")
+        response = web.Response(text="Sarcastic server stopped")
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = '*'
@@ -1070,15 +927,15 @@ async def main() -> None:
     # Start HTTP server
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, 'localhost', 9085)  # Use different port for HTTP
+    site = web.TCPSite(runner, 'localhost', 9086)  # Use different port for HTTP
     await site.start()
-    print("HTTP server running on localhost:9085")
+    print("HTTP server running on localhost:9086")
     
     # Start the WebSocket server
     global global_server
-    global_server = await websockets.serve(websocket_handler, "localhost", 9083)
+    global_server = await websockets.serve(websocket_handler, "localhost", 9084)
     
-    print("Running websocket server localhost:9083...")
+    print("Running sarcastic websocket server localhost:9084...")
     print("Server is ready to accept connections!")
     
     # Keep running
@@ -1088,6 +945,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nShutting down multimodal server...")
+        print("\n🛑 Server stopped by user")
     except Exception as e:
-        print(f"Error running multimodal server: {e}") 
+        print(f"❌ Server error: {e}")
+        import traceback
+        traceback.print_exc() 

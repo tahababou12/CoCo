@@ -7,6 +7,7 @@ import EnhancedImageActions from './EnhancedImageActions'
 import { Mic, MicOff, Volume2 } from 'lucide-react'
 import { useShapes } from '../ShapesContext'
 import html2canvas from 'html2canvas'
+import Header from './Header'
 
 // Debug flag to control console logging
 const DEBUG = false;
@@ -105,10 +106,22 @@ const Canvas: React.FC<CanvasProps> = () => {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // AI mode state
+  const [aiMode, setAIMode] = useState<'friendly' | 'sarcastic'>('friendly');
+  
+  // Add a ref to always get the latest aiMode
+  const aiModeRef = useRef(aiMode);
+  aiModeRef.current = aiMode;
+
+  // Debug effect to log when aiMode changes
+  useEffect(() => {
+    console.log('🎯 AI Mode changed to:', aiMode);
+  }, [aiMode]);
+
   // Debug effect to log when shapes change
   useEffect(() => {
     console.log('🔄 SHAPES CHANGED - Current count:', state.shapes.length);
-    console.log('🔄 SHAPES CHANGED - Shapes:', state.shapes);
+    console.log('🔄 SHAPES CHANGED - Shapes:', stateRef.current.shapes);
     console.log('🔄 SHAPES CHANGED - Is AI connected:', isMultimodalConnected);
   }, [state.shapes, isMultimodalConnected]);
 
@@ -1183,17 +1196,16 @@ const Canvas: React.FC<CanvasProps> = () => {
   // Multimodal AI functions
   const connectMultimodal = () => {
     console.log('🔌 Connecting to multimodal server...');
-    
     if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
       console.log('✅ Already connected to multimodal server');
       return;
     }
-    
     try {
-      multimodalWebSocketRef.current = new WebSocket('ws://localhost:9083');
-      
+      const port = aiModeRef.current === 'sarcastic' ? 9084 : 9083;
+      console.log(`🔌 Connecting to ${aiModeRef.current} server on port ${port}`);
+      multimodalWebSocketRef.current = new WebSocket(`ws://localhost:${port}`);
       multimodalWebSocketRef.current.onopen = () => {
-        console.log('✅ Connected to multimodal server');
+        console.log(`✅ Connected to ${aiModeRef.current} multimodal server`);
         setIsMultimodalConnected(true);
         setMultimodalError(null);
         
@@ -1216,6 +1228,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         initializeMultimodalAudio();
         
         // Start live streaming
+        console.log(`📷 Starting live streaming for ${aiModeRef.current} AI...`);
         startLiveStreaming();
       };
       
@@ -1657,17 +1670,107 @@ const Canvas: React.FC<CanvasProps> = () => {
   };
 
   return (
-    <div 
-      ref={containerRef}
-      data-canvas-container
-      className="flex-1 overflow-hidden bg-stone-50 relative select-none"
-      style={{ 
-        touchAction: 'none',
-        minHeight: '600px',
-        height: '100%',
-        width: '100%'
-      }}
-    >
+    <div ref={containerRef} className="relative w-full h-full bg-yellow-50 overflow-hidden select-none" data-canvas-container>
+      <Header />
+      
+      {/* AI Control Panel - Top Left */}
+      <div className="absolute top-4 left-4 z-50 flex flex-col space-y-2">
+        {/* Unified AI Control Block */}
+        <div className="bg-white rounded-lg shadow-md p-1 border border-gray-200">
+          {/* AI Mode Toggle */}
+          <div className="flex items-center mb-1">
+            <span className="text-xs mr-2 px-2 text-gray-600 font-medium">AI:</span>
+            <button
+              className={`px-3 py-1.5 text-xs rounded-l-md transition-colors ${
+                !aiMode || aiMode === 'friendly' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-gray-100 text-green-600 hover:bg-gray-200'
+              }`}
+              onClick={() => {
+                console.log('🎯 Friendly button clicked, current aiMode:', aiMode);
+                setAIMode('friendly');
+                // If connected, disconnect and reconnect to the new server
+                if (isMultimodalConnected && multimodalWebSocketRef.current) {
+                  console.log('🔄 Disconnecting from current server and reconnecting to new one...');
+                  console.log('📷 Stopping canvas streaming before switch...');
+                  multimodalWebSocketRef.current.close();
+                  setTimeout(() => {
+                    console.log('🔄 Reconnecting to friendly server...');
+                    connectMultimodal();
+                  }, 300);
+                }
+              }}
+              disabled={aiMode === 'friendly'}
+            >
+              Friendly
+            </button>
+            <button
+              className={`px-3 py-1.5 text-xs rounded-r-md transition-colors ${
+                aiMode === 'sarcastic' 
+                  ? 'bg-red-600 text-white' 
+                  : 'bg-gray-100 text-red-600 hover:bg-gray-200'
+              }`}
+              onClick={() => {
+                console.log('🎯 Sarcastic button clicked, current aiMode:', aiMode);
+                setAIMode('sarcastic');
+                // If connected, disconnect and reconnect to the new server
+                if (isMultimodalConnected && multimodalWebSocketRef.current) {
+                  console.log('🔄 Disconnecting from current server and reconnecting to new one...');
+                  console.log('📷 Stopping canvas streaming before switch...');
+                  multimodalWebSocketRef.current.close();
+                  setTimeout(() => {
+                    console.log('🔄 Reconnecting to sarcastic server...');
+                    connectMultimodal();
+                  }, 300);
+                }
+              }}
+              disabled={aiMode === 'sarcastic'}
+            >
+              Sarcastic
+            </button>
+          </div>
+          
+          {/* Connect/Mute AI Button */}
+          <button
+            className={`w-full px-3 py-1.5 text-xs rounded-md transition-colors ${
+              isMultimodalConnected 
+                ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            onClick={isMultimodalConnected ? toggleMute : connectMultimodal}
+            title={isMultimodalConnected ? (isMuted ? "Unmute AI Assistant" : "Mute AI Assistant") : "Connect AI Assistant"}
+          >
+            {isMultimodalConnected ? (
+              <div className="flex items-center justify-center space-x-1">
+                {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
+                <span className="text-xs">{isMuted ? "Unmute AI" : "Mute AI"}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center space-x-1">
+                <Mic size={14} />
+                <span className="text-xs">Connect AI</span>
+              </div>
+            )}
+          </button>
+        </div>
+        
+        {/* AI Status Indicator - only show when connected */}
+        {isMultimodalConnected && (
+          <div className="bg-green-600 text-white px-3 py-2 rounded-lg shadow-md text-xs">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <span>
+                {isMuted ? "AI Muted" : 
+                 voiceStatus === 'listening' ? "Listening..." :
+                 isPlayingAudio ? "Gemini speaking..." :
+                 isLiveStreaming ? "Gemini sees live canvas" :
+                 "AI Ready"}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+      
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
@@ -1682,7 +1785,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       {/* Save to Folder button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
-          className="absolute left-4 top-1/2 mt-12 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
           onClick={saveCanvasAsPNG}
           title="Save to img folder"
         >
@@ -1694,7 +1797,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       {state.shapes.length > 0 && (
         <>
           <button
-            className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
             onClick={() => enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail')}
             disabled={enhancementStatus === 'processing'}
             title="Enhance with Gemini"
@@ -1702,7 +1805,7 @@ const Canvas: React.FC<CanvasProps> = () => {
             {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
           </button>
           <button
-            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-gray-600 hover:bg-gray-700 text-gray-100 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            className="absolute left-4 top-1/2 mt-48 -translate-y-1/2 bg-gray-600 hover:bg-gray-700 text-gray-100 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
             onClick={() => setShowGenSettings(true)}
             title="Generation Settings"
           >
@@ -1746,45 +1849,6 @@ const Canvas: React.FC<CanvasProps> = () => {
             </div>
           )}
         </>
-      )}
-
-      {/* Multimodal AI Assistant Button */}
-      <button
-        className={`absolute right-4 top-16 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
-          isMultimodalConnected 
-            ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
-            : 'bg-blue-600 hover:bg-blue-700 text-white'
-        }`}
-        onClick={isMultimodalConnected ? toggleMute : connectMultimodal}
-        title={isMultimodalConnected ? (isMuted ? "Unmute AI Assistant" : "Mute AI Assistant") : "Connect AI Assistant"}
-      >
-        {isMultimodalConnected ? (
-          <div className="flex items-center space-x-2">
-            {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-            <span className="text-sm font-medium">{isMuted ? "Unmute AI" : "Mute AI"}</span>
-          </div>
-        ) : (
-          <div className="flex items-center space-x-2">
-            <Mic size={20} />
-            <span className="text-sm font-medium">Connect AI</span>
-          </div>
-        )}
-      </button>
-
-      {/* Consolidated AI Status Indicator - only show when connected */}
-      {isMultimodalConnected && (
-        <div className="absolute right-4 top-28 bg-green-600 text-white px-3 py-2 rounded-lg shadow-md z-50 text-xs">
-          <div className="flex items-center space-x-2">
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-            <span>
-              {isMuted ? "AI Muted" : 
-               voiceStatus === 'listening' ? "Listening..." :
-               isPlayingAudio ? "Gemini speaking..." :
-               isLiveStreaming ? "Gemini sees live canvas" :
-               "AI Ready"}
-            </span>
-        </div>
-        </div>
       )}
 
       {/* Error Display */}
