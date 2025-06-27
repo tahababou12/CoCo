@@ -7,7 +7,8 @@
     "dev": "nodemon websocket-server.js",
     "api": "uvicorn app.main:app --reload",
     "start-all": "node server.js",
-    "dev-all": "nodemon server.js"
+    "dev-all": "nodemon server.js",
+    "start-voices": "source venv/bin/activate && python sarcastic_multimodal_server.py & source venv/bin/activate && python multimodal_server.py & wait"
   },
   "dependencies": {
     "@google/genai": "^0.7.0",
