@@ -299,9 +299,9 @@ class StoryVideoGenerator:
         logging.info("Generating coherent story...")
         context_str = story_context or ''
         story_prompt = f"""
-        Create a fun and engaging story that connects these {len(image_descriptions)} scenes. Make it exciting and interesting.
+        Create an engaging story that connects these {len(image_descriptions)} scenes. Make it exciting, interesting, and constanly make it ironic and unexpected in funny ways. Use simple words throughout, avoid cliches and big words, and never use fancy alliterations. Langauge should be short sweet and to the point.
         
-        Here are some scene descriptions. Use them to create a coherent story script that is short, engaging, and interesting. Do not use complicated words:
+        Here are short descriptions for each scene. Use them to create a coherent story script that is short, engaging, and interesting. These descriptions are simple and very descriptive, but do not get lost in the detail. Here are the descriptions:
         {chr(10).join(f"Scene {i+1}: {desc}" for i, desc in enumerate(image_descriptions))}
 
         Remember that you only have the specific number of scenes to work with so do not go over 2 sentences per scene.
@@ -315,10 +315,13 @@ class StoryVideoGenerator:
                 ...
             ]
         }}
-        
-        Make each scene narration about 7-15 seconds long when read aloud. Do not go over this limit.
-        Use simple words to make it fun and engaging. Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
-        IMPORTANT: Your response must be valid JSON only, with no additional text or markdown formatting.
+
+        SPECIAL INSTRUCTIONS:
+        – Do not use overly complicated and cliche words. Keep the language simple and fun. Aim for around a high school level of vocabulary. 
+        – The script should not sound like a storybook. It should be a fun and engaging story that is short and to the point. It should be a unique, ironic story based on the scene descriptions and mood.
+        – Make each scene narration about 7-15 seconds long when read aloud. Do not go over this limit.
+        – Make sure the overall story has some general theme. Pick that theme early on and try to stick to it.
+        – IMPORTANT: Your response must be valid JSON only, with no additional text or markdown formatting.
 
         Optionally, the user has shared some context about what kind of theme they would want the story to be around. Depending on the amount of detail, make sure the story is inspired by this and relates to the scene descriptions. Here is the context:
         {context_str}
@@ -364,11 +367,11 @@ class StoryVideoGenerator:
         try:
             logging.info("Starting audio generation...")
             start_time = time.time()
-            voice_ids = ["JBFqnCBsd6RMkjVDRZzb", "7fbQ7yJuEo56rYjrYaEh"]
+            voice_ids = ["JBFqnCBsd6RMkjVDRZzb", "7fbQ7yJuEo56rYjrYaEh", "42ZF7GefiwXbnDaSkPpY"]
             # Use ElevenLabs for high-quality voice generation
             audio_generator = self.eleven_client.text_to_speech.convert(
                 text=text,
-                voice_id="JBFqnCBsd6RMkjVDRZzb",  # You can change this to any voice ID you prefer
+                voice_id=voice_ids[0],  # You can change this to any voice ID you prefer
                 model_id="eleven_multilingual_v2",
                 output_format="mp3_44100_128"
             )
@@ -470,7 +473,7 @@ class StoryVideoGenerator:
             logging.info("Generating music description from story data...")
             
             prompt = f"""
-            Based on this story, generate a brief description of what kind of background music would be appropriate. Make sure you specific that the background music should not be distracting. 
+            Based on the following description of a story, generate a brief description of what kind of background music would be appropriate. Make sure you specify that the background music is not distracting. 
             
             Story Title: {story_data.get('title', 'A Story')}
             Story Introduction: {story_data.get('story', 'A tale unfolds')}
@@ -680,7 +683,6 @@ class StoryVideoGenerator:
             current_time = 0
             
             # Add title screen
-
             title_frames = self.create_scene_clip(image_paths[0], durations[0], 'dramatic_zoom_punch', 0)
             # Overlay title text on each frame
             for i, frame in enumerate(title_frames):
@@ -692,11 +694,6 @@ class StoryVideoGenerator:
                            cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
                 title_frames[i] = frame_with_text
 
-            title_frames = self.create_scene_clip(image_paths[0], durations[0], 'ken_burns')
-            title_text = np.zeros((self.resolution[1], self.resolution[0], 3), dtype=np.uint8)
-            cv2.putText(title_text, story_data["title"], 
-                    (self.resolution[0]//4, self.resolution[1]//2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
             all_frames.extend(title_frames)
             current_time += durations[0]
             
