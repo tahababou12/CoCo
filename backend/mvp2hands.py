@@ -461,7 +461,7 @@ while True:
         similarity = calculate_image_similarity(canvas, last_enhanced_canvas)
         similarity_color = (0, 255, 0) if similarity < enhancement_threshold else (0, 0, 255)
         cv2.putText(combined_img, f"Similarity: {similarity:.2f}", (10, 180), 
-                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, similarity_color, 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, similarity_color, 2)
     
     # Draw guidelines for gestures at the bottom of the screen
     help_y = h - 75
@@ -517,7 +517,7 @@ while True:
         # Show feedback on screen
         feedback_img = combined_img.copy()
         cv2.putText(feedback_img, "Drawing Saved!", (w//2 - 100, h//2), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.imshow('Hand Drawing', feedback_img)
         cv2.waitKey(1000)  # Show message for 1 second
         

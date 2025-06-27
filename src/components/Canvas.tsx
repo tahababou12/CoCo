@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useLayoutEffect } from 'react'
+import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { useDrawing } from '../context/DrawingContext'
 import { Point, Shape } from '../types'
 import { renderShape } from '../utils/renderShape'
@@ -6,6 +6,8 @@ import { hitTest } from '../utils/hitTest'
 import EnhancedImageActions from './EnhancedImageActions'
 import { Mic, MicOff, Volume2 } from 'lucide-react'
 import { useShapes } from '../ShapesContext'
+import html2canvas from 'html2canvas'
+import Header from './Header'
 
 // Debug flag to control console logging
 const DEBUG = false;
@@ -67,12 +69,21 @@ const Canvas: React.FC<CanvasProps> = () => {
   const [dragStartPos, setDragStartPos] = useState<Point | null>(null)
   const [initialImageState, setInitialImageState] = useState<EnhancedImage | null>(null)
 
+  const [showGenSettings, setShowGenSettings] = useState(false);
+  const [genSettings, setGenSettings] = useState({
+    style: '',
+    mood: '',
+    details: ''
+  });
+
   // Multimodal AI state
   const [isMultimodalConnected, setIsMultimodalConnected] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isPlayingAudio, setIsPlayingAudio] = useState(false)
-  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date}>>([])
+  const [multimodalMessages, setMultimodalMessages] = useState<Array<{type: 'user' | 'assistant', content: string, timestamp: Date, isTranscript?: boolean}>>([])
   const [multimodalError, setMultimodalError] = useState<string | null>(null)
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'muted'>('idle')
+  const [isMuted, setIsMuted] = useState(false)
   
   // Multimodal refs
   const multimodalWebSocketRef = useRef<WebSocket | null>(null)
@@ -85,6 +96,51 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   // Real-time canvas streaming to Gemini
   const [isLiveStreaming, setIsLiveStreaming] = useState(false);
+
+  const lastCanvasHashRef = useRef<string>('');
+
+  // Add state to track if we should pause streaming during critical operations
+  const [isStreamingPaused, setIsStreamingPaused] = useState(false);
+
+  // Add a ref to always get the latest state
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // AI mode state
+  const [aiMode, setAIMode] = useState<'friendly' | 'sarcastic'>('friendly');
+  
+  // Add a ref to always get the latest aiMode
+  const aiModeRef = useRef(aiMode);
+  aiModeRef.current = aiMode;
+
+  // Debug effect to log when aiMode changes
+  useEffect(() => {
+    console.log('🎯 AI Mode changed to:', aiMode);
+  }, [aiMode]);
+
+  // Debug effect to log when shapes change
+  useEffect(() => {
+    console.log('🔄 SHAPES CHANGED - Current count:', state.shapes.length);
+    console.log('🔄 SHAPES CHANGED - Shapes:', stateRef.current.shapes);
+    console.log('🔄 SHAPES CHANGED - Is AI connected:', isMultimodalConnected);
+  }, [state.shapes, isMultimodalConnected]);
+
+  // Define renderCanvas function before it's used in effects
+  const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const gridSize = 20 * state.viewTransform.scale
+    const offsetX = state.viewTransform.offsetX % gridSize
+    const offsetY = state.viewTransform.offsetY % gridSize
+    
+    // Draw dots at intersections
+    ctx.fillStyle = '#e5e5e5'
+    for (let x = offsetX; x < width; x += gridSize) {
+      for (let y = offsetY; y < height; y += gridSize) {
+        ctx.beginPath()
+        ctx.arc(x, y, 1, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+  }
 
   const renderCanvas = () => {
     const canvas = canvasRef.current;
@@ -307,10 +363,17 @@ const Canvas: React.FC<CanvasProps> = () => {
     
     // Capture canvas during drawing for real-time streaming
     if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-      const canvas = document.querySelector('canvas');
-      if (canvas) {
+      const canvasContainer = document.querySelector('[data-canvas-container]');
+      if (canvasContainer) {
+        html2canvas(canvasContainer as HTMLElement, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#fafaf9',
+          scale: 1,
+          logging: false
+        }).then(canvas => {
         const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-        console.log('📷 [DRAWING] Drawing detected - capturing canvas...');
+          console.log('📷 [DRAWING] Drawing detected - capturing canvas container...');
         
         const payload = {
           realtime_input: {
@@ -322,7 +385,10 @@ const Canvas: React.FC<CanvasProps> = () => {
         };
         
         multimodalWebSocketRef.current.send(JSON.stringify(payload));
-        console.log('📷 [DRAWING] Canvas frame sent to Gemini');
+          console.log('📷 [DRAWING] Canvas container frame sent to Gemini');
+        }).catch(err => {
+          console.error('❌ [DRAWING] Failed to capture canvas container:', err);
+        });
       }
     }
   };
@@ -349,7 +415,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     
     const point = getCanvasPoint(e.clientX, e.clientY);
 
-    // Handle enhanced image dragging and resizing
+    // Handle enhanced image dragging and resizing - check this first
     if (dragStartPos && initialImageState) {
       const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
       const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
@@ -435,73 +501,6 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       // No need to re-dispatch SET_STYLE here since renderCanvas will handle it
     }
-
-    // Add this to the section handling image resizing
-    const draggedImage = interactiveEnhancedImages.find(img => img.isDragging || img.isResizing);
-    
-    if (draggedImage && initialImageState && dragStartPos) {
-      const dx = (e.clientX - dragStartPos.x) / state.viewTransform.scale;
-      const dy = (e.clientY - dragStartPos.y) / state.viewTransform.scale;
-      
-      const draggedIndex = interactiveEnhancedImages.findIndex(img => 
-        img.isDragging || img.isResizing
-      );
-      
-      if (draggedIndex !== -1) {
-        const updatedImages = [...interactiveEnhancedImages];
-        const image = { ...updatedImages[draggedIndex] };
-        
-        if (draggedImage.isResizing && draggedImage.resizeHandle) {
-          // Handle resizing based on which handle was grabbed
-          switch (draggedImage.resizeHandle) {
-            case 'bottom-right':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
-              break;
-            case 'bottom-left':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
-              image.x = initialImageState.x + dx;
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
-              break;
-            case 'top-right':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
-              image.y = initialImageState.y + dy;
-              break;
-            case 'top-left':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
-              image.x = initialImageState.x + dx;
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
-              image.y = initialImageState.y + dy;
-              break;
-            case 'right':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width + dx);
-              break;
-            case 'left':
-              image.width = Math.max(50 / state.viewTransform.scale, initialImageState.width - dx);
-              image.x = initialImageState.x + dx;
-              break;
-            case 'bottom':
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height + dy);
-              break;
-            case 'top':
-              image.height = Math.max(50 / state.viewTransform.scale, initialImageState.height - dy);
-              image.y = initialImageState.y + dy;
-              break;
-          }
-        } else if (draggedImage.isDragging) {
-          // Handle dragging
-          image.x = initialImageState.x + dx;
-          image.y = initialImageState.y + dy;
-        }
-        
-        updatedImages[draggedIndex] = image;
-        setInteractiveEnhancedImages(updatedImages);
-        
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -550,11 +549,14 @@ const Canvas: React.FC<CanvasProps> = () => {
       setIsDrawing(false);
       dispatch({ type: 'END_DRAWING' });
       
+      // Pause streaming during critical operations
+      setIsStreamingPaused(true);
+      
       // Immediately send canvas update to Gemini when drawing stops
       if (isLiveStreaming && multimodalWebSocketRef.current) {
-        setTimeout(() => {
-          const currentCanvas = getCanvasHash();
-          if (currentCanvas) {
+        setTimeout(async () => {
+          const currentCanvas = await getCanvasHash();
+          if (currentCanvas && typeof currentCanvas === 'string') {
             const payload = {
               realtime_input: {
                 media_chunks: [
@@ -568,7 +570,17 @@ const Canvas: React.FC<CanvasProps> = () => {
             multimodalWebSocketRef.current?.send(JSON.stringify(payload));
             console.log('📡 Sent immediate canvas update after drawing');
           }
+          
+          // Resume streaming after a short delay
+          setTimeout(() => {
+            setIsStreamingPaused(false);
+          }, 500);
         }, 100); // Small delay to ensure canvas is fully rendered
+      } else {
+        // Resume streaming if not live streaming
+        setTimeout(() => {
+          setIsStreamingPaused(false);
+        }, 500);
       }
     }
   };
@@ -689,18 +701,42 @@ const Canvas: React.FC<CanvasProps> = () => {
     }
   }
 
-  const enhanceDrawingWithGemini = async () => {
-    // Check if there are shapes to save
-    if (state.shapes.length === 0) {
+  // Wrapper function for multimodal server to use
+  const enhanceDrawingWithGeminiWithPrompt = useCallback(async (prompt: string, fromMultimodal: boolean = false) => {
+    console.log('🚀 Starting enhancement with prompt:', prompt);
+    console.log('🚀 From multimodal:', fromMultimodal);
+    console.log('🚀 Current shapes count:', stateRef.current.shapes.length);
+    
+    // Pause streaming during enhancement to prevent interference
+    setIsStreamingPaused(true);
+    
+    try {
+      // Check if there are shapes to save (including any that might have been completed)
+      if (stateRef.current.shapes.length === 0) {
+        console.log('❌ No shapes to enhance - please draw something first');
       window.showToast('Draw something first before enhancing', 'info', 3000);
+        
+        // If called from multimodal server, send error back
+        if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          console.log('📤 Sending "no shapes" error back to multimodal server');
+          multimodalWebSocketRef.current.send(JSON.stringify({
+            type: 'enhancement_error',
+            error: 'No shapes to enhance - please draw something first',
+            success: false
+          }));
+        }
+        
+        // Resume streaming
+        setIsStreamingPaused(false);
       return;
     }
 
+      console.log('✅ Shapes found, starting enhancement process');
     setEnhancementStatus('processing');
     setEnhancedImage(null);
     
-    try {
       // Always save the drawing first before enhancing
+      console.log('💾 Creating temporary canvas for drawing...');
       // Create a temporary canvas for rendering just the drawings
       const tempCanvas = document.createElement('canvas');
       const tempCtx = tempCanvas.getContext('2d');
@@ -715,7 +751,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       let maxY = -Infinity;
       
       // Calculate the bounds for all shapes
-      state.shapes.forEach(shape => {
+      stateRef.current.shapes.forEach(shape => {
         shape.points.forEach(point => {
           minX = Math.min(minX, point.x);
           minY = Math.min(minY, point.y);
@@ -749,6 +785,8 @@ const Canvas: React.FC<CanvasProps> = () => {
       tempCanvas.width = width;
       tempCanvas.height = height;
       
+      console.log(`📐 Canvas dimensions: ${width}x${height}`);
+      
       // Fill with a white background
       tempCtx.fillStyle = '#FFFFFF';
       tempCtx.fillRect(0, 0, width, height);
@@ -757,14 +795,16 @@ const Canvas: React.FC<CanvasProps> = () => {
       tempCtx.translate(-minX, -minY);
       
       // Draw all shapes
-      state.shapes.forEach(shape => {
+      stateRef.current.shapes.forEach(shape => {
         renderShape(tempCtx, shape);
       });
       
       // Convert to image
       const dataUrl = tempCanvas.toDataURL('image/png');
+      console.log('🖼️ Image data created, length:', dataUrl.length);
       
       // Send image data to server
+      console.log('📤 Saving image to server...');
       const saveResponse = await fetch('http://localhost:5001/api/save-image', {
         method: 'POST',
         headers: {
@@ -779,12 +819,29 @@ const Canvas: React.FC<CanvasProps> = () => {
       }
       
       const saveResult = await saveResponse.json();
-      void (DEBUG && console.log(`Image saved for enhancement: ${saveResult.absolutePath}`));
+      console.log('✅ Image saved successfully:', saveResult);
       
-      // Use a default enhancement prompt
-      const defaultPrompt = 'Enhance this sketch into an image with more detail';
+
+      // Build the enhancement prompt with generation settings
+      const defaultPrompt = 'Enhance this sketch into a more interesting image with a little bit more detail. Make sure to follow the artstyle, mood, and extra details if provided, otherwise just stick to a normal enhancement.';
+
+      let finalPrompt = defaultPrompt;
+      const customParts = [];
+      if (genSettings.style.trim()) customParts.push(`Artstyle: ${genSettings.style.trim()}.`);
+      if (genSettings.mood.trim()) customParts.push(`Mood/emotion: ${genSettings.mood.trim()}.`);
+      if (genSettings.details.trim()) customParts.push(`Extra details: ${genSettings.details.trim()}.`);
+      
+      // If we have custom settings, use them; otherwise use the passed prompt or default
+      if (customParts.length > 0) {
+        finalPrompt = `${defaultPrompt}\n${customParts.join(' ')}`;
+        console.log('🎨 Using custom prompt with generation settings:', finalPrompt);
+      } else {
+        finalPrompt = prompt || defaultPrompt;
+        console.log('🎨 Using default/passed prompt:', finalPrompt);
+      }
 
       // Request image enhancement from Flask server
+      console.log('🚀 Calling enhancement API...');
       const response = await fetch('http://localhost:5001/api/enhance-image', {
         method: 'POST',
         headers: {
@@ -792,7 +849,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         },
         body: JSON.stringify({ 
           filename: saveResult.filename,
-          prompt: defaultPrompt
+          prompt: finalPrompt
         }),
       });
 
@@ -802,68 +859,101 @@ const Canvas: React.FC<CanvasProps> = () => {
       }
 
       const result = await response.json();
-      void (DEBUG && console.log('Enhancement started:', result));
+      console.log('✅ Enhancement API response:', result);
 
       if (result.success && result.requestId) {
+        console.log('🎯 Enhancement started successfully with requestId:', result.requestId);
+        
+        // If called from multimodal server, send the requestId back
+        if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          console.log('📤 Sending requestId back to multimodal server:', result.requestId);
+          multimodalWebSocketRef.current.send(JSON.stringify({
+            type: 'enhancement_started',
+            requestId: result.requestId,
+            success: true
+          }));
+        }
+        
         // Show a toast notification that enhancement is in progress
         window.showToast('Enhancing your drawing with Gemini...', 'info', 3000);
         
         // Poll for enhancement status
+        console.log('🔄 Starting to poll for enhancement status...');
         pollEnhancementStatus(result.requestId);
       } else {
         throw new Error('Failed to start enhancement process');
       }
     } catch (err) {
-      void (DEBUG && console.error('Error enhancing drawing:', err));
+      console.error('❌ Error in enhancement process:', err);
+      
+      // If called from multimodal server, send error back
+      if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        console.log('📤 Sending enhancement error back to multimodal server');
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: 'enhancement_error',
+          error: err instanceof Error ? err.message : String(err),
+          success: false
+        }));
+      }
+      
       window.showToast(`Error enhancing drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
       setEnhancementStatus('error');
+    } finally {
+      // Always resume streaming after enhancement operations
+      setIsStreamingPaused(false);
     }
-  }
+  }, [state.shapes, genSettings]);
 
-  const pollEnhancementStatus = async (requestId: string) => {
+  const pollEnhancementStatus = useCallback(async (requestId: string) => {
+    console.log('🔄 Polling enhancement status for requestId:', requestId);
     try {
       const response = await fetch(`http://localhost:5001/api/enhancement-status/${requestId}`);
       
       if (!response.ok) {
         const errorText = await response.text();
-        void (DEBUG && console.error(`Error response: ${response.status} - ${errorText}`));
+        console.error(`❌ Error response: ${response.status} - ${errorText}`);
         throw new Error(`Failed to fetch enhancement status: ${response.status} ${response.statusText}`);
       }
       
       const status = await response.json();
-      void (DEBUG && console.log('Enhancement status:', status));
+      console.log('📊 Enhancement status received:', status);
       
       if (status.status === 'processing') {
+        console.log('⏳ Enhancement still processing, will poll again in 2 seconds...');
         // Continue polling every 2 seconds
         setTimeout(() => pollEnhancementStatus(requestId), 2000);
       } else if (status.status === 'complete' && status.result) {
+        console.log('✅ Enhancement complete! Result:', status.result);
         // Enhancement is complete, add the enhanced image to the canvas
         setEnhancementStatus('complete');
         
         // Add as interactive image
+        console.log('🖼️ Adding enhanced image to canvas...');
         addEnhancedImageToCanvas(status.result);
         
         // Show success toast
         window.showToast('Enhancement complete! Image added to canvas.', 'success', 3000);
       } else if (status.status === 'error') {
+        console.error('❌ Enhancement failed with error:', status.message);
         // Enhancement failed
         setEnhancementStatus('error');
         
         // Show a more detailed error message
         const errorMessage = status.message || 'Unknown error occurred';
-        void (DEBUG && console.error('Enhancement error:', errorMessage));
+        console.error('Enhancement error:', errorMessage);
         window.showToast(`Enhancement failed: ${errorMessage}`, 'error', 3000);
       } else {
+        console.warn('⚠️ Unexpected status returned:', status.status);
         // Unexpected status
         setEnhancementStatus('error');
         window.showToast(`Unexpected status returned: ${status.status}`, 'error', 3000);
       }
     } catch (err) {
-      void (DEBUG && console.error('Error polling enhancement status:', err));
+      console.error('❌ Error polling enhancement status:', err);
       setEnhancementStatus('error');
       window.showToast(`Error checking enhancement status: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
     }
-  }
+  }, []);
 
   const getCursorForTool = (tool: string): string => {
     switch (tool) {
@@ -890,6 +980,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     handlePosition: string | null = null
   ) => {
     e.stopPropagation();
+    e.preventDefault();
 
     const updatedImages = [...interactiveEnhancedImages];
     
@@ -922,6 +1013,8 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   // Add a function to convert an enhanced image result to an interactive image
   const addEnhancedImageToCanvas = (result: EnhancedImageResult) => {
+    console.log('🖼️ Adding enhanced image to canvas:', result);
+    
     // Calculate the centered position for the image
     const viewWidth = window.innerWidth;
     const viewHeight = window.innerHeight;
@@ -947,12 +1040,17 @@ const Canvas: React.FC<CanvasProps> = () => {
     // Create a unique ID for this image
     const id = `enhanced-${Date.now()}`;
     
+    const imageUrl = `http://localhost:5001${result.path}`;
+    console.log('🖼️ Enhanced image URL:', imageUrl);
+    console.log('📐 Image position:', { x, y, width: displayWidth, height: displayHeight });
+    
     // Add the image to the state
-    setInteractiveEnhancedImages(prev => [
+    setInteractiveEnhancedImages(prev => {
+      const newImages = [
       ...prev,
       {
         id,
-        url: `http://localhost:5001${result.path}`,
+          url: imageUrl,
         x,
         y,
         width: displayWidth,
@@ -963,23 +1061,27 @@ const Canvas: React.FC<CanvasProps> = () => {
         isResizing: false,
         resizeHandle: null
       }
-    ]);
+      ];
+      console.log('📊 Total enhanced images now:', newImages.length);
+      return newImages;
+    });
     
     // Show the preview image
-    setEnhancedImage(`http://localhost:5001${result.path}`);
+    setEnhancedImage(imageUrl);
+    console.log('✅ Enhanced image added to canvas successfully');
   };
 
   // Add a function to render enhanced images on the canvas
   const renderEnhancedImages = () => {
     return interactiveEnhancedImages.map((image, index) => (
-      <div 
+      <div
         key={image.id}
-        className="absolute"
+        className="absolute border-2 border-purple-500 bg-white shadow-lg rounded-lg overflow-hidden"
         style={{
-          left: `${image.x * state.viewTransform.scale + state.viewTransform.offsetX}px`,
-          top: `${image.y * state.viewTransform.scale + state.viewTransform.offsetY}px`,
-          width: `${image.width * state.viewTransform.scale}px`,
-          height: `${image.height * state.viewTransform.scale}px`,
+          left: `${image.x}px`,
+          top: `${image.y}px`,
+          width: `${image.width}px`,
+          height: `${image.height}px`,
           border: '2px solid #9333ea',
           borderRadius: '4px',
           overflow: 'hidden',
@@ -989,7 +1091,15 @@ const Canvas: React.FC<CanvasProps> = () => {
           zIndex: 20,
           cursor: image.isDragging ? 'grabbing' : 'grab'
         }}
-        onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index)}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          handlePointerDownOnEnhancedImage(e, index);
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
       >
         <img
           src={image.url}
@@ -1003,106 +1113,137 @@ const Canvas: React.FC<CanvasProps> = () => {
         />
         
         {/* Close button */}
-        <div className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 shadow-md"
-          style={{ cursor: 'pointer', zIndex: 30 }}
-          onClick={(e) => {
+        <button
+          className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 shadow-md z-40"
+          style={{ cursor: 'pointer' }}
+          onClick={e => {
             e.stopPropagation();
             const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
             setInteractiveEnhancedImages(updatedImages);
           }}
+
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+          }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+          }}
+          aria-label="Close enhanced image"
         >
           ✕
-        </div>
+        </button>
         
-        {/* Add EnhancedImageActions component without onClose prop */}
-        <EnhancedImageActions 
-          imageData={{
-            path: image.url,
-            filename: image.id,
-            base64Data: image.base64Data || ''
-          }}
-        />
-
-        {/* Resize handles - all 8 directions */}
-        <div className="absolute top-0 left-0 w-4 h-4 bg-purple-500 rounded-br-md cursor-nwse-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'top-left');
-          }}
-        />
-        <div className="absolute top-0 right-0 w-4 h-4 bg-purple-500 rounded-bl-md cursor-nesw-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'top-right');
-          }}
-        />
-        <div className="absolute bottom-0 left-0 w-4 h-4 bg-purple-500 rounded-tr-md cursor-nesw-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'bottom-left');
-          }}
-        />
-        <div className="absolute bottom-0 right-0 w-4 h-4 bg-purple-500 rounded-tl-md cursor-nwse-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'bottom-right');
-          }}
-        />
-        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-purple-500 rounded-b-md cursor-ns-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'top');
-          }}
-        />
-        <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-purple-500 rounded-t-md cursor-ns-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'bottom');
-          }}
-        />
-        <div className="absolute left-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-purple-500 rounded-r-md cursor-ew-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'left');
-          }}
-        />
-        <div className="absolute right-0 top-1/2 transform -translate-y-1/2 w-4 h-4 bg-purple-500 rounded-l-md cursor-ew-resize"
-          style={{ zIndex: 30 }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            handlePointerDownOnEnhancedImage(e, index, true, 'right');
-          }}
-        />
+        {/* Action buttons at the bottom */}
+        <div className="absolute bottom-0 left-0 right-0 flex justify-center space-x-3 z-50 bg-black bg-opacity-60 py-2 px-3 pointer-events-auto">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              console.log('Add to storyboard clicked for index:', index);
+              addToStoryboard(index);
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors shadow flex items-center cursor-pointer"
+            title="Add to Storyboard"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            Add to Storyboard
+          </button>
+          
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+              console.log('Download clicked for index:', index);
+              downloadImage(index);
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.nativeEvent.stopImmediatePropagation();
+            }}
+            className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors shadow flex items-center cursor-pointer"
+            title="Download Image"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download
+          </button>
+        </div>
       </div>
     ));
   };
 
   // Multimodal AI functions
   const connectMultimodal = () => {
-    console.log('Attempting to connect to multimodal server...');
+    console.log('🔌 Connecting to multimodal server...');
+    if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      console.log('✅ Already connected to multimodal server');
+      return;
+    }
     try {
-      multimodalWebSocketRef.current = new WebSocket('ws://localhost:9083');
-      
+      const port = aiModeRef.current === 'sarcastic' ? 9084 : 9083;
+      console.log(`🔌 Connecting to ${aiModeRef.current} server on port ${port}`);
+      multimodalWebSocketRef.current = new WebSocket(`ws://localhost:${port}`);
       multimodalWebSocketRef.current.onopen = () => {
-        console.log('✅ Connected to multimodal server');
+        console.log(`✅ Connected to ${aiModeRef.current} multimodal server`);
         setIsMultimodalConnected(true);
         setMultimodalError(null);
-        sendMultimodalSetup();
+        
+        // Send setup message
+        const setupMessage = {
+          setup: {
+            response_modalities: ["AUDIO", "TEXT"]
+          }
+        };
+        console.log('📤 Sending setup message:', setupMessage);
+        multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+        
+        // Send mute state
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: "mute_toggle",
+          muted: isMuted
+        }));
+        
+        // Initialize audio system
+        initializeMultimodalAudio();
+        
+        // Start live streaming
+        console.log(`📷 Starting live streaming for ${aiModeRef.current} AI...`);
+        startLiveStreaming();
       };
-
-      multimodalWebSocketRef.current.onmessage = handleMultimodalMessage;
+      
+      multimodalWebSocketRef.current.onmessage = (event) => {
+        console.log('📨 RAW WEBSOCKET MESSAGE RECEIVED:', event.data);
+        handleMultimodalMessage(event);
+      };
       
       multimodalWebSocketRef.current.onclose = () => {
-        console.log('❌ Disconnected from multimodal server');
+        console.log('🔌 Disconnected from multimodal server');
         setIsMultimodalConnected(false);
         setIsRecording(false);
+        setIsPlayingAudio(false);
+        setVoiceStatus('idle');
+        stopLiveStreaming();
       };
 
       multimodalWebSocketRef.current.onerror = (error) => {
@@ -1110,26 +1251,108 @@ const Canvas: React.FC<CanvasProps> = () => {
         setMultimodalError('Failed to connect to AI assistant');
         setIsMultimodalConnected(false);
       };
-    } catch (err) {
-      console.error('❌ Failed to connect:', err);
+      
+    } catch (error) {
+      console.error('❌ Failed to create WebSocket connection:', error);
       setMultimodalError('Failed to connect to AI assistant');
     }
   };
 
-  const sendMultimodalSetup = () => {
-    if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-      const setupMessage = {
-        setup: {
-          response_modalities: ["AUDIO", "TEXT"]
-        },
-      };
-      multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+  // Auto-start recording when connected and not muted
+  useEffect(() => {
+    if (isMultimodalConnected && !isMuted && multimodalAudioContextRef.current && !isRecording) {
+      // Small delay to ensure everything is initialized
+      const timer = setTimeout(() => {
+        startMultimodalRecording();
+      }, 1000);
+      
+      return () => clearTimeout(timer);
     }
+  }, [isMultimodalConnected, isMuted, isRecording]);
+
+  const toggleMute = () => {
+    setIsMuted((prev) => {
+      const newMuted = !prev;
+      setVoiceStatus(newMuted ? 'muted' : 'idle');
+      if (newMuted && isRecording) {
+      stopMultimodalRecording();
+    }
+    
+      // Send mute/unmute signal to backend
+      if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+        multimodalWebSocketRef.current.send(JSON.stringify({
+          type: 'mute_toggle',
+          muted: newMuted
+        }));
+      }
+      
+      // Auto-start recording when unmuting
+      if (!newMuted && isMultimodalConnected && multimodalAudioContextRef.current && !isRecording) {
+        setTimeout(() => {
+          startMultimodalRecording();
+        }, 500);
+      }
+      
+      return newMuted;
+    });
   };
 
-  const handleMultimodalMessage = (event: MessageEvent) => {
+  const handleMultimodalMessage = useCallback(async (event: MessageEvent) => {
+    console.log('📨 MULTIMODAL MESSAGE RECEIVED:', event.data);
+    
     try {
       const data = JSON.parse(event.data);
+      console.log('📨 PARSED MESSAGE DATA:', data);
+      
+      // If muted, ignore all voice/audio related messages
+      if (isMuted) {
+        // Only allow non-voice messages when muted
+        if (data.type === 'save_and_enhance' || 
+            data.type === 'enhancement_started' || 
+            data.type === 'enhancement_error' ||
+            data.command_detected === 'enhance') {
+          // Allow enhancement-related messages even when muted
+        } else {
+          // Block all other messages (audio, voice_status, text responses, etc.)
+          console.log('🔇 Message blocked due to mute:', data);
+          return;
+        }
+      }
+      
+      // Handle save_and_enhance request from multimodal server
+      if (data.type === 'save_and_enhance') {
+        console.log('🎯 Save and enhance request from multimodal server:', data);
+        console.log('🔍 DEBUG: Current state when enhancement requested:');
+        console.log('  - Shapes count:', stateRef.current.shapes.length);
+        console.log('  - Shapes:', stateRef.current.shapes);
+        console.log('  - Is drawing:', isDrawing);
+        console.log('  - Current shape:', stateRef.current.currentShape);
+        console.log('  - Tool:', stateRef.current.tool);
+        console.log('  - All state keys:', Object.keys(stateRef.current));
+        console.log('  - Would show enhance button:', stateRef.current.shapes.length > 0);
+        
+        // Call EXACTLY the same as the button - no differences at all
+        console.log('🚀 Starting enhancement with EXACT same call as button');
+        
+        // Call EXACTLY like the button does - same function, same parameters
+        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+      }
+      
+      // Handle save_drawing request from multimodal server
+      if (data.type === 'save_drawing') {
+        console.log('🎤 VOICE COMMAND - Save drawing request from multimodal server');
+        console.log('🎤 VOICE COMMAND - Shapes count:', stateRef.current.shapes.length);
+        console.log('🎤 VOICE COMMAND - Shapes:', stateRef.current.shapes);
+        console.log('🎤 VOICE COMMAND - Is drawing:', isDrawing);
+        console.log('🎤 VOICE COMMAND - Current shape:', stateRef.current.currentShape);
+        console.log('🎤 VOICE COMMAND - Tool:', stateRef.current.tool);
+        console.log('🎤 VOICE COMMAND - View transform:', stateRef.current.viewTransform);
+        console.log('🎤 VOICE COMMAND - All state keys:', Object.keys(stateRef.current));
+        
+        // Call EXACTLY the same function as the button - no differences at all
+        console.log('🚀 Calling EXACT same function as button: enhanceDrawingWithGeminiWithPrompt');
+        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+      }
       
       if (data.text) {
         const newMessage = {
@@ -1139,20 +1362,41 @@ const Canvas: React.FC<CanvasProps> = () => {
         };
         setMultimodalMessages(prev => [...prev, newMessage]);
         
-        // Show a subtle notification for Gemini's response
-        if (window.showToast) {
-          window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
+        // Remove the Gemini text response toast to avoid unwanted messages
+        // if (window.showToast) {
+        //   window.showToast(`Gemini: ${data.text.substring(0, 50)}${data.text.length > 50 ? '...' : ''}`, 'info', 5000);
+        // }
+      }
+      
+      // Handle enhancement commands triggered by voice
+      if (data.command_detected === 'enhance') {
+        console.log('🎯 Voice enhancement command detected:', data);
+        
+        if (data.enhancement_started && data.request_id) {
+          // Start polling for enhancement status
+          pollEnhancementStatus(data.request_id);
+          
+          // Show success message
+          if (window.showToast) {
+            window.showToast('Enhancement started via voice command!', 'success', 3000);
+          }
         }
+        // Removed error message handling since enhancement is working correctly
       }
       
       if (data.audio) {
         multimodalAudioQueueRef.current.push(data.audio);
         playNextMultimodalAudio();
       }
+      
+      if (data.voice_status) {
+        console.log('Voice status update:', data.voice_status);
+        setVoiceStatus(data.voice_status);
+      }
     } catch (err) {
       console.error('Error parsing WebSocket message:', err);
     }
-  };
+  }, [isDrawing, isMuted, setMultimodalMessages, setVoiceStatus, enhanceDrawingWithGeminiWithPrompt, pollEnhancementStatus]);
 
   const initializeMultimodalAudio = async () => {
     try {
@@ -1183,6 +1427,10 @@ const Canvas: React.FC<CanvasProps> = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       console.log('✅ Microphone access granted');
       
+      // Pause canvas streaming during voice input to improve response speed
+      setIsStreamingPaused(true);
+      console.log('⏸️ Paused canvas streaming for voice input');
+      
       multimodalMediaRecorderRef.current = new MediaRecorder(stream);
       multimodalPcmDataRef.current = [];
 
@@ -1202,6 +1450,12 @@ const Canvas: React.FC<CanvasProps> = () => {
         console.log('🎤 Recording stopped, sending voice message...');
         sendMultimodalVoiceMessage();
         stream.getTracks().forEach(track => track.stop());
+        
+        // Resume canvas streaming after voice input
+        setTimeout(() => {
+          setIsStreamingPaused(false);
+          console.log('▶️ Resumed canvas streaming after voice input');
+        }, 1000); // Wait 1 second before resuming
       };
 
       multimodalMediaRecorderRef.current.start(100);
@@ -1211,6 +1465,8 @@ const Canvas: React.FC<CanvasProps> = () => {
     } catch (err) {
       console.error('❌ Failed to start recording:', err);
       setMultimodalError('Failed to access microphone');
+      // Resume streaming if recording fails
+      setIsStreamingPaused(false);
     }
   };
 
@@ -1279,14 +1535,27 @@ const Canvas: React.FC<CanvasProps> = () => {
     console.log('📷 Starting continuous canvas streaming...');
     setIsLiveStreaming(true);
     
-    // Capture canvas every 500ms
+    // Capture canvas container every 5 seconds (increased from 2 seconds to reduce interference)
     const streamingInterval = setInterval(() => {
-      if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-        const canvas = document.querySelector('canvas');
-        if (canvas) {
-          const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-          console.log('📷 [STREAMING] Capturing canvas...');
-          
+      // Don't stream if paused or if WebSocket is not ready
+      if (isStreamingPaused || multimodalWebSocketRef.current?.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      
+      const canvasContainer = document.querySelector('[data-canvas-container]');
+      if (canvasContainer) {
+        // Use a more conservative approach to avoid interfering with canvas rendering
+        html2canvas(canvasContainer as HTMLElement, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#fafaf9',
+          scale: 0.6, // Further reduced scale to reduce processing load
+          logging: false,
+          imageTimeout: 1000 // Add timeout to prevent hanging
+        }).then(canvas => {
+          const imageData = canvas.toDataURL('image/jpeg', 0.5).split(',')[1]; // Further reduced quality
+          console.log('📷 [STREAMING] Capturing canvas container...');
+        
           const payload = {
             realtime_input: {
               media_chunks: [{
@@ -1295,16 +1564,20 @@ const Canvas: React.FC<CanvasProps> = () => {
               }],
             },
           };
-          
-          multimodalWebSocketRef.current.send(JSON.stringify(payload));
-          console.log('📷 [STREAMING] Canvas frame sent to Gemini');
-        }
+        
+          if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+            multimodalWebSocketRef.current.send(JSON.stringify(payload));
+            console.log('📷 [STREAMING] Canvas container frame sent to Gemini');
+          }
+        }).catch(err => {
+          console.error('❌ [STREAMING] Failed to capture canvas container:', err);
+          // Don't let streaming errors affect the main canvas functionality
+        });
       }
-    }, 500);
+    }, 5000); // Increased from 2000ms to 5000ms to reduce interference
     
-    // Store interval for cleanup
+    // Store the interval ID for cleanup
     multimodalStreamingIntervalRef.current = streamingInterval;
-    console.log('📷 Canvas streaming interval started - will capture every 500ms');
   };
 
   // Stop continuous canvas streaming
@@ -1315,7 +1588,7 @@ const Canvas: React.FC<CanvasProps> = () => {
     if (multimodalStreamingIntervalRef.current) {
       clearInterval(multimodalStreamingIntervalRef.current);
       multimodalStreamingIntervalRef.current = null;
-      console.log('📷 Canvas streaming interval stopped');
+      console.log('📷 Canvas container streaming interval stopped');
     }
   };
 
@@ -1328,12 +1601,176 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   // Function to get canvas hash for change detection
   const getCanvasHash = () => {
-    if (!canvasRef.current) return '';
-    return canvasRef.current.toDataURL('image/jpeg', 0.8);
+    const canvasContainer = document.querySelector('[data-canvas-container]');
+    if (!canvasContainer) return '';
+    
+    // For change detection, we'll use a simpler approach that captures the container
+    return new Promise<string>((resolve) => {
+      html2canvas(canvasContainer as HTMLElement, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#fafaf9',
+        scale: 0.5, // Lower scale for faster processing
+        logging: false
+      }).then(canvas => {
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      }).catch(() => {
+        resolve('');
+      });
+    });
+  };
+
+  const addToStoryboard = async (imageIndex: number) => {
+    try {
+      const image = interactiveEnhancedImages[imageIndex];
+      console.log('=== ADDING TO STORYBOARD FROM FRONTEND ===');
+      console.log('Original image.url:', image.url);
+      console.log('Image object:', image);
+      
+      // Extract just the path part from the full URL
+      const path = image.url.replace('http://localhost:5001', '');
+      console.log('Extracted path being sent to backend:', path);
+      
+      const response = await fetch('http://localhost:5001/api/storyboard/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imagePath: path }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to add image to storyboard: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        const message = data.isDuplicate ? 'Image already in storyboard' : 'Image added to storyboard!';
+        const toastType = data.isDuplicate ? 'info' : 'success';
+        window.showToast(message, toastType, 2000);
+      } else {
+        throw new Error('Failed to add image to storyboard');
+      }
+    } catch (err) {
+      console.error('Error adding image to storyboard:', err);
+      window.showToast(`Error adding to storyboard: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    }
+  };
+
+  const downloadImage = (imageIndex: number) => {
+    const image = interactiveEnhancedImages[imageIndex];
+    const link = document.createElement('a');
+    link.href = `data:image/png;base64,${image.base64Data || ''}`;
+    link.download = image.id;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.showToast('Image downloading...', 'success', 2000);
   };
 
   return (
-    <div ref={containerRef} className="absolute inset-0 bg-stone-50 select-none" style={{ touchAction: 'none' }}>
+    <div ref={containerRef} className="relative w-full h-full bg-yellow-50 overflow-hidden select-none" data-canvas-container>
+      <Header />
+      
+      {/* AI Control Panel - Top Left */}
+      <div className="absolute top-4 left-4 z-50 flex flex-col space-y-2">
+        {/* Unified AI Control Block */}
+        <div className="bg-white rounded-lg shadow-md p-1 border border-gray-200">
+          {/* AI Mode Toggle */}
+          <div className="flex items-center mb-1">
+            <span className="text-xs mr-2 px-2 text-gray-600 font-medium">AI:</span>
+            <button
+              className={`px-3 py-1.5 text-xs rounded-l-md transition-colors ${
+                !aiMode || aiMode === 'friendly' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-gray-100 text-green-600 hover:bg-gray-200'
+              }`}
+              onClick={() => {
+                console.log('🎯 Friendly button clicked, current aiMode:', aiMode);
+                setAIMode('friendly');
+                // If connected, disconnect and reconnect to the new server
+                if (isMultimodalConnected && multimodalWebSocketRef.current) {
+                  console.log('🔄 Disconnecting from current server and reconnecting to new one...');
+                  console.log('📷 Stopping canvas streaming before switch...');
+                  multimodalWebSocketRef.current.close();
+                  setTimeout(() => {
+                    console.log('🔄 Reconnecting to friendly server...');
+                    connectMultimodal();
+                  }, 300);
+                }
+              }}
+              disabled={aiMode === 'friendly'}
+            >
+              Friendly
+            </button>
+            <button
+              className={`px-3 py-1.5 text-xs rounded-r-md transition-colors ${
+                aiMode === 'sarcastic' 
+                  ? 'bg-red-600 text-white' 
+                  : 'bg-gray-100 text-red-600 hover:bg-gray-200'
+              }`}
+              onClick={() => {
+                console.log('🎯 Sarcastic button clicked, current aiMode:', aiMode);
+                setAIMode('sarcastic');
+                // If connected, disconnect and reconnect to the new server
+                if (isMultimodalConnected && multimodalWebSocketRef.current) {
+                  console.log('🔄 Disconnecting from current server and reconnecting to new one...');
+                  console.log('📷 Stopping canvas streaming before switch...');
+                  multimodalWebSocketRef.current.close();
+                  setTimeout(() => {
+                    console.log('🔄 Reconnecting to sarcastic server...');
+                    connectMultimodal();
+                  }, 300);
+                }
+              }}
+              disabled={aiMode === 'sarcastic'}
+            >
+              Sarcastic
+            </button>
+          </div>
+          
+          {/* Connect/Mute AI Button */}
+          <button
+            className={`w-full px-3 py-1.5 text-xs rounded-md transition-colors ${
+              isMultimodalConnected 
+                ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            onClick={isMultimodalConnected ? toggleMute : connectMultimodal}
+            title={isMultimodalConnected ? (isMuted ? "Unmute AI Assistant" : "Mute AI Assistant") : "Connect AI Assistant"}
+          >
+            {isMultimodalConnected ? (
+              <div className="flex items-center justify-center space-x-1">
+                {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
+                <span className="text-xs">{isMuted ? "Unmute AI" : "Mute AI"}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center space-x-1">
+                <Mic size={14} />
+                <span className="text-xs">Connect AI</span>
+              </div>
+            )}
+          </button>
+        </div>
+        
+        {/* AI Status Indicator - only show when connected */}
+        {isMultimodalConnected && (
+          <div className="bg-green-600 text-white px-3 py-2 rounded-lg shadow-md text-xs">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              <span>
+                {isMuted ? "AI Muted" : 
+                 voiceStatus === 'listening' ? "Listening..." :
+                 isPlayingAudio ? "Gemini speaking..." :
+                 isLiveStreaming ? "Gemini sees live canvas" :
+                 "AI Ready"}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+      
       {/* Clear All button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
@@ -1348,7 +1785,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       {/* Save to Folder button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
         <button
-          className="absolute left-4 top-1/2 mt-12 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
           onClick={saveCanvasAsPNG}
           title="Save to img folder"
         >
@@ -1358,98 +1795,66 @@ const Canvas: React.FC<CanvasProps> = () => {
 
       {/* Enhance with Gemini button - only shown when there are shapes */}
       {state.shapes.length > 0 && (
-        <button
-          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={enhanceDrawingWithGemini}
-          disabled={enhancementStatus === 'processing'}
-          title="Enhance with Gemini"
-        >
-          {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
-        </button>
-      )}
-
-      {/* Multimodal AI Assistant Button */}
-      <button
-        className={`absolute right-4 top-16 p-3 rounded-lg shadow-md z-50 transition-colors duration-200 ${
-          isMultimodalConnected 
-            ? 'bg-green-600 hover:bg-green-700 text-white' 
-            : 'bg-blue-600 hover:bg-blue-700 text-white'
-        }`}
-        onClick={isRecording ? stopMultimodalRecording : startMultimodalRecording}
-        disabled={!isMultimodalConnected}
-        title={isMultimodalConnected ? (isRecording ? "Stop Recording" : "Start Recording") : "Connect AI Assistant"}
-      >
-        {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-      </button>
-
-      {/* Live Streaming Status Indicator */}
-      {isLiveStreaming && (
-        <div className="absolute right-4 top-28 bg-green-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-          <span>Gemini sees live canvas</span>
-        </div>
-      )}
-
-      {/* Connection Status Indicator */}
-      {!isMultimodalConnected && (
-        <button
-          className="absolute right-4 top-28 bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs transition-colors duration-200"
-          onClick={connectMultimodal}
-          title="Connect to AI Assistant - Gemini will see your canvas live"
-        >
-          Connect AI
-        </button>
-      )}
-
-      {/* Audio Playback Indicator */}
-      {isPlayingAudio && (
-        <div className="absolute right-4 top-40 bg-blue-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs flex items-center space-x-1">
-          <Volume2 size={12} className="animate-pulse" />
-          <span>Gemini speaking...</span>
-        </div>
+        <>
+          <button
+            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            onClick={() => enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail')}
+            disabled={enhancementStatus === 'processing'}
+            title="Enhance with Gemini"
+          >
+            {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
+          </button>
+          <button
+            className="absolute left-4 top-1/2 mt-48 -translate-y-1/2 bg-gray-600 hover:bg-gray-700 text-gray-100 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
+            onClick={() => setShowGenSettings(true)}
+            title="Generation Settings"
+          >
+            Generation Settings
+          </button>
+          {showGenSettings && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+              <div className="relative bg-white rounded-lg w-full max-w-md mx-auto shadow-xl overflow-hidden" style={{maxHeight: '90vh'}}>
+                <button
+                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-500 text-2xl"
+                  onClick={() => setShowGenSettings(false)}
+                  title="Close"
+                >
+                  ×
+                </button>
+                <div className="p-6">
+                  <h2 className="text-2xl font-bold mb-6 text-purple-800">Generation Settings</h2>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Style</label>
+                    <div className="text-xs text-gray-500 mb-1">What artstyle should generations follow?</div>
+                    <input type="text" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.style} onChange={e => setGenSettings(s => ({...s, style: e.target.value}))} />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Mood</label>
+                    <div className="text-xs text-gray-500 mb-1">What emotions are you hoping to showcase?</div>
+                    <input type="text" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.mood} onChange={e => setGenSettings(s => ({...s, mood: e.target.value}))} />
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700">Additional details</label>
+                    <div className="text-xs text-gray-500 mb-1">Any relevant information.</div>
+                    <textarea className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.details} onChange={e => setGenSettings(s => ({...s, details: e.target.value}))} />
+                  </div>
+                  <button
+                    className="w-full bg-purple-600 text-white rounded py-2 mt-2 hover:bg-purple-700 transition-colors"
+                    onClick={() => setShowGenSettings(false)}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Error Display */}
       {multimodalError && (
-        <div className="absolute right-4 top-52 bg-red-600 text-white px-3 py-1 rounded-lg shadow-md z-50 text-xs max-w-48">
+        <div className="absolute right-4 top-44 bg-red-600 text-white px-3 py-2 rounded-lg shadow-md z-50 text-xs max-w-48">
           {multimodalError}
-        </div>
-      )}
-
-      {/* Enhanced image display - replaced by interactive images */}
-      {enhancedImage && (
-        <div 
-          className="absolute right-4 bottom-4 z-20 shadow-lg rounded-lg overflow-hidden"
-          style={{ pointerEvents: 'auto' }}
-        >
-          <img 
-            src={enhancedImage} 
-            alt="Gemini Enhanced" 
-            className="max-h-80 max-w-sm object-contain bg-white"
-            style={{ border: '3px solid #9333ea', pointerEvents: 'none' }}
-          />
-          <div
-            className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 border-2 border-red-500 shadow-lg"
-            style={{ zIndex: 100, pointerEvents: 'auto', cursor: 'pointer' }}
-            onClick={() => {
-              setEnhancedImage(null);
-              window.showToast('Preview closed', 'success', 2000);
-            }}
-            onMouseDown={(e) => {
-              // Stop propagation at all levels
-              e.stopPropagation();
-              e.nativeEvent.stopImmediatePropagation();
-            }}
-            onPointerDown={(e) => {
-              // Stop propagation at all levels
-              e.stopPropagation();
-              e.nativeEvent.stopImmediatePropagation();
-            }}
-            role="button"
-            aria-label="Close preview"
-          >
-            ✕
-          </div>
         </div>
       )}
 

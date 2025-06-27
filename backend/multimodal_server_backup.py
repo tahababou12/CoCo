@@ -23,16 +23,12 @@ from google.genai import types
 import aiohttp
 import re
 import signal
-from aiohttp import web
 
 # Load environment variables
 load_dotenv()
 
 # Global audio manager for cleanup
 global_audio_manager = None
-
-# Global server reference for stopping
-global_server = None
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
@@ -71,15 +67,15 @@ MODEL = "gemini-2.0-flash-exp"
 FORMAT = pyaudio.paInt16  # Audio format: 16-bit PCM
 SEND_SAMPLE_RATE = 24000  # Sample rate for audio sent to Gemini (Hz)
 RECEIVE_SAMPLE_RATE = 24000 # Sample rate for audio received from Gemini (Hz)
-CHUNK_SIZE = 512          # Reduced from 1024 to 512 for faster processing
+CHUNK_SIZE = 1024         # Size of audio chunks to process
 CHANNELS = 1              # Mono audio
 
-# Voice Activity Detection (VAD) configuration - optimized for faster response
-VAD_SILENCE_THRESHOLD = 2     # Lower threshold for faster silence detection (was 3)
-VAD_VOICE_THRESHOLD = 6       # Lower threshold for faster voice detection (was 8)
-VAD_MIN_VOICE_DURATION = 0.2  # Reduced minimum speaking time (was 0.3)
-VAD_MAX_SILENCE_DURATION = 1.5  # Reduced maximum silence before stopping (was 2.0)
-VAD_SPEECH_BUFFER = 0.3       # Reduced buffer time for faster response (was 0.5)
+# Voice Activity Detection (VAD) configuration
+VAD_SILENCE_THRESHOLD = 3     # Lower threshold for silence detection (was 5)
+VAD_VOICE_THRESHOLD = 8       # Higher threshold for voice detection (was 10)
+VAD_MIN_VOICE_DURATION = 0.3  # Minimum speaking time before starting (seconds)
+VAD_MAX_SILENCE_DURATION = 2.0  # Maximum silence before stopping (seconds) - increased from 0.8
+VAD_SPEECH_BUFFER = 0.5       # Buffer time to continue speech after silence (seconds)
 
 # Remove hardcoded regex patterns and replace with AI processing
 # ENHANCE_COMMANDS = [...]  # Remove this entire list
@@ -103,18 +99,16 @@ Analyze this and respond with ONLY a JSON object in this exact format:
     "response": "natural response to tell the user what you're doing"
 }}
 
-CRITICAL RULES:
-- ONLY use "enhance" action if the user EXPLICITLY says "enhance", "enhancement", or "enhance with gemini"
-- For general conversation, drawing descriptions, questions, or casual talk, use "other" action
-- If the user asks "what do you think" or "what should I add", use "other" action
+IMPORTANT RULES:
+- ONLY use "enhance" action if the user EXPLICITLY says "enhance" or "enhancement"
+- For general conversation, drawing descriptions, or casual talk, use "other" action
 - If the user mentions a specific character, style, or transformation, use "modify" action
 - If the user just wants general improvement without saying "enhance", use "other" action
 
 Examples:
 - "enhance with gemini" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing with Gemini AI now!"}}
 - "enhance this drawing" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing now!"}}
-- "what do you think I should add to make my book look real?" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That's a great question! For a realistic book, you might want to add more detail to the cover, some texture, and maybe some lighting effects."}}
-- "I'm trying to draw a face" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That sounds like a great drawing project! Faces can be challenging but rewarding to draw."}}
+- "I'm trying to draw a face" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That sounds like a great drawing project!"}}
 - "make it more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll make your drawing more colorful!"}}
 - "modify it to be more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll modify your drawing to be more colorful!"}}
 - "make it look more like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll transform your drawing to look like Lightning McQueen!"}}
@@ -128,9 +122,9 @@ Examples:
 - "make it look more realistic and less cartoon-y" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into a realistic, photorealistic style with natural lighting, textures, and less cartoon-like features", "modifications": ["realistic style", "natural lighting", "photorealistic rendering", "remove cartoon elements"]}}, "response": "I'll make your drawing look more realistic and less cartoon-like!"}}
 
 IMPORTANT: 
-- ONLY use "enhance" if the user EXPLICITLY says "enhance" or "enhancement"
-- For questions, suggestions, or general conversation, use "other" action
 - If the user mentions a specific character, style, or transformation, use "modify" action
+- If the user just wants general enhancement, use "enhance" action ONLY if they explicitly say "enhance"
+- For general conversation or drawing descriptions, use "other" action
 - Only respond with the JSON object, no other text or explanation.
 """
 
@@ -157,7 +151,7 @@ IMPORTANT:
                 print(f"🤖 AI command analysis: {command_data}")
                 
                 # Process the command based on AI understanding
-                if command_data["action"] == "enhance" and command_data["confidence"] >= 0.95:
+                if command_data["action"] == "enhance" and command_data["confidence"] >= 0.85:
                     print(f"🤖 AI detected enhancement command: {command_data}")
                     await call_enhancement_api(command_data["parameters"]["prompt"], websocket)
                     return command_data["response"]
@@ -727,7 +721,7 @@ Just be helpful and encouraging about the drawing itself!"""
                             pass
 
                 async def process_and_send_audio():
-                    """Sends audio chunks to Gemini with optimized buffering for faster responses"""
+                    """Sends audio chunks to Gemini"""
                     print("📤 Starting to send audio to Gemini...")
                     audio_buffer = []  # Buffer to accumulate audio for better quality
                     
@@ -738,9 +732,8 @@ Just be helpful and encouraging about the drawing itself!"""
                             # Add to buffer for better quality
                             audio_buffer.append(data)
                             
-                            # Send accumulated audio more frequently for faster response
-                            # Reduced buffer size from 5 chunks to 2 chunks for faster processing
-                            if len(audio_buffer) >= 2 or len(b''.join(audio_buffer)) >= 2048:  # ~2 chunks or 2KB
+                            # Send accumulated audio when buffer is large enough for better transcription
+                            if len(audio_buffer) >= 5 or len(b''.join(audio_buffer)) >= 5120:  # ~5 chunks or 5KB
                                 combined_audio = b''.join(audio_buffer)
                                 audio_buffer.clear()
                                 
@@ -848,7 +841,7 @@ Just be helpful and encouraging about the drawing itself!"""
                         # Buffer for accumulating transcription
                         transcription_buffer = ""
                         last_transcription_time = 0
-                        transcription_timeout = 0.5  # Reduced from 1.0 to 0.5 seconds for faster response
+                        transcription_timeout = 1.0  # 1 second timeout
                         
                         while True:
                             try:
@@ -872,7 +865,7 @@ Just be helpful and encouraging about the drawing itself!"""
                                                 "input_transcription": transcript_text
                                             }))
                                             
-                                            # Buffer the transcription with shorter timeout for faster processing
+                                            # Buffer the transcription
                                             current_time = asyncio.get_event_loop().time()
                                             if current_time - last_transcription_time > transcription_timeout:
                                                 # Reset buffer if too much time has passed
@@ -1040,43 +1033,8 @@ async def main() -> None:
                 if task is not asyncio.current_task():
                     task.cancel()
     
-    # HTTP server for stop endpoint
-    async def stop_handler(request):
-        print("🛑 Stop endpoint called - shutting down server...")
-        # Clean up global audio manager if it exists
-        if global_audio_manager:
-            global_audio_manager.cleanup()
-        # Stop the server
-        if global_server:
-            global_server.close()
-        response = web.Response(text="Server stopped")
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = '*'
-        return response
-
-    async def options_handler(request):
-        response = web.Response()
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = '*'
-        return response
-
-    # Create HTTP app
-    app = web.Application()
-    app.router.add_post('/stop', stop_handler)
-    app.router.add_options('/stop', options_handler)
-    
-    # Start HTTP server
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, 'localhost', 9085)  # Use different port for HTTP
-    await site.start()
-    print("HTTP server running on localhost:9085")
-    
-    # Start the WebSocket server
-    global global_server
-    global_server = await websockets.serve(websocket_handler, "localhost", 9083)
+    # Start the server
+    server = await websockets.serve(websocket_handler, "localhost", 9083)
     
     print("Running websocket server localhost:9083...")
     print("Server is ready to accept connections!")

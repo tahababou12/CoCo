@@ -23,6 +23,8 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
   const [videoResult, setVideoResult] = useState<{ url: string; filename: string } | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [imagePath, setImagePath] = useState('');
+  const [storyContext, setStoryContext] = useState('');
+  const [includeMusic, setIncludeMusic] = useState(false);
 
   // Fetch storyboard images when component mounts or is opened
   useEffect(() => {
@@ -95,7 +97,9 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       
       if (data.success && data.storyboard) {
         setStoryboardImages(data.storyboard.images || []);
-        window.showToast('Image added to storyboard', 'success', 2000);
+        const message = data.isDuplicate ? 'Image already in storyboard' : 'Image added to storyboard';
+        const toastType = data.isDuplicate ? 'info' : 'success';
+        window.showToast(message, toastType, 2000);
         setImagePath('');
       } else {
         throw new Error('Invalid response format from server');
@@ -146,6 +150,40 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const deleteImageFromStoryboard = async (imagePath: string, imageIndex: number) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await fetch('http://localhost:5001/api/storyboard/delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imagePath, imageIndex }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to delete image: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.storyboard) {
+        setStoryboardImages(data.storyboard.images || []);
+        window.showToast('Image removed from storyboard', 'success', 2000);
+      } else {
+        throw new Error('Invalid response format from server');
+      }
+    } catch (err) {
+      console.error('Error deleting image from storyboard:', err);
+      setError(`Failed to delete image: ${err instanceof Error ? err.message : String(err)}`);
+      window.showToast(`Failed to delete image: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const generateVideo = async () => {
     try {
       setVideoStatus('processing');
@@ -155,6 +193,11 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
       const response = await fetch('http://localhost:5001/api/generate-video', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          storyContext,
+          includeMusic 
+        }),
       });
       
       if (!response.ok) {
@@ -253,7 +296,7 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
       <div 
         className="relative bg-white rounded-lg w-full max-w-4xl mx-auto shadow-xl overflow-hidden"
         onClick={e => e.stopPropagation()}
-        style={{ maxHeight: '90vh' }}
+        style={{ maxHeight: '90vh', overflowY: 'auto' }}
       >
         <button
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-500"
@@ -324,14 +367,29 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
               </div>
             ) : storyboardImages.length > 0 ? (
               storyboardImages.map((image, index) => (
-                <div key={index} className="storyboard-image">
+                <div key={index} className="storyboard-image relative group">
                   <img
-                    src={`data:image/png;base64,${image.base64Data}`}
+                    src={`http://localhost:5001${image.path}`}
                     alt={`Storyboard image ${index + 1}`}
+                    onError={(e) => {
+                      // Fallback to base64 if direct URL fails
+                      const target = e.target as HTMLImageElement;
+                      target.src = `data:image/png;base64,${image.base64Data}`;
+                    }}
                   />
                   <div className="storyboard-image-label">
                     #{index + 1}: {image.filename.substring(0, 15)}...
                   </div>
+                  <button
+                    onClick={() => deleteImageFromStoryboard(image.path, index)}
+                    className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+                    title="Delete this image"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               ))
             ) : (
@@ -343,6 +401,35 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
           <div className="mt-8 border-t pt-4">
             <h3 className="text-lg font-semibold mb-4">Video Generation</h3>
+            
+            {/* Include Music Checkbox */}
+            <div className="mb-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeMusic}
+                  onChange={(e) => setIncludeMusic(e.target.checked)}
+                  className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                />
+                <span className="ml-2 text-sm font-medium text-gray-700">
+                  Include Music
+                </span>
+              </label>
+              <p className="text-xs text-gray-500 mt-1 ml-6">
+                Add AI-generated background music that matches the story theme
+              </p>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Story Details <span className="text-xs text-gray-500">(optional)</span></label>
+              <textarea
+                className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                value={storyContext}
+                onChange={e => setStoryContext(e.target.value)}
+                placeholder="Add any context, theme, or details for the story script..."
+                rows={2}
+              />
+            </div>
             
             <div className={`video-status ${videoStatus !== 'idle' ? videoStatus : ''}`}>
               {videoStatus === 'idle' && (
@@ -440,7 +527,9 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
               <li>You need at least 2 images to generate a video</li>
               <li>The video will include all images in the storyboard</li>
               <li>The video will be generated with audio narration</li>
-              <li>Video generation may take a minute or two</li>
+              <li>Enable "Include Music" to add AI-generated background music that matches your story</li>
+              <li>Music generation uses the story context to create appropriate background music</li>
+              <li>Video generation may take a minute or two (longer with music enabled)</li>
             </ul>
           </div>
         </div>

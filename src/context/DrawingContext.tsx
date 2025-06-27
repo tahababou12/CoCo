@@ -61,6 +61,8 @@ type DrawingAction =
   | { type: 'UPDATE_SELECTION_BOX'; payload: Point }
   | { type: 'END_SELECTION_BOX' }
   | { type: 'CLEAR_ALL' }
+  | { type: 'SAVE_DRAWING_REQUEST' }
+  | { type: 'CLEAR_CANVAS' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -98,7 +100,6 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
   
   switch (action.type) {
     case 'SET_TOOL':
-      console.log(`Tool changed to: ${action.payload}`);
       return {
         ...state,
         tool: action.payload,
@@ -108,7 +109,6 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
 
     case 'START_DRAWING': {
       if (state.tool === 'select' || state.tool === 'pan' || state.tool === 'eraser') {
-        console.log('Cannot start drawing with current tool:', state.tool);
         return state
       }
 
@@ -120,7 +120,6 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         isSelected: false,
       }
 
-      console.log(`Starting to draw ${action.payload.type} at`, action.payload.point);
       return {
         ...state,
         currentShape: newShape,
@@ -129,11 +128,8 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
 
     case 'CONTINUE_DRAWING': {
       if (!state.currentShape) {
-        console.log('No current shape to continue drawing');
         return state
       }
-
-      console.log(`Continuing to draw ${state.currentShape.type} at`, action.payload);
 
       // For rectangle, ellipse, and line, we only need two points
       if (['rectangle', 'ellipse', 'line'].includes(state.currentShape.type)) {
@@ -187,11 +183,8 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
 
     case 'END_DRAWING': {
       if (!state.currentShape) {
-        console.log('No current shape to end drawing');
         return state
       }
-
-      console.log(`Ending drawing with ${state.currentShape.points.length} points:`, state.currentShape.points);
 
       // Create a deep copy of the shape to avoid reference issues
       const shapeToSave = {
@@ -214,8 +207,6 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         // Add as a new shape
         newShapes = [...state.shapes, shapeToSave];
       }
-      
-      console.log(`Finished drawing ${state.currentShape.type}, total shapes:`, newShapes.length);
 
       return {
         ...state,
@@ -641,6 +632,14 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         },
       }
     }
+
+    case 'SAVE_DRAWING_REQUEST':
+      // Implementation of save drawing request
+      return state;
+
+    case 'CLEAR_CANVAS':
+      // Implementation of clear canvas
+      return initialState;
 
     default:
       return state
