@@ -106,6 +106,10 @@ const Canvas: React.FC<CanvasProps> = () => {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  // Use ref to store current state to avoid closure issues
+  const currentStateRef = useRef(state);
+  currentStateRef.current = state;
+
   // AI mode state
   const [aiMode, setAIMode] = useState<'friendly' | 'sarcastic'>('friendly');
   
@@ -705,16 +709,16 @@ const Canvas: React.FC<CanvasProps> = () => {
   const enhanceDrawingWithGeminiWithPrompt = useCallback(async (prompt: string, fromMultimodal: boolean = false) => {
     console.log('🚀 Starting enhancement with prompt:', prompt);
     console.log('🚀 From multimodal:', fromMultimodal);
-    console.log('🚀 Current shapes count:', stateRef.current.shapes.length);
+    console.log('🚀 Current shapes count:', currentStateRef.current.shapes.length);
     
     // Pause streaming during enhancement to prevent interference
     setIsStreamingPaused(true);
     
     try {
       // Check if there are shapes to save (including any that might have been completed)
-      if (stateRef.current.shapes.length === 0) {
+      if (currentStateRef.current.shapes.length === 0) {
         console.log('❌ No shapes to enhance - please draw something first');
-      window.showToast('Draw something first before enhancing', 'info', 3000);
+        window.showToast('Draw something first before enhancing', 'info', 3000);
         
         // If called from multimodal server, send error back
         if (fromMultimodal && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
@@ -728,8 +732,8 @@ const Canvas: React.FC<CanvasProps> = () => {
         
         // Resume streaming
         setIsStreamingPaused(false);
-      return;
-    }
+        return;
+      }
 
       console.log('✅ Shapes found, starting enhancement process');
     setEnhancementStatus('processing');
@@ -751,7 +755,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       let maxY = -Infinity;
       
       // Calculate the bounds for all shapes
-      stateRef.current.shapes.forEach(shape => {
+      currentStateRef.current.shapes.forEach(shape => {
         shape.points.forEach(point => {
           minX = Math.min(minX, point.x);
           minY = Math.min(minY, point.y);
@@ -795,7 +799,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       tempCtx.translate(-minX, -minY);
       
       // Draw all shapes
-      stateRef.current.shapes.forEach(shape => {
+      currentStateRef.current.shapes.forEach(shape => {
         renderShape(tempCtx, shape);
       });
       
@@ -1310,6 +1314,7 @@ const Canvas: React.FC<CanvasProps> = () => {
         if (data.type === 'save_and_enhance' || 
             data.type === 'enhancement_started' || 
             data.type === 'enhancement_error' ||
+            data.type === 'enhancement_request' ||
             data.command_detected === 'enhance') {
           // Allow enhancement-related messages even when muted
         } else {
@@ -1323,13 +1328,13 @@ const Canvas: React.FC<CanvasProps> = () => {
       if (data.type === 'save_and_enhance') {
         console.log('🎯 Save and enhance request from multimodal server:', data);
         console.log('🔍 DEBUG: Current state when enhancement requested:');
-        console.log('  - Shapes count:', stateRef.current.shapes.length);
-        console.log('  - Shapes:', stateRef.current.shapes);
+        console.log('  - Shapes count:', currentStateRef.current.shapes.length);
+        console.log('  - Shapes:', currentStateRef.current.shapes);
         console.log('  - Is drawing:', isDrawing);
-        console.log('  - Current shape:', stateRef.current.currentShape);
-        console.log('  - Tool:', stateRef.current.tool);
-        console.log('  - All state keys:', Object.keys(stateRef.current));
-        console.log('  - Would show enhance button:', stateRef.current.shapes.length > 0);
+        console.log('  - Current shape:', currentStateRef.current.currentShape);
+        console.log('  - Tool:', currentStateRef.current.tool);
+        console.log('  - All state keys:', Object.keys(currentStateRef.current));
+        console.log('  - Would show enhance button:', currentStateRef.current.shapes.length > 0);
         
         // Call EXACTLY the same as the button - no differences at all
         console.log('🚀 Starting enhancement with EXACT same call as button');
@@ -1341,16 +1346,35 @@ const Canvas: React.FC<CanvasProps> = () => {
       // Handle save_drawing request from multimodal server
       if (data.type === 'save_drawing') {
         console.log('🎤 VOICE COMMAND - Save drawing request from multimodal server');
-        console.log('🎤 VOICE COMMAND - Shapes count:', stateRef.current.shapes.length);
-        console.log('🎤 VOICE COMMAND - Shapes:', stateRef.current.shapes);
+        console.log('🎤 VOICE COMMAND - Shapes count:', currentStateRef.current.shapes.length);
+        console.log('🎤 VOICE COMMAND - Shapes:', currentStateRef.current.shapes);
         console.log('🎤 VOICE COMMAND - Is drawing:', isDrawing);
-        console.log('🎤 VOICE COMMAND - Current shape:', stateRef.current.currentShape);
-        console.log('🎤 VOICE COMMAND - Tool:', stateRef.current.tool);
-        console.log('🎤 VOICE COMMAND - View transform:', stateRef.current.viewTransform);
-        console.log('🎤 VOICE COMMAND - All state keys:', Object.keys(stateRef.current));
+        console.log('🎤 VOICE COMMAND - Current shape:', currentStateRef.current.currentShape);
+        console.log('🎤 VOICE COMMAND - Tool:', currentStateRef.current.tool);
+        console.log('🎤 VOICE COMMAND - View transform:', currentStateRef.current.viewTransform);
+        console.log('🎤 VOICE COMMAND - All state keys:', Object.keys(currentStateRef.current));
         
         // Call EXACTLY the same function as the button - no differences at all
         console.log('🚀 Calling EXACT same function as button: enhanceDrawingWithGeminiWithPrompt');
+        enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
+      }
+      
+      // Handle enhancement_request from sarcastic multimodal server
+      if (data.type === 'enhancement_request') {
+        console.log('🎯 Enhancement request from sarcastic multimodal server:', data);
+        console.log('🔍 DEBUG: Current state when enhancement requested:');
+        console.log('  - Shapes count:', currentStateRef.current.shapes.length);
+        console.log('  - Shapes:', currentStateRef.current.shapes);
+        console.log('  - Is drawing:', isDrawing);
+        console.log('  - Current shape:', currentStateRef.current.currentShape);
+        console.log('  - Tool:', currentStateRef.current.tool);
+        console.log('  - All state keys:', Object.keys(currentStateRef.current));
+        console.log('  - Would show enhance button:', currentStateRef.current.shapes.length > 0);
+        
+        // Call EXACTLY the same as the button - no differences at all
+        console.log('🚀 Starting enhancement with EXACT same call as button');
+        
+        // Call EXACTLY like the button does - same function, same parameters
         enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
       }
       
