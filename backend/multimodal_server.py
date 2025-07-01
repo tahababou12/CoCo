@@ -78,11 +78,30 @@ CHANNELS = 1              # Mono audio
 VAD_SILENCE_THRESHOLD = 2     # Lower threshold for faster silence detection (was 3)
 VAD_VOICE_THRESHOLD = 6       # Lower threshold for faster voice detection (was 8)
 VAD_MIN_VOICE_DURATION = 0.2  # Reduced minimum speaking time (was 0.3)
-VAD_MAX_SILENCE_DURATION = 1.5  # Reduced maximum silence before stopping (was 2.0)
-VAD_SPEECH_BUFFER = 0.3       # Reduced buffer time for faster response (was 0.5)
+VAD_MAX_SILENCE_DURATION = 2.5  # Increased maximum silence before stopping (was 1.5)
+VAD_SPEECH_BUFFER = 1.0       # Increased buffer time for slower response (was 0.3)
 
 # Remove hardcoded regex patterns and replace with AI processing
 # ENHANCE_COMMANDS = [...]  # Remove this entire list
+
+async def refine_modification_prompt_with_llm(user_prompt):
+    """Send the user's modification prompt to Gemini LLM for rewriting/refinement."""
+    import os
+    GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    llm_prompt = f"""
+Rewrite the following as a clear, detailed image modification instruction for an AI image model. Be specific and concise, and use direct language:
+
+User prompt: {user_prompt}
+"""
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model="gemini-1.5-flash",
+        contents=[{"text": llm_prompt}]
+    )
+    if hasattr(response, 'text') and response.text:
+        return response.text.strip()
+    return user_prompt
 
 async def process_voice_command_with_ai(text, websocket, session):
     """Use Gemini AI to understand and process voice commands naturally with a separate session"""
@@ -222,31 +241,12 @@ async def process_voice_command_with_regex(text, websocket):
         
         # Check for modification commands
         modification_patterns = [
-            r"make.*colorful",
-            r"add.*color",
-            r"more.*color",
-            r"make.*darker",
-            r"make.*lighter",
-            r"add.*detail",
-            r"more.*detail",
-            r"change.*style",
             r"modify.*drawing",
-            r"modify.*it.*to",
-            r"modify.*to.*be",
-            r"modify.*to.*look",
-            r"make.*look.*like",
-            r"transform.*into",
-            r"look.*like.*lightning",
-            r"lightning.*mcqueen",
-            r"make.*it.*look.*like",
-            r"style.*like",
-            r"character.*like",
-            r"make.*it.*more.*like",
-            r"turn.*into",
-            r"change.*to.*look.*like",
-            r"realistic",
-            r"less.*cartoon",
-            r"more.*realistic"
+            r"modify.*image",
+            r"modify.*this",
+            r"modify.*it",
+            r"modify.*to",
+            r"modify.*"
         ]
         
         for pattern in modification_patterns:
@@ -883,19 +883,16 @@ Just be helpful and encouraging about the drawing itself!"""
                                             
                                             last_transcription_time = current_time
                                             
-                                            # Check if this is an enhancement command (only on complete phrases)
-                                            command_result = await process_voice_command_with_ai(transcription_buffer, websocket, session)
-                                            if command_result:
-                                                print(f"🎯 AI command detected in voice input: {transcription_buffer}")
-                                                # Send the AI's response to frontend
+                                            # Check if this is an enhancement or modification command (only on complete phrases)
+                                            regex_result = await process_voice_command_with_regex(transcription_buffer, websocket)
+                                            if regex_result is not None:
+                                                print(f"🎯 Regex command detected in voice input: {transcription_buffer}")
                                                 await websocket.send(json.dumps({
-                                                    "text": command_result,
-                                                    "command_detected": "ai_processed"
+                                                    "text": regex_result,
+                                                    "command_detected": "regex_processed"
                                                 }))
-                                                # Clear the buffer after processing
                                                 transcription_buffer = ""
-                                        else:
-                                            print("🔇 Client muted - ignoring input transcription")
+                                            # No else: do nothing if regex does not match
 
                                     # Handle output transcription (what Gemini said)
                                     output_transcription = response.server_content.output_transcription

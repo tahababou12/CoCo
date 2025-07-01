@@ -12,6 +12,7 @@ from PIL import Image
 import platform
 import subprocess
 import time
+import traceback
 
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -517,7 +518,6 @@ def enhance_image():
         error_msg = f"Error requesting image enhancement: {str(e)}"
         print(error_msg)
         # Log detailed error information for debugging
-        import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to process enhancement request", "details": str(e)}), 500
 
@@ -544,7 +544,6 @@ def check_enhancement_status(request_id):
     except Exception as e:
         error_msg = f"Error checking enhancement status: {str(e)}"
         print(error_msg)
-        import traceback
         traceback.print_exc()
         return jsonify({"error": "Error checking status", "details": str(e)}), 500
 
@@ -607,7 +606,6 @@ def add_to_storyboard_api():
     except Exception as e:
         error_msg = f"Error adding image to storyboard: {str(e)}"
         print(error_msg)
-        import traceback
         traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
@@ -706,7 +704,6 @@ def delete_from_storyboard():
     except Exception as e:
         error_msg = f"Error deleting image from storyboard: {str(e)}"
         print(error_msg)
-        import traceback
         traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
@@ -755,7 +752,6 @@ def generate_video_api():
     except Exception as e:
         error_msg = f"Error generating video: {str(e)}"
         print(error_msg)
-        import traceback
         traceback.print_exc()
         return jsonify({"error": error_msg}), 500
 
@@ -866,7 +862,6 @@ def enhance_image_voice():
         error_msg = f"Error requesting voice-triggered image enhancement: {str(e)}"
         print(error_msg)
         # Log detailed error information for debugging
-        import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to process voice enhancement request", "details": str(e)}), 500
 
@@ -932,98 +927,87 @@ def save_and_enhance_voice():
         error_msg = f"Error in save-and-enhance: {str(e)}"
         print(error_msg)
         # Log detailed error information for debugging
-        import traceback
         traceback.print_exc()
         return jsonify({"error": "Failed to process save-and-enhance request", "details": str(e)}), 500
 
-# API endpoint to modify an existing enhanced image based on voice commands
+# API endpoint to modify an existing drawing based on voice commands
 @app.route('/api/modify-image', methods=['POST'])
 def modify_image():
-    """Modify an existing enhanced image based on voice commands"""
+    """Modify an existing drawing based on voice commands"""
     global is_processing
-    
     try:
         data = request.get_json()
         prompt = data.get('prompt', '')
-        
-        print(f"🎨 Modification request received with prompt: {prompt}")
-        
-        # Generate a unique request ID
+        print(f"[DEBUG] /api/modify-image received prompt: '{prompt}'")
         request_id = f"modify_{int(time.time())}"
-        
-        # Check if we're already processing
         if is_processing:
             return jsonify({
                 "status": "error",
                 "message": "Another modification is already in progress. Please wait.",
                 "request_id": request_id
             }), 400
-        
-        # Find the most recent enhanced image
-        enhanced_files = [f for f in os.listdir(enhanced_dir) if f.startswith('enhanced_') and f.endswith('.png')]
-        if not enhanced_files:
+        # Find the most recent original drawing
+        img_files = [f for f in os.listdir(img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if not img_files:
             return jsonify({
                 "status": "error",
-                "message": "No enhanced image found to modify. Please enhance an image first.",
+                "message": "No original drawing found to use for modification.",
                 "request_id": request_id
             }), 404
-        
-        # Get the most recent enhanced image
-        enhanced_files.sort(reverse=True)  # Sort by filename (timestamp-based)
-        latest_enhanced = enhanced_files[0]
-        enhanced_path = os.path.join(enhanced_dir, latest_enhanced)
-        
-        print(f"🎨 Found latest enhanced image: {latest_enhanced}")
-        
-        # Set processing state
+        img_files.sort(key=lambda x: os.path.getmtime(os.path.join(img_dir, x)), reverse=True)
+        latest_original = img_files[0]
+        original_path = os.path.join(img_dir, latest_original)
+        print(f"🎨 Found latest original drawing: {latest_original}")
         is_processing = True
         processing_status[request_id] = {"status": "processing", "message": "Modifying image..."}
-        
-        # Start processing in a separate thread
         def process_modification():
             global is_processing
             try:
-                # Use the same enhancement function but with modification prompt
-                result = enhance_drawing_with_gemini(enhanced_path, prompt, request_id)
-                
+                # Only send the original image for modification
+                result = enhance_or_modify_with_gemini(original_path, prompt, request_id)
                 if result:
+                    print(f"[DEBUG] Adding result to processing_status with prompt: '{prompt}'")
                     processing_status[request_id] = {
                         "status": "completed",
                         "message": "Image modification completed successfully",
                         "enhanced_image": result.get("enhanced_image"),
-                        "filename": result.get("filename")
+                        "filename": result.get("filename"),
+                        "prompt": prompt  # Always include the user's prompt
                     }
                 else:
+                    error_msg = processing_status.get(request_id, {}).get('message', 'Failed to modify image')
+                    tb = processing_status.get(request_id, {}).get('traceback', '')
                     processing_status[request_id] = {
                         "status": "error",
-                        "message": "Failed to modify image"
+                        "message": error_msg,
+                        "traceback": tb
                     }
-                    
             except Exception as e:
                 error_msg = f"Error during modification: {str(e)}"
+                tb = traceback.format_exc()
                 print(error_msg)
-                processing_status[request_id] = {"status": "error", "message": error_msg}
+                print(tb)
+                processing_status[request_id] = {"status": "error", "message": error_msg, "traceback": tb}
             finally:
                 is_processing = False
-        
-        # Start the processing thread
         thread = threading.Thread(target=process_modification)
         thread.daemon = True
         thread.start()
-        
         return jsonify({
             "status": "processing",
             "message": "Modification started",
             "request_id": request_id
         })
-        
     except Exception as e:
         error_msg = f"Error in modification API: {str(e)}"
+        tb = traceback.format_exc()
         print(error_msg)
+        print(tb)
         is_processing = False
         return jsonify({
             "status": "error",
-            "message": error_msg
+            "message": error_msg,
+            "traceback": tb
         }), 500
 
 # API endpoint to check modification status
@@ -1175,6 +1159,187 @@ def browser_closed():
     except Exception as e:
         print(f"❌ Error handling browser close: {e}")
         return jsonify({"error": str(e)}), 500
+
+# Function to enhance or modify drawing with Gemini
+# If second_image_path is provided, both images are sent to Gemini for modification
+
+def enhance_or_modify_with_gemini(image_path, prompt="", request_id=None, second_image_path=None):
+    global is_processing
+
+    print(f"[DEBUG] enhance_or_modify_with_gemini called with prompt: '{prompt}'")
+    print(f"   - image_path: {image_path}")
+    print(f"   - second_image_path: {second_image_path}")
+    print(f"   - prompt: '{prompt}'")
+    print(f"   - request_id: {request_id}")
+
+    if not GEMINI_API_KEY:
+        error_msg = "Error: Gemini API key is not set. Cannot enhance/modify drawing."
+        print(error_msg)
+        if request_id:
+            processing_status[request_id] = {"status": "error", "message": error_msg}
+        is_processing = False
+        return None
+
+    # System prompt for modification
+    system_mod_prompt = (
+        "You are an AI image editor. Carefully follow the user's instruction to modify the provided drawing. "
+        "Be literal and explicit: if the user asks for a color change, make the change obvious. "
+        "If the user asks for a style, apply it clearly. Only modify what the user requests.\n\n"
+    )
+
+    try:
+        # Read the main image
+        print(f"[DEBUG] Attempting to read image from {image_path}")
+        drawing = cv2.imread(image_path)
+        if drawing is None:
+            error_msg = f"Error: Could not read image from {image_path}"
+            print(error_msg)
+            if request_id:
+                processing_status[request_id] = {"status": "error", "message": error_msg}
+            is_processing = False
+            return None
+        drawing_rgb = cv2.cvtColor(drawing, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(drawing_rgb)
+        buffered = BytesIO()
+        pil_image.save(buffered, format="JPEG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        print(f"[DEBUG] Successfully encoded image to base64 (length: {len(img_base64)})")
+
+        # If a second image is provided, read and encode it
+        second_img_base64 = None
+        if second_image_path:
+            print(f"[DEBUG] Attempting to read second image from {second_image_path}")
+            second_img = cv2.imread(second_image_path)
+            if second_img is not None:
+                second_img_rgb = cv2.cvtColor(second_img, cv2.COLOR_BGR2RGB)
+                pil_second_img = Image.fromarray(second_img_rgb)
+                buf2 = BytesIO()
+                pil_second_img.save(buf2, format="JPEG")
+                second_img_base64 = base64.b64encode(buf2.getvalue()).decode("utf-8")
+                print(f"[DEBUG] Successfully encoded second image to base64 (length: {len(second_img_base64)})")
+            else:
+                print(f"[DEBUG] Could not read second image from {second_image_path}")
+
+        def process_with_gemini(prompt_text):
+            global is_processing
+            try:
+                print(f"[DEBUG] process_with_gemini called with prompt_text: '{prompt_text}'")
+                # Prepend system prompt for modification
+                full_prompt = system_mod_prompt + (prompt_text or "Enhance this sketch into an image with more detail.")
+                print(f"[DEBUG] Full prompt sent to Gemini: '{full_prompt}'")
+                print(f"Processing with prompt: {full_prompt}")
+                print(f"Using model: {GEMINI_MODEL}")
+                print(f"API Key available: {bool(GEMINI_API_KEY)}")
+
+                # Prepare the prompt and image data
+                contents = [
+                    {"text": full_prompt},
+                    {"inlineData": {
+                        "mimeType": "image/jpeg",
+                        "data": img_base64
+                    }}
+                ]
+                if second_img_base64:
+                    contents.append({
+                        "inlineData": {
+                            "mimeType": "image/jpeg",
+                            "data": second_img_base64
+                        }
+                    })
+                print(f"[DEBUG] Contents structure: {contents}")
+                config = types.GenerateContentConfig(response_modalities=['Text', 'Image'])
+                print(f"[DEBUG] Config: {config}")
+                try:
+                    response = client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=contents,
+                        config=config)
+                    print("[DEBUG] Gemini API RESPONSE: ", response)
+                except Exception as api_error:
+                    error_msg = f"Gemini API error: {str(api_error)}"
+                    print(error_msg)
+                    print(f"Error type: {type(api_error)}")
+                    print(f"Error details: {api_error}")
+                    if request_id:
+                        processing_status[request_id] = {"status": "error", "message": error_msg}
+                    is_processing = False
+                    return
+                # Process the response (same as before)
+                success = False
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'text') and part.text is not None:
+                        print("[DEBUG] Text response:", part.text)
+                    elif hasattr(part, 'inline_data') and part.inline_data is not None:
+                        try:
+                            image_data = part.inline_data.data
+                            if isinstance(image_data, str):
+                                image_bytes = base64.b64decode(image_data)
+                            else:
+                                image_bytes = image_data
+                            image = Image.open(BytesIO(image_bytes))
+                            img_array = np.array(image)
+                            enhanced_width, enhanced_height = image.size
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            enhanced_filename = f"enhanced_{timestamp}.png"
+                            enhanced_path = os.path.join(enhanced_dir, enhanced_filename)
+                            image.save(enhanced_path, format="PNG")
+                            print(f"[DEBUG] Enhanced image saved to {enhanced_path}")
+                            img_buffer = BytesIO()
+                            image.save(img_buffer, format="PNG")
+                            enhanced_base64 = base64.b64encode(img_buffer.getvalue()).decode("utf-8")
+                            print(f"[DEBUG] Generated base64 data length: {len(enhanced_base64)}")
+                            if request_id:
+                                processing_status[request_id] = {
+                                    "status": "complete",
+                                    "result": {
+                                        "filename": enhanced_filename,
+                                        "path": f"/enhanced_drawings/{enhanced_filename}",
+                                        "absolute_path": enhanced_path,
+                                        "width": enhanced_width,
+                                        "height": enhanced_height,
+                                        "base64Data": enhanced_base64,
+                                        "prompt": full_prompt
+                                    }
+                                }
+                            success = True
+                            break
+                        except Exception as img_error:
+                            error_msg = f"Error processing image data: {str(img_error)}"
+                            print(error_msg)
+                            if request_id:
+                                processing_status[request_id] = {
+                                    "status": "error", 
+                                    "message": error_msg
+                                }
+                if not success:
+                    error_msg = "No enhanced image found in Gemini response"
+                    print(error_msg)
+                    if request_id:
+                        processing_status[request_id] = {"status": "error", "message": error_msg}
+            except Exception as e:
+                error_msg = f"Error enhancing/modifying drawing with Gemini: {str(e)}"
+                print(error_msg)
+                import traceback
+                tb = traceback.format_exc()
+                print(f"[DEBUG] Traceback:\n{tb}")
+                if request_id:
+                    processing_status[request_id] = {"status": "error", "message": error_msg, "traceback": tb}
+            finally:
+                is_processing = False
+        processing_status[request_id] = {"status": "processing"}
+        is_processing = True
+        threading.Thread(target=process_with_gemini, args=(prompt,)).start()
+        return None
+    except Exception as e:
+        error_msg = f"Error preparing drawing for Gemini: {str(e)}"
+        print(error_msg)
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[DEBUG] Traceback:\n{tb}")
+        if request_id:
+            processing_status[request_id] = {"status": "error", "message": error_msg, "traceback": tb}
+        is_processing = False
+        return None
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True) 
