@@ -78,8 +78,8 @@ CHANNELS = 1              # Mono audio
 VAD_SILENCE_THRESHOLD = 2     # Lower threshold for faster silence detection (was 3)
 VAD_VOICE_THRESHOLD = 6       # Lower threshold for faster voice detection (was 8)
 VAD_MIN_VOICE_DURATION = 0.2  # Reduced minimum speaking time (was 0.3)
-VAD_MAX_SILENCE_DURATION = 2.5  # Increased maximum silence before stopping (was 1.5)
-VAD_SPEECH_BUFFER = 1.0       # Increased buffer time for slower response (was 0.3)
+VAD_MAX_SILENCE_DURATION = 1.5  # Reduced maximum silence before stopping (was 2.0)
+VAD_SPEECH_BUFFER = 0.3       # Reduced buffer time for faster response (was 0.5)
 
 # Remove hardcoded regex patterns and replace with AI processing
 # ENHANCE_COMMANDS = [...]  # Remove this entire list

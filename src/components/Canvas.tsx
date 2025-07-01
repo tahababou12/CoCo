@@ -1115,6 +1115,7 @@ const Canvas: React.FC<CanvasProps> = () => {
             pointerEvents: 'none'
           }}
         />
+        
         {/* Close button */}
         <button
           className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 shadow-md z-40"
@@ -1691,90 +1692,6 @@ const Canvas: React.FC<CanvasProps> = () => {
     document.body.removeChild(link);
     window.showToast('Image downloading...', 'success', 2000);
   };
-
-  // Add this function after enhanceDrawingWithGeminiWithPrompt
-  const modifyDrawingWithGeminiWithPrompt = useCallback(async (prompt: string) => {
-    console.log('🚀 Starting modification with prompt:', prompt);
-    setIsStreamingPaused(true);
-    try {
-      if (currentStateRef.current.shapes.length === 0) {
-        window.showToast('Draw something first before modifying', 'info', 3000);
-        setIsStreamingPaused(false);
-        return;
-      }
-      // Save the drawing as an image (like enhancement)
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      if (!tempCtx) throw new Error('Failed to create temporary canvas context');
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      currentStateRef.current.shapes.forEach(shape => {
-        shape.points.forEach(point => {
-          minX = Math.min(minX, point.x);
-          minY = Math.min(minY, point.y);
-          maxX = Math.max(maxX, point.x);
-          maxY = Math.max(maxY, point.y);
-        });
-        if (shape.type === 'text' && shape.text) {
-          const fontSize = shape.style.fontSize || 16;
-          const textWidth = shape.text.length * fontSize * 0.6;
-          const textHeight = fontSize * 1.2;
-          minX = Math.min(minX, shape.points[0].x);
-          minY = Math.min(minY, shape.points[0].y);
-          maxX = Math.max(maxX, shape.points[0].x + textWidth);
-          maxY = Math.max(maxY, shape.points[0].y + textHeight);
-        }
-      });
-      const padding = 20;
-      minX -= padding; minY -= padding; maxX += padding; maxY += padding;
-      const width = Math.max(maxX - minX, 1);
-      const height = Math.max(maxY - minY, 1);
-      tempCanvas.width = width;
-      tempCanvas.height = height;
-      tempCtx.fillStyle = '#FFFFFF';
-      tempCtx.fillRect(0, 0, width, height);
-      tempCtx.translate(-minX, -minY);
-      currentStateRef.current.shapes.forEach(shape => {
-        renderShape(tempCtx, shape);
-      });
-      const dataUrl = tempCanvas.toDataURL('image/png');
-      const saveResponse = await fetch('http://localhost:5001/api/save-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData: dataUrl }),
-      });
-      if (!saveResponse.ok) throw new Error('Failed to save image');
-      const saveResult = await saveResponse.json();
-      // Call the modification API
-      const modResponse = await fetch('http://localhost:5001/api/modify-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: saveResult.filename, prompt }),
-      });
-      if (!modResponse.ok) throw new Error('Failed to start modification');
-      const modResult = await modResponse.json();
-      if (!modResult.success || !modResult.requestId) throw new Error('Modification API did not return a requestId');
-      window.showToast('Modifying your drawing with Gemini...', 'info', 3000);
-      // Poll for modification status
-      const pollModificationStatus = async (requestId: string) => {
-        const response = await fetch(`http://localhost:5001/api/modification-status/${requestId}`);
-        if (!response.ok) throw new Error('Failed to fetch modification status');
-        const status = await response.json();
-        if (status.status === 'processing') {
-          setTimeout(() => pollModificationStatus(requestId), 2000);
-        } else if (status.status === 'complete' && status.result) {
-          addEnhancedImageToCanvas(status.result);
-          window.showToast('Modification complete! Image added to canvas.', 'success', 3000);
-        } else if (status.status === 'error') {
-          window.showToast(`Modification failed: ${status.message || 'Unknown error'}`, 'error', 3000);
-        }
-      };
-      pollModificationStatus(modResult.requestId);
-    } catch (err) {
-      window.showToast(`Error modifying drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
-    } finally {
-      setIsStreamingPaused(false);
-    }
-  }, []);
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-yellow-50 overflow-hidden select-none" data-canvas-container>
