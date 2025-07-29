@@ -161,7 +161,7 @@ def enhance_drawing_with_gemini(image_path, prompt="", request_id=None):
                         contents=contents,
                         config=config)
                                         
-                    print("RESPONSE: ", response)
+                    # print("RESPONSE: ", response)  # Commented out to avoid binary/image data in logs
                         
                 except Exception as api_error:
                     error_msg = f"Gemini API error: {str(api_error)}"
@@ -942,11 +942,13 @@ def modify_image():
     """Modify an existing enhanced image based on voice commands"""
     global is_processing
     try:
+        print(f"[DEBUG] Entered /api/modify-image endpoint. is_processing={is_processing}")
         data = request.get_json()
         prompt = data.get('prompt', '')
         print(f"🎨 Modification request received with prompt: {prompt}")
         request_id = f"modify_{int(time.time())}"
         if is_processing:
+            print(f"[DEBUG] 400 ERROR: is_processing is True, another modification/enhancement is running.")
             return jsonify({
                 "status": "error",
                 "message": "Another modification is already in progress. Please wait.",
@@ -955,6 +957,7 @@ def modify_image():
         # Find the most recent enhanced image
         enhanced_files = [f for f in os.listdir(enhanced_dir) if f.startswith('enhanced_') and f.endswith('.png')]
         if not enhanced_files:
+            print(f"[DEBUG] 404 ERROR: No enhanced image found to modify.")
             return jsonify({
                 "status": "error",
                 "message": "No enhanced image found to modify. Please enhance an image first.",
@@ -966,6 +969,7 @@ def modify_image():
         # Find the most recent original drawing
         img_files = [f for f in os.listdir(img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if not img_files:
+            print(f"[DEBUG] 404 ERROR: No original drawing found to use for modification.")
             return jsonify({
                 "status": "error",
                 "message": "No original drawing found to use for modification.",
@@ -977,33 +981,39 @@ def modify_image():
         print(f"🎨 Found latest enhanced image: {latest_enhanced}")
         print(f"🎨 Found latest original drawing: {latest_original}")
         is_processing = True
+        print(f"[DEBUG] is_processing set to True. Starting modification thread.")
         processing_status[request_id] = {"status": "processing", "message": "Modifying image..."}
         def process_modification():
             global is_processing
             try:
+                print(f"[DEBUG] Modification thread started for request_id={request_id}")
                 # Only send the original image for modification
-                result = enhance_or_modify_with_gemini(original_path, prompt, request_id)
-                if result:
-                    processing_status[request_id] = {
-                        "status": "completed",
-                        "message": "Image modification completed successfully",
-                        "enhanced_image": result.get("enhanced_image"),
-                        "filename": result.get("filename")
-                    }
+                enhance_or_modify_with_gemini(original_path, prompt, request_id)
+                
+                # Wait a bit for the processing to start
+                time.sleep(0.5)
+                
+                # Check if processing started successfully
+                if request_id in processing_status and processing_status[request_id].get("status") != "error":
+                    print(f"[DEBUG] Modification thread: Image modification started successfully.")
+                    # The result will be set in processing_status by enhance_or_modify_with_gemini
                 else:
+                    print(f"[DEBUG] Modification thread: Failed to start modification.")
                     processing_status[request_id] = {
                         "status": "error",
-                        "message": "Failed to modify image"
+                        "message": "Failed to start modification"
                     }
             except Exception as e:
                 error_msg = f"Error during modification: {str(e)}"
-                print(error_msg)
+                print(f"[DEBUG] Exception in modification thread: {error_msg}")
                 processing_status[request_id] = {"status": "error", "message": error_msg}
             finally:
                 is_processing = False
+                print(f"[DEBUG] Modification thread finished. is_processing set to False.")
         thread = threading.Thread(target=process_modification)
         thread.daemon = True
         thread.start()
+        print(f"[DEBUG] Modification thread started and main endpoint returning processing response.")
         return jsonify({
             "status": "processing",
             "message": "Modification started",
@@ -1011,7 +1021,7 @@ def modify_image():
         })
     except Exception as e:
         error_msg = f"Error in modification API: {str(e)}"
-        print(error_msg)
+        print(f"[DEBUG] Exception in /api/modify-image endpoint: {error_msg}")
         is_processing = False
         return jsonify({
             "status": "error",
@@ -1174,17 +1184,19 @@ def browser_closed():
 def enhance_or_modify_with_gemini(image_path, prompt="", request_id=None, second_image_path=None):
     global is_processing
 
-    print(f"enhance_or_modify_with_gemini called with prompt: {prompt}")
+    print(f"[DEBUG] enhance_or_modify_with_gemini called with prompt: {prompt}")
     print(f"   - image_path: {image_path}")
     print(f"   - second_image_path: {second_image_path}")
     print(f"   - prompt: '{prompt}'")
     print(f"   - request_id: {request_id}")
+    print(f"[DEBUG] is_processing at start of enhance_or_modify_with_gemini: {is_processing}")
 
     if not GEMINI_API_KEY:
         error_msg = "Error: Gemini API key is not set. Cannot enhance/modify drawing."
-        print(error_msg)
+        print(f"[DEBUG] {error_msg}")
         processing_status[request_id] = {"status": "error", "message": error_msg}
         is_processing = False
+        print(f"[DEBUG] is_processing set to False due to missing API key.")
         return None
 
     try:
@@ -1192,9 +1204,10 @@ def enhance_or_modify_with_gemini(image_path, prompt="", request_id=None, second
         drawing = cv2.imread(image_path)
         if drawing is None:
             error_msg = f"Error: Could not read image from {image_path}"
-            print(error_msg)
+            print(f"[DEBUG] {error_msg}")
             processing_status[request_id] = {"status": "error", "message": error_msg}
             is_processing = False
+            print(f"[DEBUG] is_processing set to False due to image read failure.")
             return None
         drawing_rgb = cv2.cvtColor(drawing, cv2.COLOR_BGR2RGB)
         pil_image = Image.fromarray(drawing_rgb)
@@ -1241,7 +1254,9 @@ def enhance_or_modify_with_gemini(image_path, prompt="", request_id=None, second
                             "data": second_img_base64
                         }
                     })
-                print(f"Contents structure: {contents}")
+                print(f"[DEBUG] About to call Gemini with prompt: {prompt_text}")
+                # print(f"[DEBUG] Contents structure: {contents}")  # Commented out to avoid binary/image data in logs
+                # print(f"[DEBUG] Config: {config}")
                 config = types.GenerateContentConfig(response_modalities=['Text', 'Image'])
                 print(f"Config: {config}")
                 try:
@@ -1249,7 +1264,7 @@ def enhance_or_modify_with_gemini(image_path, prompt="", request_id=None, second
                         model=GEMINI_MODEL,
                         contents=contents,
                         config=config)
-                    print("RESPONSE: ", response)
+                    # print("RESPONSE: ", response)  # Commented out to avoid binary/image data in logs
                 except Exception as api_error:
                     error_msg = f"Gemini API error: {str(api_error)}"
                     print(error_msg)

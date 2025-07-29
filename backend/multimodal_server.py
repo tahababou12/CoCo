@@ -213,8 +213,8 @@ IMPORTANT:
 async def process_voice_command_with_regex(text, websocket):
     """Fallback regex-based command processing when AI fails"""
     try:
-        # Convert to lowercase for easier matching
-        text_lower = text.lower().strip()
+        # Clean up transcript before matching
+        text_lower = clean_transcript(text.lower())
         
         # Simple pattern matching for enhancement commands - ONLY explicit "enhance" commands
         enhancement_patterns = [
@@ -242,11 +242,43 @@ async def process_voice_command_with_regex(text, websocket):
         # Check for modification commands
         modification_patterns = [
             r"modify.*drawing",
-            r"modify.*image",
+            r"modify.*image", 
             r"modify.*this",
             r"modify.*it",
             r"modify.*to",
-            r"modify.*"
+            r"modify.*",
+            r"can you modify",
+            r"please modify",
+            r"make.*blue",
+            r"make.*red",
+            r"make.*green",
+            r"make.*yellow",
+            r"make.*purple",
+            r"make.*orange",
+            r"make.*pink",
+            r"make.*brown",
+            r"make.*black",
+            r"make.*white",
+            r"change.*to.*blue",
+            r"change.*to.*red",
+            r"change.*to.*green",
+            r"change.*to.*yellow",
+            r"change.*to.*purple",
+            r"change.*to.*orange",
+            r"change.*to.*pink",
+            r"change.*to.*brown",
+            r"change.*to.*black",
+            r"change.*to.*white",
+            r"face.*blue",
+            r"face.*red",
+            r"face.*green",
+            r"face.*yellow",
+            r"face.*purple",
+            r"face.*orange",
+            r"face.*pink",
+            r"face.*brown",
+            r"face.*black",
+            r"face.*white"
         ]
         
         for pattern in modification_patterns:
@@ -366,7 +398,9 @@ async def call_modification_api(prompt="", websocket=None):
         # First, request the frontend to save the current drawing (enhanced image)
         print("💾 Requesting frontend to save current enhanced image...")
         save_message = {
-            "type": "save_drawing"
+            "type": "save_drawing",
+            "command_detected": "modify",
+            "modification_started": True
         }
         print(f"📤 Sending save request to frontend: {save_message}")
         await websocket.send(json.dumps(save_message))
@@ -427,6 +461,15 @@ def notify_browser_closed():
         f.write("browser_closed")
     # Also send SIGTERM to parent process
     os.kill(os.getppid(), signal.SIGTERM)
+
+def clean_transcript(text):
+    """Collapse multiple spaces, join common split words, and strip leading/trailing spaces."""
+    text = re.sub(r'\s+', ' ', text)
+    # Join common split words for modification
+    text = re.sub(r"mo\s*di\s*fy", "modify", text, flags=re.IGNORECASE)
+    text = re.sub(r"mod\s*if\s*y", "modify", text, flags=re.IGNORECASE)
+    # Add more as needed for other commands
+    return text.strip()
 
 class AudioManager:
     def __init__(self, input_sample_rate, output_sample_rate):
@@ -852,7 +895,7 @@ Just be helpful and encouraging about the drawing itself!"""
                         # Buffer for accumulating transcription
                         transcription_buffer = ""
                         last_transcription_time = 0
-                        transcription_timeout = 0.5  # Reduced from 1.0 to 0.5 seconds for faster response
+                        transcription_timeout = 3.0  # Increased to 3 seconds for more natural speech pauses
                         
                         while True:
                             try:
@@ -876,27 +919,35 @@ Just be helpful and encouraging about the drawing itself!"""
                                                 "input_transcription": transcript_text
                                             }))
                                             
-                                            # Buffer the transcription with shorter timeout for faster processing
+                                            # Buffer the transcription with longer timeout for complete sentences
                                             current_time = asyncio.get_event_loop().time()
                                             if current_time - last_transcription_time > transcription_timeout:
                                                 # Reset buffer if too much time has passed
                                                 transcription_buffer = transcript_text
+                                                print(f"🔄 Reset transcription buffer: '{transcript_text}'")
                                             else:
-                                                # Append to existing buffer
-                                                transcription_buffer += transcript_text
+                                                # Append to existing buffer with space
+                                                transcription_buffer += " " + transcript_text
+                                                print(f"📝 Appended to buffer: '{transcription_buffer}'")
                                             
                                             last_transcription_time = current_time
                                             
-                                            # Check if this is an enhancement or modification command (only on complete phrases)
-                                            regex_result = await process_voice_command_with_regex(transcription_buffer, websocket)
-                                            if regex_result is not None:
-                                                print(f"🎯 Regex command detected in voice input: {transcription_buffer}")
-                                                await websocket.send(json.dumps({
-                                                    "text": regex_result,
-                                                    "command_detected": "regex_processed"
-                                                }))
-                                                transcription_buffer = ""
-                                            # No else: do nothing if regex does not match
+                                            # Only check regex if buffer ends with sentence punctuation (likely full command)
+                                            cleaned_buffer = clean_transcript(transcription_buffer)
+                                            if cleaned_buffer.endswith('.') or cleaned_buffer.endswith('?') or cleaned_buffer.endswith('!'):
+                                                print(f"🔍 Checking regex on buffer: '{cleaned_buffer}'")
+                                                regex_result = await process_voice_command_with_regex(cleaned_buffer, websocket)
+                                                if regex_result is not None:
+                                                    print(f"🎯 Regex command detected in voice input: {cleaned_buffer}")
+                                                    await websocket.send(json.dumps({
+                                                        "text": regex_result,
+                                                        "command_detected": "regex_processed"
+                                                    }))
+                                                    transcription_buffer = ""
+                                                else:
+                                                    print(f"❌ No regex match for: '{cleaned_buffer}'")
+                                            else:
+                                                print(f"⏳ Buffering, not running regex yet: '{cleaned_buffer}'")
 
                                     # Handle output transcription (what Gemini said)
                                     output_transcription = response.server_content.output_transcription
@@ -935,7 +986,15 @@ Just be helpful and encouraging about the drawing itself!"""
                                                     audio_manager.add_audio(part.inline_data.data)
 
                                     if response.server_content.turn_complete:
-                                        print('\n<Turn complete>')
+                                        print('🛑 Turn complete, running regex on full transcription:', transcription_buffer)
+                                        regex_result = await process_voice_command_with_regex(transcription_buffer, websocket)
+                                        if regex_result is not None:
+                                            print(f"🎯 Regex command detected in voice input: {transcription_buffer}")
+                                            await websocket.send(json.dumps({
+                                                "text": regex_result,
+                                                "command_detected": "regex_processed"
+                                            }))
+                                        transcription_buffer = ""
                             except websockets.exceptions.ConnectionClosedOK:
                                 print("Client connection closed normally (receive)")
                                 break

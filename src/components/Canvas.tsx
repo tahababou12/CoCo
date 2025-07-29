@@ -1301,6 +1301,120 @@ const Canvas: React.FC<CanvasProps> = () => {
     });
   };
 
+  const saveDrawingOnly = useCallback(async () => {
+    console.log('💾 Saving drawing only (no enhancement)...');
+    console.log('💾 Current shapes count:', currentStateRef.current.shapes.length);
+    
+    // Pause streaming during save to prevent interference
+    setIsStreamingPaused(true);
+    
+    try {
+      // Check if there are shapes to save
+      if (currentStateRef.current.shapes.length === 0) {
+        console.log('❌ No shapes to save - please draw something first');
+        window.showToast('Draw something first before saving', 'info', 3000);
+        return;
+      }
+
+      console.log('✅ Shapes found, starting save process');
+      
+      // Create a temporary canvas for rendering just the drawings
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) {
+        throw new Error('Failed to create temporary canvas context');
+      }
+      
+      // Find the bounding box of all shapes
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      
+      // Calculate the bounds for all shapes
+      currentStateRef.current.shapes.forEach(shape => {
+        shape.points.forEach(point => {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        });
+        
+        // For text, estimate the bounds based on the text and font size
+        if (shape.type === 'text' && shape.text) {
+          const fontSize = shape.style.fontSize || 16;
+          const textWidth = shape.text.length * fontSize * 0.6; // Rough estimate
+          const textHeight = fontSize * 1.2; // Rough estimate
+          
+          minX = Math.min(minX, shape.points[0].x);
+          minY = Math.min(minY, shape.points[0].y);
+          maxX = Math.max(maxX, shape.points[0].x + textWidth);
+          maxY = Math.max(maxY, shape.points[0].y + textHeight);
+        }
+      });
+      
+      // Add padding
+      const padding = 20;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+      
+      // Set canvas size to fit the bounding box
+      const width = Math.max(maxX - minX, 1);
+      const height = Math.max(maxY - minY, 1);
+      tempCanvas.width = width;
+      tempCanvas.height = height;
+      
+      console.log(`📐 Canvas dimensions: ${width}x${height}`);
+      
+      // Fill with a white background
+      tempCtx.fillStyle = '#FFFFFF';
+      tempCtx.fillRect(0, 0, width, height);
+      
+      // Apply transform to center the drawings
+      tempCtx.translate(-minX, -minY);
+      
+      // Draw all shapes
+      currentStateRef.current.shapes.forEach(shape => {
+        renderShape(tempCtx, shape);
+      });
+      
+      // Convert to image
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      console.log('🖼️ Image data created, length:', dataUrl.length);
+      
+      // Send image data to server
+      console.log('📤 Saving image to server...');
+      const saveResponse = await fetch('http://localhost:5001/api/save-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageData: dataUrl }),
+      });
+      
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json();
+        throw new Error(`Server error while saving: ${errorData.error || 'Unknown error'}`);
+      }
+      
+      const saveResult = await saveResponse.json();
+      console.log('✅ Image saved successfully:', saveResult);
+      
+      // Show success toast
+      window.showToast('Drawing saved successfully!', 'success', 2000);
+      
+    } catch (err) {
+      console.error('❌ Error in save process:', err);
+      window.showToast(`Error saving drawing: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    } finally {
+      // Always resume streaming after save operations
+      setIsStreamingPaused(false);
+    }
+  }, []);
+  
+
   const handleMultimodalMessage = useCallback(async (event: MessageEvent) => {
     console.log('📨 MULTIMODAL MESSAGE RECEIVED:', event.data);
     
@@ -1354,6 +1468,15 @@ const Canvas: React.FC<CanvasProps> = () => {
         console.log('🎤 VOICE COMMAND - View transform:', currentStateRef.current.viewTransform);
         console.log('🎤 VOICE COMMAND - All state keys:', Object.keys(currentStateRef.current));
         
+        // Check if this is a modification request by looking for modification context
+        if (data.command_detected === 'modify' || data.modification_started) {
+          console.log('🎨 This is a modification request, not enhancement');
+          // For modification, we just save the drawing and let the backend handle the modification
+          // The backend will call the modification API directly
+          saveDrawingOnly();
+          return; // Don't proceed to enhancement
+        }
+        
         // Call EXACTLY the same function as the button - no differences at all
         console.log('🚀 Calling EXACT same function as button: enhanceDrawingWithGeminiWithPrompt');
         enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
@@ -1395,17 +1518,15 @@ const Canvas: React.FC<CanvasProps> = () => {
       // Handle enhancement commands triggered by voice
       if (data.command_detected === 'enhance') {
         console.log('🎯 Voice enhancement command detected:', data);
-        
+        // Show spinner/toast immediately
+        window.showToast('Enhancing your drawing with Gemini...', 'info', 3000);
         if (data.enhancement_started && data.request_id) {
-          // Start polling for enhancement status
           pollEnhancementStatus(data.request_id);
-          
           // Show success message
           if (window.showToast) {
             window.showToast('Enhancement started via voice command!', 'success', 3000);
           }
         }
-        // Removed error message handling since enhancement is working correctly
       }
       
       if (data.audio) {
@@ -1416,6 +1537,24 @@ const Canvas: React.FC<CanvasProps> = () => {
       if (data.voice_status) {
         console.log('Voice status update:', data.voice_status);
         setVoiceStatus(data.voice_status);
+      }
+      
+      // Handle modification commands triggered by voice
+      if (data.command_detected === 'modify') {
+        console.log('🎯 Voice modification command detected:', data);
+        console.log('🎯 modification_started:', data.modification_started);
+        console.log('�� request_id:', data.request_id);
+        // Show spinner/toast immediately
+        window.showToast('Modifying your drawing with Gemini...', 'info', 3000);
+        if (data.modification_started && data.request_id) {
+          console.log('🎯 Calling pollModificationStatus with request_id:', data.request_id);
+          pollModificationStatus(data.request_id);
+        } else {
+          console.log('❌ Not calling pollModificationStatus - missing data:', {
+            modification_started: data.modification_started,
+            request_id: data.request_id
+          });
+        }
       }
     } catch (err) {
       console.error('Error parsing WebSocket message:', err);
@@ -1692,6 +1831,48 @@ const Canvas: React.FC<CanvasProps> = () => {
     document.body.removeChild(link);
     window.showToast('Image downloading...', 'success', 2000);
   };
+
+  // Add this function, modeled after pollEnhancementStatus
+  const pollModificationStatus = async (requestId: string) => {
+    console.log('🔄 Polling modification status for requestId:', requestId);
+    try {
+      const response = await fetch(`http://localhost:5001/api/modification-status/${requestId}`);
+      console.log(' Response status:', response.status);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Error response: ${response.status} - ${errorText}`);
+        throw new Error(`Failed to fetch modification status: ${response.status} ${response.statusText}`);
+      }
+      const status = await response.json();
+      console.log('📊 Modification status received:', status);
+      console.log('📊 Status.status:', status.status);
+      console.log('📊 Status.result:', status.result);
+      
+      if (status.status === 'processing') {
+        console.log('⏳ Modification still processing, will poll again in 2 seconds...');
+        setTimeout(() => pollModificationStatus(requestId), 2000);
+      } else if (status.status === 'complete' && status.result) {
+        console.log('✅ Modification complete! Result:', status);
+        console.log('✅ About to call addEnhancedImageToCanvas with:', status.result);
+        window.showToast('Modification complete! Image added to canvas.', 'success', 3000);
+        // Add as interactive image (reuse addEnhancedImageToCanvas)
+        addEnhancedImageToCanvas(status.result);
+      } else if (status.status === 'error') {
+        console.error('❌ Modification failed with error:', status.message);
+        window.showToast(`Modification failed: ${status.message || 'Unknown error occurred'}`, 'error', 3000);
+      } else {
+        console.warn('⚠️ Unexpected status returned:', status.status);
+        console.warn('⚠️ Full status object:', status);
+        window.showToast(`Unexpected status returned: ${status.status}`, 'error', 3000);
+      }
+    } catch (err) {
+      console.error('❌ Error polling modification status:', err);
+      window.showToast(`Error checking modification status: ${err instanceof Error ? err.message : String(err)}`, 'error', 3000);
+    }
+  };
+
+  // Add this new function that only saves the drawing without enhancement
+  
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-yellow-50 overflow-hidden select-none" data-canvas-container>
