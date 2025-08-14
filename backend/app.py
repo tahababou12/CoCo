@@ -987,8 +987,13 @@ def modify_image():
             global is_processing
             try:
                 print(f"[DEBUG] Modification thread started for request_id={request_id}")
+                
+                # Create an enhanced prompt that combines modification with enhancement
+                enhanced_prompt = f"Enhance this sketch with more detail and visual appeal, and modify it according to this request: {prompt}. Make the final result look polished and professional."
+                print(f"🎨 Enhanced modification prompt: {enhanced_prompt}")
+                
                 # Only send the original image for modification
-                enhance_or_modify_with_gemini(original_path, prompt, request_id)
+                enhance_or_modify_with_gemini(original_path, enhanced_prompt, request_id)
                 
                 # Wait a bit for the processing to start
                 time.sleep(0.5)
