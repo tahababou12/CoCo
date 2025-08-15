@@ -47,10 +47,10 @@ const CollaborationPanel: React.FC = () => {
   const headerRef = useRef<HTMLDivElement>(null);
   
   // Use a ref to store the panel position for smoother updates
-  const panelPositionRef = useRef({ x: window.innerWidth - 300, y: 500 });
+  const panelPositionRef = useRef({ x: window.innerWidth - 300, y: 450 });
   
   // For React state updates (less frequent)
-  const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 300, y: 500 });
+  const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 300, y: 450 });
   
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,17 +215,34 @@ const CollaborationPanel: React.FC = () => {
     };
   }, [isDragging]);
   
-  // Set initial position on mount
+  // Set initial position once on mount - no more moving around!
   useEffect(() => {
+    // Set fixed position on the right side, near bottom
+    const fixedPosition = { 
+      x: window.innerWidth - 300, 
+      y: 450 
+    };
+    
+    // Update ref and state
+    panelPositionRef.current = fixedPosition;
+    setPanelPosition(fixedPosition);
+    
+    // Update DOM directly
     if (panelRef.current) {
-      panelRef.current.style.left = `${panelPosition.x}px`;
-      panelRef.current.style.top = `${panelPosition.y}px`;
+      panelRef.current.style.left = `${fixedPosition.x}px`;
+      panelRef.current.style.top = `${fixedPosition.y}px`;
     }
-  }, []);
-  
+    
+    // Save to localStorage
+    localStorage.setItem('collaborationPanelPosition', JSON.stringify({
+      x: `${fixedPosition.x}px`,
+      y: `${fixedPosition.y}px`
+    }));
+  }, []); // Only run once on mount
+
   // Reset panel to default position
   const resetPosition = () => {
-    const defaultPosition = { x: window.innerWidth - 300, y: 200 };
+    const defaultPosition = { x: window.innerWidth - 300, y: 450 };
     
     // Update DOM directly
     if (panelRef.current) {

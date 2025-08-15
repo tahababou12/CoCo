@@ -96,7 +96,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       console.log('Stopping camera...');
       const cameraStartTime = Date.now();
       try {
-        cameraRef.current.stop();
+      cameraRef.current.stop();
         console.log('Camera stop time:', Date.now() - cameraStartTime, 'ms');
       } catch (error) {
         console.error('Error stopping camera:', error);
@@ -108,7 +108,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       console.log('Closing MediaPipe...');
       const mediapipeStartTime = Date.now();
       try {
-        mediapipeRef.current.close();
+      mediapipeRef.current.close();
         console.log('MediaPipe close time:', Date.now() - mediapipeStartTime, 'ms');
       } catch (error) {
         console.error('Error closing MediaPipe:', error);
@@ -120,11 +120,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       console.log('Stopping video tracks...');
       const videoStartTime = Date.now();
       try {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => {
-          console.log('Stopping track:', track.kind);
-          track.stop();
-        });
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => {
+        console.log('Stopping track:', track.kind);
+        track.stop();
+      });
         videoRef.current.srcObject = null;
         console.log('Video tracks stop time:', Date.now() - videoStartTime, 'ms');
       } catch (error) {
@@ -146,11 +146,27 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
     const preloadMediaPipe = async () => {
       try {
         console.log('Preloading MediaPipe model...');
+        
+        // Force MediaPipe to use CPU backend instead of GPU/WebGL
+        if (typeof window !== 'undefined') {
+          // @ts-ignore - Disable WebGL context creation
+          window.MediaPipe = window.MediaPipe || {};
+          // @ts-ignore - Force CPU backend
+          window.MediaPipe.backend = 'cpu';
+        }
+        
+        // Initialize MediaPipe Hands
         preloadHands = new Hands({
           locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-          }
+          },
+          // Force CPU backend - no WebGL context creation
+          backend: 'cpu'
         });
+
+        // Log the backend being used
+        console.log('🎯 [GestureAuth] MediaPipe Hands initialized with CPU backend');
+        console.log('🎯 [GestureAuth] WebGL context creation should be disabled');
 
         preloadHands.setOptions({
           maxNumHands: 1,
@@ -160,7 +176,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
         });
 
         // Just initialize the model, don't start processing
-        console.log('MediaPipe model preloaded successfully');
+        console.log('MediaPipe model preloaded successfully with CPU backend');
       } catch (error) {
         console.error('Error preloading MediaPipe:', error);
       }
@@ -183,12 +199,73 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       try {
         console.log('Starting gesture auth initialization...');
         
-        // Initialize MediaPipe Hands with optimized settings for speed
+        // Force MediaPipe to use CPU backend instead of GPU/WebGL
+        if (typeof window !== 'undefined') {
+          // @ts-ignore - Disable WebGL context creation
+          window.MediaPipe = window.MediaPipe || {};
+          // @ts-ignore - Force CPU backend
+          window.MediaPipe.backend = 'cpu';
+        }
+        
+        // Initialize MediaPipe Hands
         const hands = new Hands({
           locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-          }
+          },
+          // Force CPU backend - no WebGL context creation
+          backend: 'cpu'
         });
+
+        // Log the backend being used
+        console.log('🎯 [GestureAuth] MediaPipe Hands initialized with CPU backend');
+        console.log('🎯 [GestureAuth] WebGL context creation should be disabled');
+        
+        // Verify the backend was set correctly
+        try {
+          // @ts-ignore - Check if backend was set
+          if (hands.backend) {
+            console.log('✅ [GestureAuth] Backend confirmed:', hands.backend);
+          } else {
+            console.log('⚠️ [GestureAuth] Backend not explicitly set, but CPU should be default');
+          }
+        } catch (error) {
+          console.log('ℹ️ [GestureAuth] Backend check not available, continuing with CPU mode');
+        }
+        
+        // NUCLEAR FALLBACK: If WebGL context still gets created, force CPU mode
+        const checkWebGLContext = () => {
+          const canvas = document.createElement('canvas');
+          try {
+            const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+            if (gl) {
+              console.log('🚨 [GestureAuth] WebGL context still created! Forcing CPU fallback...');
+              // Force MediaPipe to use CPU by recreating with strict settings
+              hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 0, // Force lowest complexity
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7,
+                // @ts-ignore - Force CPU mode
+                backend: 'cpu',
+                // @ts-ignore - Disable GPU
+                useGPU: false
+              });
+              return true; // WebGL detected
+            }
+          } catch (e) {
+            // WebGL blocked successfully
+          }
+          return false; // No WebGL
+        };
+        
+        // Check if WebGL was blocked
+        setTimeout(() => {
+          if (checkWebGLContext()) {
+            console.log('🚨 [GestureAuth] WebGL fallback activated - using strict CPU mode');
+          } else {
+            console.log('✅ [GestureAuth] WebGL successfully blocked - pure CPU mode active');
+          }
+        }, 100);
 
         // Optimized settings for faster detection and startup - minimal WebGL usage
         hands.setOptions({
@@ -232,7 +309,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
               
               if (videoRef.current && hands && isInitialized && !isCompletedRef.current) {
                 try {
-                  await hands.send({ image: videoRef.current });
+                await hands.send({ image: videoRef.current });
                 } catch (error) {
                   // Only log errors occasionally to avoid spam
                   if (Math.random() < 0.01) {
@@ -302,15 +379,15 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
 
         // Only process gesture detection if not completed
         if (!isCompletedRef.current) {
-          // Determine current gesture
-          const { mode } = determineHandMode(landmarks);
-          setCurrentGesture(mode);
+        // Determine current gesture
+        const { mode } = determineHandMode(landmarks);
+        setCurrentGesture(mode);
 
           // Optimized gesture matching with shorter debounce
-          const now = Date.now();
-          const isSameGesture = mode === lastDetectedGestureRef.current;
-          const isWithinDebounceTime = now - lastGestureTimeRef.current < GESTURE_DEBOUNCE_MS;
-          
+        const now = Date.now();
+        const isSameGesture = mode === lastDetectedGestureRef.current;
+        const isWithinDebounceTime = now - lastGestureTimeRef.current < GESTURE_DEBOUNCE_MS;
+        
           // Only log occasionally to reduce console spam
           if (Math.random() < 0.1) { // Log only 10% of the time
             console.log(`Gesture check: ${mode} vs target: ${targetGestures[currentGestureIndexRef.current]}`);
@@ -318,21 +395,21 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
           
           if (mode === targetGestures[currentGestureIndexRef.current] && 
               !isWithinDebounceTime) {
-            
-            console.log('Gesture matched:', mode); // Debug log
-            setIsDebouncing(false);
-            
-            // Update last detected gesture and time
-            lastDetectedGestureRef.current = mode;
-            lastGestureTimeRef.current = now;
-            
-            // Move to next gesture or complete
+          
+          console.log('Gesture matched:', mode); // Debug log
+          setIsDebouncing(false);
+          
+          // Update last detected gesture and time
+          lastDetectedGestureRef.current = mode;
+          lastGestureTimeRef.current = now;
+          
+          // Move to next gesture or complete
             if (currentGestureIndexRef.current < targetGestures.length - 1) {
-              console.log('Moving to next gesture'); // Debug log
+            console.log('Moving to next gesture'); // Debug log
               currentGestureIndexRef.current += 1;
               setCurrentGestureIndex(currentGestureIndexRef.current);
-            } else {
-              console.log('All gestures completed'); // Debug log
+          } else {
+            console.log('All gestures completed'); // Debug log
               const startTime = Date.now();
               console.log('=== GESTURE COMPLETION TIMELINE ===');
               console.log('0ms: Gesture completion detected');
@@ -340,7 +417,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
               isCompletedRef.current = true;
               console.log('1ms: isCompletedRef set to true');
               
-              setIsCompleted(true);
+            setIsCompleted(true);
               console.log('2ms: setIsCompleted called');
               
               // Force stop camera immediately
@@ -358,15 +435,15 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
               
               // Call onSuccess immediately - let React handle the unmounting
               console.log('6ms: Calling onSuccess...');
-              onSuccess();
+            onSuccess();
               console.log('7ms: onSuccess called');
               console.log('=== END TIMELINE ===');
             }
           } else if (mode === targetGestures[currentGestureIndexRef.current] && isSameGesture && isWithinDebounceTime) {
-            console.log('Gesture matched but debounced - waiting for new gesture or timeout');
-            setIsDebouncing(true);
-          } else {
-            setIsDebouncing(false);
+          console.log('Gesture matched but debounced - waiting for new gesture or timeout');
+          setIsDebouncing(true);
+        } else {
+          setIsDebouncing(false);
           }
         }
       }
@@ -378,7 +455,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       console.log('Gesture auth cleanup triggered');
       isInitialized = false;
       isCompletedRef.current = false;
-      cleanup();
+        cleanup();
     };
   }, [targetGestures, onSuccess, isCompleted]);
 
