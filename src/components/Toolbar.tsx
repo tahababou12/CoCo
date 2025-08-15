@@ -126,12 +126,12 @@ const Toolbar: React.FC = () => {
   return (
     <>
       {/* Main toolbar */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-10">
-        {/* Hand gesture indicator - always show with different styling based on state */}
-        <div className="mb-2 bg-white text-xs px-2 py-0.5 rounded-full shadow-sm">
-          <span className={`${
+      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-10">
+        {/* Hand gesture indicator - Enhanced styling */}
+        <div className="mb-3 bg-white/90 backdrop-blur-md text-sm px-4 py-2 rounded-full shadow-lg border border-purple-200">
+          <span className={`font-medium ${
             !isHandTrackingActive 
-              ? 'text-gray-400' 
+              ? 'text-purple-400' 
               : primaryGesture === 'Clear All' 
                 ? 'text-red-600' 
                 : 'text-purple-600'
@@ -140,173 +140,199 @@ const Toolbar: React.FC = () => {
           </span>
         </div>
         
-        <div className="bg-white rounded-xl shadow-lg border border-neutral-200 flex items-center overflow-hidden">
+        {/* Main toolbar container */}
+        <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-purple-200 flex items-center overflow-hidden">
           {/* Selection tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'select' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'select' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('select')}
             title="Select"
           >
-            <MousePointer size={20} />
+            <MousePointer size={22} />
           </button>
+          
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
           
           {/* Pencil tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'pencil' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'pencil' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('pencil')}
             title="Pencil"
           >
-            <Pencil size={20} />
+            <Pencil size={22} />
           </button>
           
           {/* Circle tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'ellipse' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'ellipse' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('ellipse')}
             title="Circle"
           >
-            <Circle size={20} />
+            <Circle size={22} />
           </button>
           
           {/* Rectangle tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'rectangle' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'rectangle' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('rectangle')}
             title="Rectangle"
           >
-            <Square size={20} />
-          </button>
-          
-          {/* Text tool */}
-          <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'text' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
-            }`}
-            onClick={() => handleToolClick('text')}
-            title="Text"
-          >
-            <Type size={20} />
+            <Square size={22} />
           </button>
           
           {/* Line tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'line' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'line' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('line')}
             title="Line"
           >
-            <div className="w-5 h-5 flex items-center justify-center">—</div>
+            <div className="w-5 h-5 flex items-center justify-center font-bold text-slate-700">—</div>
           </button>
+          
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
+          
+          {/* Text tool */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'text' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => handleToolClick('text')}
+            title="Text"
+          >
+            <Type size={22} />
+          </button>
+          
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
           
           {/* Eraser tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'eraser' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'eraser' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('eraser')}
             title="Object Eraser"
           >
-            <Eraser size={20} />
+            <Eraser size={22} />
           </button>
           
           {/* Pixel Eraser tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'pixel_eraser' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'pixel_eraser' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('pixel_eraser')}
             title="Pixel Eraser"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
               <path d="M15 3h6v6" />
               <path d="M10 14L21 3" />
             </svg>
           </button>
           
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
+          
           {/* Pan tool */}
           <button
-            className={`p-2 rounded-lg ${
-              state.tool === 'pan' ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'pan' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={() => handleToolClick('pan')}
             title="Pan"
           >
-            <Move size={20} />
+            <Move size={22} />
           </button>
           
           {/* Color picker button */}
           <button
-            className={`p-2 rounded-lg ${
-              showColorPicker ? 'bg-purple-100 text-purple-700' : 'text-neutral-700 hover:bg-neutral-100'
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              showColorPicker ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
             }`}
             onClick={toggleColorPicker}
             title="Colors"
           >
-            <Palette size={20} />
+            <Palette size={22} />
           </button>
         </div>
         
-        {/* Color picker panel */}
+        {/* Color picker panel - Enhanced styling */}
         {showColorPicker && (
-          <div className="mt-2 p-3 bg-white rounded-xl shadow-lg border border-neutral-200">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-neutral-600">Stroke:</label>
+          <div className="mt-3 p-4 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-purple-200">
+            <div className="flex flex-col gap-4">
+              {/* Stroke Color */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-purple-700 min-w-[60px]">Stroke:</label>
                 <div className="relative">
                   <input
                     type="color"
                     value={state.defaultStyle.strokeColor}
                     onChange={handleStrokeColorChange}
-                    className="w-8 h-8 rounded cursor-pointer"
+                    className="w-10 h-10 rounded-lg cursor-pointer border-2 border-purple-200 hover:border-purple-300 transition-colors"
                   />
                   <div 
-                    className="absolute inset-0 rounded border border-neutral-300 pointer-events-none"
+                    className="absolute inset-0 rounded-lg border-2 border-purple-300 pointer-events-none"
                     style={{ backgroundColor: state.defaultStyle.strokeColor }}
                   ></div>
                 </div>
-                <div className="flex items-center gap-1">
+                
+                {/* Stroke Width */}
+                <div className="flex items-center gap-1 bg-purple-100 rounded-lg p-1">
                   <button 
-                    className={`w-6 h-6 rounded ${state.defaultStyle.strokeWidth === 1 ? 'bg-neutral-100' : ''}`}
+                    className={`w-8 h-8 rounded-md transition-all duration-200 ${
+                      state.defaultStyle.strokeWidth === 1 ? 'bg-white shadow-sm' : 'hover:bg-purple-200'
+                    }`}
                     onClick={() => handleStrokeWidthChange(1)}
+                    title="1px"
                   >
-                    <div className="w-4 h-1 bg-black mx-auto rounded-full"></div>
+                    <div className="w-4 h-1 bg-purple-700 mx-auto rounded-full"></div>
                   </button>
                   <button 
-                    className={`w-6 h-6 rounded ${state.defaultStyle.strokeWidth === 2 ? 'bg-neutral-100' : ''}`}
+                    className={`w-8 h-8 rounded-md transition-all duration-200 ${
+                      state.defaultStyle.strokeWidth === 2 ? 'bg-white shadow-sm' : 'hover:bg-purple-200'
+                    }`}
                     onClick={() => handleStrokeWidthChange(2)}
+                    title="2px"
                   >
-                    <div className="w-4 h-1.5 bg-black mx-auto rounded-full"></div>
+                    <div className="w-4 h-1.5 bg-purple-700 mx-auto rounded-full"></div>
                   </button>
                   <button 
-                    className={`w-6 h-6 rounded ${state.defaultStyle.strokeWidth === 4 ? 'bg-neutral-100' : ''}`}
+                    className={`w-8 h-8 rounded-md transition-all duration-200 ${
+                      state.defaultStyle.strokeWidth === 4 ? 'bg-white shadow-sm' : 'hover:bg-purple-200'
+                    }`}
                     onClick={() => handleStrokeWidthChange(4)}
+                    title="4px"
                   >
-                    <div className="w-4 h-2 bg-black mx-auto rounded-full"></div>
+                    <div className="w-4 h-2 bg-purple-700 mx-auto rounded-full"></div>
                   </button>
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-neutral-600">Fill:</label>
+              {/* Fill Color */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-purple-700 min-w-[60px]">Fill:</label>
                 <div className="relative">
                   <input
                     type="color"
                     value={state.defaultStyle.fillColor === 'transparent' ? '#ffffff' : state.defaultStyle.fillColor}
                     onChange={handleFillColorChange}
-                    className="w-8 h-8 rounded cursor-pointer"
+                    className="w-10 h-10 rounded-lg cursor-pointer border-2 border-purple-200 hover:border-purple-300 transition-colors"
                   />
                   <div 
-                    className="absolute inset-0 rounded border border-neutral-300 pointer-events-none"
+                    className="absolute inset-0 rounded-lg border-2 border-purple-300 pointer-events-none"
                     style={{ 
                       backgroundColor: state.defaultStyle.fillColor === 'transparent' ? 'white' : state.defaultStyle.fillColor,
                       backgroundImage: state.defaultStyle.fillColor === 'transparent' ? 'linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%, #ccc)' : 'none',
@@ -316,34 +342,46 @@ const Toolbar: React.FC = () => {
                   ></div>
                 </div>
                 <button 
-                  className={`px-2 py-1 text-xs rounded ${state.defaultStyle.fillColor === 'transparent' ? 'bg-neutral-100' : ''}`}
+                  className={`px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
+                    state.defaultStyle.fillColor === 'transparent' ? 'bg-purple-100 text-purple-700' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'
+                  }`}
                   onClick={() => dispatch({ type: 'SET_FILL_COLOR', payload: 'transparent' })}
                 >
                   None
                 </button>
               </div>
               
+              {/* Font Size - Only for text tool */}
               {state.tool === 'text' && (
-                <div className="flex items-center gap-2">
-                  <label className="text-sm text-neutral-600">Font:</label>
-                  <div className="flex items-center gap-1">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-purple-700 min-w-[60px]">Font:</label>
+                  <div className="flex items-center gap-1 bg-purple-100 rounded-lg p-1">
                     <button 
-                      className={`w-6 h-6 rounded ${state.defaultStyle.fontSize === 12 ? 'bg-neutral-100' : ''}`}
+                      className={`w-8 h-8 rounded-md transition-all duration-200 ${
+                        state.defaultStyle.fontSize === 12 ? 'bg-white shadow-sm' : 'hover:bg-purple-200'
+                      }`}
                       onClick={() => handleFontSizeChange(12)}
+                      title="12px"
                     >
-                      <span className="text-xs">A</span>
+                      <span className="text-xs font-bold text-purple-700">A</span>
                     </button>
                     <button 
-                      className={`w-6 h-6 rounded ${state.defaultStyle.fontSize === 16 ? 'bg-neutral-100' : ''}`}
+                      className={`w-8 h-8 rounded-md transition-all duration-200 ${
+                        state.defaultStyle.fontSize === 16 ? 'bg-white shadow-sm' : 'hover:bg-purple-200'
+                      }`}
                       onClick={() => handleFontSizeChange(16)}
+                      title="16px"
                     >
-                      <span className="text-sm">A</span>
+                      <span className="text-sm font-bold text-purple-700">A</span>
                     </button>
                     <button 
-                      className={`w-6 h-6 rounded ${state.defaultStyle.fontSize === 24 ? 'bg-neutral-100' : ''}`}
+                      className={`w-8 h-8 rounded-md transition-all duration-200 ${
+                        state.defaultStyle.fontSize === 24 ? 'bg-white shadow-sm' : 'hover:bg-purple-200'
+                      }`}
                       onClick={() => handleFontSizeChange(24)}
+                      title="24px"
                     >
-                      <span className="text-base">A</span>
+                      <span className="text-base font-bold text-purple-700">A</span>
                     </button>
                   </div>
                 </div>
@@ -353,30 +391,30 @@ const Toolbar: React.FC = () => {
         )}
       </div>
       
-      {/* Zoom controls - positioned on the right side */}
-      <div className="absolute right-4 bottom-4 flex items-center space-x-1 z-10">
+      {/* Zoom controls - Enhanced styling */}
+      <div className="absolute right-6 bottom-6 flex items-center space-x-2 z-10">
         <button
           onClick={handleZoomOut}
-          className="w-8 h-8 rounded-md bg-white shadow-md border border-neutral-200 flex items-center justify-center text-neutral-700 hover:bg-neutral-100"
+          className="w-10 h-10 rounded-xl bg-white/90 backdrop-blur-md shadow-lg border border-purple-200 flex items-center justify-center text-purple-700 hover:bg-white hover:shadow-xl transition-all duration-200"
           title="Zoom Out"
         >
-          <Minus size={16} />
+          <Minus size={18} />
         </button>
         
         <button
           onClick={handleZoomIn}
-          className="w-8 h-8 rounded-md bg-white shadow-md border border-neutral-200 flex items-center justify-center text-neutral-700 hover:bg-neutral-100"
+          className="w-10 h-10 rounded-xl bg-white/90 backdrop-blur-md shadow-lg border border-purple-200 flex items-center justify-center text-purple-700 hover:bg-white hover:shadow-xl transition-all duration-200"
           title="Zoom In"
         >
-          <Plus size={16} />
+          <Plus size={18} />
         </button>
         
         <button
           onClick={handleResetView}
-          className="w-8 h-8 rounded-md bg-white shadow-md border border-neutral-200 flex items-center justify-center text-neutral-700 hover:bg-neutral-100"
+          className="w-10 h-10 rounded-xl bg-white/90 backdrop-blur-md shadow-lg border border-purple-200 flex items-center justify-center text-purple-700 hover:bg-white hover:shadow-xl transition-all duration-200"
           title="Reset View"
         >
-          <RotateCcw size={16} />
+          <RotateCcw size={18} />
         </button>
       </div>
     </>

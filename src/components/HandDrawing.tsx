@@ -1080,57 +1080,112 @@ const HandDrawing: React.FC = () => {
 
   return (
     <div className="hand-tracking-container">
-      {/* Toggle button */}
-      <button 
-        className="absolute top-4 right-4 bg-purple-600 text-white p-2 rounded-lg shadow-lg z-20"
-        onClick={toggleHandTracking}
-        disabled={isLoading || !isWebcamSupported}
-      >
-        {isLoading ? 'Loading...' : 
-         !isWebcamSupported ? 'Not Supported' :
-         isHandTrackingActive ? 'Disable Hand Tracking' : 'Enable Hand Tracking'}
-      </button>
-      
-      {/* Video with overlay canvas for visualization */}
-      <div className={`absolute top-4 right-4 ${isHandTrackingActive ? 'block' : 'hidden'} z-10`}>
-        <div className="relative">
-          <video 
-            ref={videoRef}
-            className="w-64 h-48 object-cover rounded-lg shadow-lg"
-            autoPlay 
-            playsInline
-            muted
-            width="640"
-            height="480"
-            style={{ display: 'block' }} // Make sure it's visible
-          ></video>
-          <canvas 
-            ref={canvasRef}
-            className="absolute top-0 left-0 w-full h-full pointer-events-none"
-            width={640}
-            height={480}
-          ></canvas>
-          {/* Dual hand mode toggle button */}
-          <button
-            className="absolute bottom-2 left-2 bg-white p-1 rounded-full shadow-lg z-20 transition-transform hover:scale-110"
-            onClick={toggleDualHandMode}
-            title={dualHandMode ? "Switch to single hand mode" : "Switch to dual hand mode"}
-          >
-            <span role="img" aria-label="Hands" className="text-lg">
-              {dualHandMode ? "🙌" : "👋"}
-            </span>
-          </button>
-        </div>
-        <div className="text-xs bg-white p-1 rounded mt-1 text-center">
-          {errorMessage ? (
-            <span className="text-red-500">{errorMessage}</span>
-          ) : currentHandCount > 0 ? (
-            `${currentHandCount} hands detected`
-          ) : (
-            'No hands detected'
+      {/* Hand Tracking Controls - Top Right */}
+      <div className="absolute top-24 right-6 flex flex-col items-end space-y-2 z-[1001]">
+        {/* Hand Tracking Toggle Button */}
+        <button
+          onClick={toggleHandTracking}
+          disabled={!isWebcamSupported}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center space-x-2 ${
+            isHandTrackingActive
+              ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg hover:shadow-xl'
+              : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl'
+          } ${!isWebcamSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isHandTrackingActive ? "Disable hand tracking" : "Enable hand tracking"}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3a1.5 1.5 0 013 0m-3 3a1.5 1.5 0 013 0m-3 3a1.5 1.5 0 013 0" />
+          </svg>
+          <span>{isHandTrackingActive ? "Hand Tracking ON" : "Hand Tracking OFF"}</span>
+        </button>
+
+        {/* Dual Hand Mode Toggle */}
+        <button
+          onClick={toggleDualHandMode}
+          disabled={!isHandTrackingActive}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center space-x-2 ${
+            dualHandMode
+              ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl'
+              : 'bg-purple-500 hover:bg-purple-600 text-white shadow-lg hover:shadow-xl'
+          } ${!isHandTrackingActive ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={dualHandMode ? "Disable dual hand mode" : "Enable dual hand mode"}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3a1.5 1.5 0 013 0m-3 3a1.5 1.5 0 013 0m-3 3a1.5 1.5 0 013 0" />
+          </svg>
+          <span>{dualHandMode ? "Dual Hand ON" : "Dual Hand OFF"}</span>
+        </button>
+
+        {/* Status Indicators */}
+        <div className="flex items-center space-x-3 text-xs text-purple-700">
+          <div className="flex items-center space-x-1">
+            <div className={`w-2 h-2 rounded-full ${isHandTrackingActive ? 'bg-emerald-500' : 'bg-purple-400'}`}></div>
+            <span>{isHandTrackingActive ? "Hands Active" : "Hands Inactive"}</span>
+          </div>
+          {isHandTrackingActive && (
+            <div className="flex items-center space-x-1">
+              <div className={`w-2 h-2 rounded-full ${currentHandCount > 0 ? 'bg-emerald-500' : 'bg-purple-400'}`}></div>
+              <span>{currentHandCount} Hand{currentHandCount !== 1 ? 's' : ''} Detected</span>
+            </div>
           )}
         </div>
       </div>
+      
+      {/* Video with overlay canvas for visualization */}
+      {isHandTrackingActive && (
+        <div 
+          className="webcam-preview"
+          style={{
+            position: 'absolute',
+            top: '80px',
+            right: '20px',
+            width: '320px',
+            height: '240px',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            border: '3px solid rgba(147, 51, 234, 0.8)',
+            boxShadow: '0 4px 12px rgba(147, 51, 234, 0.3)',
+            backgroundColor: '#000',
+            zIndex: 1000,
+          }}
+        >
+          <div className="relative w-full h-full">
+            <video 
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              autoPlay 
+              playsInline
+              muted
+              style={{ display: 'block' }}
+            ></video>
+            <canvas 
+              ref={canvasRef}
+              className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              width={640}
+              height={480}
+            ></canvas>
+            {/* Dual hand mode toggle button */}
+            <button
+              className="absolute bottom-2 left-2 bg-white p-1 rounded-full shadow-lg z-20 transition-transform hover:scale-110"
+              onClick={toggleDualHandMode}
+              title={dualHandMode ? "Switch to single hand mode" : "Switch to dual hand mode"}
+            >
+              <span role="img" aria-label="Hands" className="text-lg">
+                {dualHandMode ? "🙌" : "👋"}
+              </span>
+            </button>
+          </div>
+          <div className="text-xs bg-white p-1 rounded mt-1 text-center">
+            {errorMessage ? (
+              <span className="text-red-500">{errorMessage}</span>
+            ) : currentHandCount > 0 ? (
+              `${currentHandCount} hands detected`
+            ) : (
+              'No hands detected'
+            )}
+          </div>
+        </div>
+      )}
       
       {/* Hand mode legend */}
       {isHandTrackingActive && showDebugPanels && (
@@ -1138,33 +1193,33 @@ const HandDrawing: React.FC = () => {
           title="Hand Gestures"
           initialPosition={{ x: 20, y: window.innerHeight - 200 }}
         >
-          <div className="text-xs">
-            <div className="flex items-center mb-1">
-              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2"></div>
-              <span>Index Finger Only: Draw</span>
+          <div className="text-xs space-y-2">
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-3 flex items-center justify-center"></div>
+              <span className="text-purple-700">Index Finger Only: Draw</span>
             </div>
-            <div className="flex items-center mb-1">
-              <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-2 flex items-center justify-center">
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-white border-2 border-purple-500 rounded-full mr-3 flex items-center justify-center">
                 <span className="text-purple-500 font-bold text-xs">⌽</span>
               </div>
-              <span>Index + Middle: Pixel Eraser</span>
+              <span className="text-purple-700">Index + Middle: Pixel Eraser</span>
             </div>
-            <div className="flex items-center mb-1">
-              <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-2"></div>
-              <span>Closed Fist: Click Buttons</span>
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-white border-2 border-blue-500 rounded-full mr-3"></div>
+              <span className="text-purple-700">Closed Fist: Click Buttons</span>
             </div>
-            <div className="flex items-center mb-1">
-              <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-2"></div>
-              <span>Thumb + Index + Middle: Drag Canvas</span>
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-white border-2 border-orange-500 rounded-full mr-3"></div>
+              <span className="text-purple-700">Thumb + Index + Middle: Drag Canvas</span>
             </div>
-            <div className="flex items-center mb-1">
-              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-2 flex items-center justify-center">
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-white border-2 border-red-500 rounded-full mr-3 flex items-center justify-center">
                 <span className="text-red-500 font-bold text-xs">✕</span>
               </div>
-              <span>Thumb + Pinky: Clear All Drawings</span>
+              <span className="text-purple-700">Thumb + Pinky: Clear All Drawings</span>
             </div>
-            <div className="text-xs text-gray-600 mt-1">
-              Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand 👋"}
+            <div className="text-xs text-purple-600 mt-3 pt-2 border-t border-purple-200">
+              Tracking Mode: {dualHandMode ? "Dual Hands 🙌" : "Single Hand ✋"}
             </div>
           </div>
         </DraggableDebugPanel>

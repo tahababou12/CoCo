@@ -588,122 +588,63 @@ const SimpleWebcam: React.FC = () => {
           
           // Show in our local preview - make sure video appears before doing anything else
           if (localVideoRef.current) {
-            console.log('Setting video source object...');
             localVideoRef.current.srcObject = stream;
-            
-            // Force the video to play
-            try {
-              // Wait for the video to be ready to play
-              await new Promise<void>((resolve) => {
-                if (localVideoRef.current) {
-                  localVideoRef.current.onloadedmetadata = () => {
-                    console.log('Video metadata loaded, ready to play');
-                    resolve();
-                  };
-                  // Add a timeout just in case
-                  setTimeout(resolve, 1000);
-                } else {
-                  resolve();
-                }
-              });
-              
-              const playPromise = localVideoRef.current.play();
-              if (playPromise !== undefined) {
-                playPromise.then(() => {
-                  console.log("Local video playing successfully");
-                }).catch(err => {
-                  console.error('Error playing video:', err);
-                });
-              }
-              
-              // Additional debugging to check if video is actually playing
-              setTimeout(() => {
-                if (localVideoRef.current) {
-                  console.log('Video element current state:', {
-                    readyState: localVideoRef.current.readyState,
-                    videoWidth: localVideoRef.current.videoWidth,
-                    videoHeight: localVideoRef.current.videoHeight,
-                    paused: localVideoRef.current.paused
-                  });
-                }
-              }, 1000);
-              
-            } catch (err) {
-              console.error('Error playing video:', err);
-            }
-          } else {
-            console.error('Video element ref is null');
+            localVideoRef.current.play().catch(e => console.error('Error playing video:', e));
           }
           
-          // Set the stream directly to make sure it's available
+          // Store the stream
           setLocalStream(stream);
-          
-          // First set webcam as shared so the UI updates
           setIsWebcamShared(true);
           
-          // Wait briefly for video to initialize before starting MediaPipe
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Store the stream in the WebSocket context for sharing with collaborators
-          webSocketContext.setSharedWebcamStream(stream);
-          
-          // Then start the WebRTC sharing through WebSocket context (pass the stream)
-          await webSocketContext.startWebcamSharing(stream);
-          
-          // Initialize MediaPipe Hands after the video is visible
-          const success = await initializeHandTracking();
-          if (success) {
-            // Start the camera and processing
-            await startCamera();
-            console.log("Hand tracking started successfully");
-          }
-        }
-        setIsLoading(false);
-      } else {
-        // Stop webcam sharing
-        if (webSocketContext) {
-          // Tell the WebSocket context to stop sharing but KEEP stream alive
-          // This way we keep using the stream for hand tracking locally
-          webSocketContext.stopWebcamSharing(true);
-          
-          setIsWebcamShared(false);
-          setIsHandTrackingActive(false);
-          
-          // Stop MediaPipe
-          if (handsRef.current) {
+          // Try to start webcam sharing via WebSocket context
+          if (webSocketContext.startWebcamSharing) {
             try {
-              handsRef.current.close();
-              handsRef.current = null;
-            } catch (e) {
-              console.error('Error closing MediaPipe Hands:', e);
+              const sharedStream = await webSocketContext.startWebcamSharing(stream);
+              if (sharedStream) {
+                console.log('✅ Webcam sharing started successfully via WebSocket context');
+              }
+            } catch (wsError) {
+              console.warn('⚠️ WebSocket webcam sharing failed, but local webcam is working:', wsError);
             }
           }
-          
-          // Clear local preview
-          if (localVideoRef.current) {
-            const stream = localVideoRef.current.srcObject as MediaStream | null;
-            if (stream) {
-              stream.getTracks().forEach(track => track.stop());
-            }
-            localVideoRef.current.srcObject = null;
-          }
-          
-          // Now fully stop the stream in the WebSocket context
-          webSocketContext.setSharedWebcamStream(null);
-          
-          // Hide hand cursors
-          [0, 1].forEach(index => {
-            const cursorDiv = document.getElementById(`hand-cursor-${index}`);
-            if (cursorDiv) {
-              cursorDiv.style.display = 'none';
-            }
-          });
+        } else {
+          throw new Error('WebSocket context not available');
+        }
+      } else {
+        // Stop sharing
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
+          setLocalStream(null);
+        }
+        
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
+        
+        setIsWebcamShared(false);
+        
+        // Stop webcam sharing via WebSocket context
+        if (webSocketContext.stopWebcamSharing) {
+          webSocketContext.stopWebcamSharing();
         }
       }
     } catch (error) {
-      console.error('Error toggling webcam:', error);
-      setErrorMessage(`Failed to access webcam: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('❌ Error toggling webcam:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred');
       setIsLoading(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Toggle hand tracking on/off
+  const toggleHandTracking = () => {
+    if (!isWebcamShared) return;
+    
+    setIsHandTrackingActive(prev => !prev);
+    
+    if (webSocketContext?.toggleHandTracking) {
+      webSocketContext.toggleHandTracking(!isHandTrackingActive);
     }
   };
   
@@ -738,7 +679,7 @@ const SimpleWebcam: React.FC = () => {
       className="simple-webcam-container" 
       style={{
         position: 'absolute',
-        top: '20px',  // Change from bottom to top
+        top: '20px',
         right: '20px',
         display: 'flex',
         flexDirection: 'column',
@@ -746,37 +687,74 @@ const SimpleWebcam: React.FC = () => {
         zIndex: 1000,
       }}
     >
-      {/* Webcam toggle button - moved to top */}
-      {/* <button
-        onClick={toggleWebcamSharing}
-        style={{
-          backgroundColor: isWebcamShared ? '#4caf50' : '#2196f3',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          padding: '8px 12px',
-          cursor: 'pointer',
-          fontSize: '14px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: '10px', // Add margin to separate from video
-        }}
-        disabled={isLoading}
-      >
-        {isLoading ? 'Loading...' : (isWebcamShared ? 'Stop Sharing Webcam' : 'Share Webcam')}
-      </button> */}
+      {/* Webcam Controls */}
+      <div className="flex flex-col items-end space-y-2 mb-4">
+        {/* Webcam Toggle Button */}
+        <button
+          onClick={toggleWebcamSharing}
+          disabled={isLoading}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center space-x-2 ${
+            isWebcamShared
+              ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg hover:shadow-xl'
+              : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl'
+          } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isWebcamShared ? "Stop sharing webcam" : "Start sharing webcam"}
+        >
+          {isLoading ? (
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : isWebcamShared ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          )}
+          <span>{isWebcamShared ? "Stop Webcam" : "Share Webcam"}</span>
+        </button>
+
+        {/* Hand Tracking Toggle Button */}
+        <button
+          onClick={toggleHandTracking}
+          disabled={!isWebcamShared}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center space-x-2 ${
+            isHandTrackingActive
+              ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg hover:shadow-xl'
+              : 'bg-purple-500 hover:bg-purple-600 text-white shadow-lg hover:shadow-xl'
+          } ${!isWebcamShared ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isHandTrackingActive ? "Disable hand tracking" : "Enable hand tracking"}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3a1.5 1.5 0 013 0m-3 3a1.5 1.5 0 013 0m-3 3a1.5 1.5 0 013 0" />
+          </svg>
+          <span>{isHandTrackingActive ? "Hand Tracking ON" : "Hand Tracking OFF"}</span>
+        </button>
+
+        {/* Status Indicators */}
+        <div className="flex items-center space-x-3 text-xs text-purple-700">
+          <div className="flex items-center space-x-1">
+            <div className={`w-2 h-2 rounded-full ${isWebcamShared ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+            <span>{isWebcamShared ? "Webcam Active" : "Webcam Inactive"}</span>
+          </div>
+          {isWebcamShared && (
+            <div className="flex items-center space-x-1">
+              <div className={`w-2 h-2 rounded-full ${isHandTrackingActive ? 'bg-emerald-500' : 'bg-purple-400'}`}></div>
+              <span>{isHandTrackingActive ? "Hands Detected" : "No Hands"}</span>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Local preview (only visible when sharing) */}
       {isWebcamShared && (
         <div 
           className="webcam-preview"
           style={{
-            borderRadius: '8px',
+            borderRadius: '12px',
             overflow: 'hidden',
-            border: '2px solid rgba(0, 120, 255, 0.8)',
-            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
+            border: '3px solid rgba(147, 51, 234, 0.8)',
+            boxShadow: '0 4px 12px rgba(147, 51, 234, 0.3)',
             backgroundColor: '#000',
             width: '320px',
             height: '240px',
@@ -803,11 +781,12 @@ const SimpleWebcam: React.FC = () => {
               bottom: 0,
               left: 0,
               right: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              background: 'linear-gradient(transparent, rgba(147, 51, 234, 0.8))',
               color: 'white',
-              padding: '2px 5px',
+              padding: '8px 12px',
               fontSize: '12px',
               textAlign: 'center',
+              fontWeight: '600',
             }}
           >
             Your camera {isHandTrackingActive ? '(Hand tracking active)' : '(Preview only)'}
@@ -822,7 +801,7 @@ const SimpleWebcam: React.FC = () => {
           position: 'absolute',
           width: '320px',
           height: '240px',
-          top: '50px', // Position below button instead of at bottom
+          top: '50px',
           right: '20px',
           zIndex: 999,
           opacity: isHandTrackingActive ? 0.7 : 0,
@@ -836,12 +815,13 @@ const SimpleWebcam: React.FC = () => {
           style={{
             marginTop: '8px',
             color: 'red',
-            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            padding: '4px 8px',
-            borderRadius: '4px',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            padding: '8px 12px',
+            borderRadius: '8px',
             fontSize: '12px',
             maxWidth: '320px',
             textAlign: 'center',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
           }}
         >
           {errorMessage}

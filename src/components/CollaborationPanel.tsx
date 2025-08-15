@@ -47,10 +47,10 @@ const CollaborationPanel: React.FC = () => {
   const headerRef = useRef<HTMLDivElement>(null);
   
   // Use a ref to store the panel position for smoother updates
-  const panelPositionRef = useRef({ x: 20, y: 200 });
+  const panelPositionRef = useRef({ x: window.innerWidth - 300, y: 400 });
   
   // For React state updates (less frequent)
-  const [panelPosition, setPanelPosition] = useState({ x: 20, y: 200 });
+  const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 300, y: 400 });
   
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,7 +225,7 @@ const CollaborationPanel: React.FC = () => {
   
   // Reset panel to default position
   const resetPosition = () => {
-    const defaultPosition = { x: 20, y: 200 };
+    const defaultPosition = { x: window.innerWidth - 300, y: 200 };
     
     // Update DOM directly
     if (panelRef.current) {
@@ -270,7 +270,7 @@ const CollaborationPanel: React.FC = () => {
   return (
     <div 
       ref={panelRef}
-      className="fixed bg-white/95 rounded-lg shadow-lg p-3 z-50 transition-none"
+      className="fixed bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-purple-200 p-4 z-50 transition-all duration-300"
       style={{ 
         cursor: isDragging ? 'grabbing' : 'default',
         willChange: 'transform, left, top',
@@ -279,23 +279,23 @@ const CollaborationPanel: React.FC = () => {
         left: `${panelPosition.x}px`,
         top: `${panelPosition.y}px`,
         pointerEvents: 'auto',
-        width: minimized ? 'auto' : '260px',
+        width: minimized ? 'auto' : '280px',
         height: 'auto',
         maxHeight: '80vh',
         overflow: 'auto',
-        border: '2px solid #8b5cf6',
         boxSizing: 'border-box'
       }}
     >
       <div 
         ref={headerRef}
-        className="text-sm font-bold mb-2 flex justify-between items-center cursor-grab active:cursor-grabbing bg-purple-100 p-2 rounded-md select-none"
+        className="text-sm font-bold mb-3 flex justify-between items-center cursor-grab active:cursor-grabbing bg-gradient-to-r from-purple-50 to-indigo-50 p-3 rounded-lg border border-purple-200 select-none shadow-sm"
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
       >
         <div className="flex items-center">
+          <div className="w-5 h-5 mr-2 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full flex items-center justify-center">
           <svg 
-            className="w-4 h-4 mr-1.5 text-purple-500" 
+              className="w-3 h-3 text-white" 
             viewBox="0 0 24 24" 
             fill="none" 
             stroke="currentColor" 
@@ -310,118 +310,140 @@ const CollaborationPanel: React.FC = () => {
             <circle cx="16" cy="12" r="1" />
             <circle cx="16" cy="18" r="1" />
           </svg>
-          {!minimized && <span className="text-purple-800">Collaboration</span>}
+          </div>
+          {!minimized && <span className="text-purple-800 font-semibold">Collaboration</span>}
         </div>
         
-        <div className="flex items-center">
-          {!minimized && (
-            <>
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'} mr-1`} />
-              <span className="text-xs text-gray-500 mr-2">{isConnected ? 'Connected' : 'Disconnected'}</span>
-            </>
-          )}
-          
-          {/* Minimize/Maximize toggle button */}
-          <button 
-            onClick={toggleMinimize} 
-            className="text-gray-500 hover:text-gray-700 focus:outline-none ml-1"
-            title={minimized ? "Expand" : "Minimize"}
-          >
-            {minimized ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"></path>
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            )}
-          </button>
-          
-          {/* Reset position button */}
+        <div className="flex items-center space-x-2">
           {!minimized && (
             <button
-              onClick={resetPosition}
-              className="text-gray-500 hover:text-gray-700 focus:outline-none ml-1"
-              title="Reset Position"
+              onClick={() => setMinimized(true)}
+              className="w-6 h-6 rounded-md bg-purple-100 hover:bg-purple-200 text-purple-600 flex items-center justify-center transition-colors"
+              title="Minimize"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
               </svg>
             </button>
           )}
+          
+          {minimized && (
+            <button
+              onClick={() => setMinimized(false)}
+              className="w-6 h-6 rounded-md bg-purple-100 hover:bg-purple-200 text-purple-600 flex items-center justify-center transition-colors"
+              title="Expand"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          )}
+          
+          <button 
+            onClick={isConnected ? disconnect : connect}
+            className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors ${
+              isConnected 
+                ? 'bg-red-100 hover:bg-red-200 text-red-600' 
+                : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-600'
+            }`}
+            title={isConnected ? "Disconnect" : "Connect"}
+          >
+            {isConnected ? (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
       
       {!minimized && (
         <>
-          {connectionError && (
-            <div className="bg-red-100 text-red-700 p-2 rounded text-xs mb-2">
-              {connectionError}
+          {/* Connection Status */}
+          <div className="mb-4 p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-purple-700">Status</span>
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+            </div>
+            <div className="text-xs text-purple-600">
+              {isConnected ? 'Connected to collaboration server' : 'Disconnected from collaboration server'}
+            </div>
+          </div>
+
+          {/* Current User Info */}
+          {currentUsername && (
+            <div className="mb-4 p-3 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg border border-purple-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-purple-700">You</span>
+                <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full">
+                  {positionLabels[userPosition as UserPosition] || 'Unknown'}
+                </span>
+              </div>
+              <div className="text-sm font-semibold text-purple-800">{currentUsername}</div>
             </div>
           )}
           
-          {isConnected ? (
-            <>
-              <div className="mb-3 text-xs text-gray-700">
-                You are connected as <span className="font-semibold">{currentUsername}</span> in position <span className="font-semibold">{userPosition && positionLabels[userPosition as UserPosition]}</span>
+          {/* Other Collaborators */}
+          {state.collaborators.length > 0 && (
+            <div className="mb-4">
+              <h3 className="text-sm font-medium text-purple-700 mb-2">Collaborators</h3>
+              <div className="space-y-2">
+                {state.collaborators.map((user, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-white rounded-lg border border-purple-100">
+                    <span className="text-sm text-purple-800">{user.name}</span>
+                    <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-full">
+                      {positionLabels[user.position as UserPosition]}
+                    </span>
+                  </div>
+                ))}
               </div>
-              
-              {state.collaborators.length > 0 ? (
-                <div className="mb-3">
-                  <div className="text-xs font-medium mb-1 text-gray-700">Other Users:</div>
-                  {state.collaborators.map(renderUserIndicator)}
                 </div>
-              ) : (
-                <div className="text-xs text-gray-500 mb-3">No other users connected.</div>
-              )}
-              
-              <button
-                onClick={handleDisconnect}
-                className="w-full bg-red-500 text-white text-xs py-1.5 px-2 rounded hover:bg-red-600 transition-colors"
-              >
-                Disconnect
-              </button>
-            </>
-          ) : (
+          )}
+
+          {/* Join Form */}
+          {!currentUsername && (
             showJoinForm ? (
-              <form onSubmit={handleConnect} className="space-y-2">
+              <form onSubmit={handleConnect} className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Your Name:</label>
+                  <label className="block text-sm font-medium text-purple-700 mb-1">Username</label>
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="w-full text-xs p-1.5 border border-gray-300 rounded"
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
                     placeholder="Enter your name"
                     required
                   />
                 </div>
                 
                 <div>
-                  <label className="text-xs font-medium text-gray-700 block mb-1">Position:</label>
+                  <label className="block text-sm font-medium text-purple-700 mb-1">Position</label>
                   <select
                     value={selectedPosition}
                     onChange={(e) => setSelectedPosition(e.target.value as UserPosition)}
-                    className="w-full text-xs p-1.5 border border-gray-300 rounded"
+                    className="w-full px-3 py-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
                   >
-                    {availablePositions.map((pos: UserPosition) => (
+                    {availablePositions.map(pos => (
                       <option key={pos} value={pos}>{positionLabels[pos]}</option>
                     ))}
                   </select>
                 </div>
                 
-                <div className="flex space-x-2 pt-1">
+                <div className="flex space-x-2">
                   <button
                     type="submit"
-                    className="flex-1 bg-green-500 text-white text-xs py-1.5 px-2 rounded hover:bg-green-600 transition-colors"
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-semibold py-2 px-4 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
                   >
-                    Join
+                    Join Session
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowJoinForm(false)}
-                    className="flex-1 bg-gray-300 text-gray-700 text-xs py-1.5 px-2 rounded hover:bg-gray-400 transition-colors"
+                    className="px-4 py-2 text-sm font-medium text-purple-600 bg-purple-100 rounded-lg hover:bg-purple-200 transition-colors"
                   >
                     Cancel
                   </button>
@@ -430,7 +452,7 @@ const CollaborationPanel: React.FC = () => {
             ) : (
               <button
                 onClick={() => setShowJoinForm(true)}
-                className="w-full bg-purple-600 text-white text-sm font-bold py-2 px-3 rounded hover:bg-purple-700 transition-colors"
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-semibold py-3 px-4 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
               >
                 Start Collaborating
               </button>

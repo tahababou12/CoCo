@@ -4,6 +4,40 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom gradient animation */
+@keyframes gradient-x {
+  0%, 100% {
+    background-size: 200% 200%;
+    background-position: left center;
+  }
+  50% {
+    background-size: 200% 200%;
+    background-position: right center;
+  }
+}
+
+.animate-gradient-x {
+  animation: gradient-x 3s ease infinite;
+}
+
+/* Purple tone enhancements */
+.bg-purple-tone {
+  background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 50%, #ddd6fe 100%);
+}
+
+.bg-purple-tone-subtle {
+  background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 50%, #ede9fe 100%);
+}
+
+/* Enhanced purple shadows */
+.shadow-purple-glow {
+  box-shadow: 0 0 20px rgba(147, 51, 234, 0.15);
+}
+
+.shadow-purple-glow-hover:hover {
+  box-shadow: 0 0 30px rgba(147, 51, 234, 0.25);
+}
+
 * {
   -webkit-user-select: none;
   -moz-user-select: none;

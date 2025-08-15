@@ -83,34 +83,34 @@ const DraggableDebugPanel: React.FC<DraggableDebugPanelProps> = ({
   return (
     <div
       ref={panelRef}
-      className={`bg-white rounded shadow-md border border-gray-300 ${className}`}
+      className={`bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-purple-200 ${className}`}
       style={defaultStyle}
     >
       {/* Draggable header */}
       <div
-        className="bg-gray-100 px-3 py-2 rounded-t border-b border-gray-300 cursor-move flex items-center justify-between"
+        className="bg-gradient-to-r from-purple-50 to-pink-50 px-4 py-3 rounded-t-xl border-b border-purple-200 cursor-move flex items-center justify-between"
         onMouseDown={handleMouseDown}
       >
-        <span className="text-sm font-bold text-gray-700">{title}</span>
+        <span className="text-sm font-bold text-purple-800">{title}</span>
         <div className="flex items-center space-x-2">
           <button
             onClick={toggleMinimize}
-            className="w-4 h-4 rounded-full bg-yellow-400 hover:bg-yellow-500 flex items-center justify-center text-xs"
+            className="w-5 h-5 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-600 flex items-center justify-center text-xs transition-colors"
             title={isMinimized ? "Maximize" : "Minimize"}
           >
             {isMinimized ? "+" : "−"}
           </button>
           <div className="flex space-x-1">
-            <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-            <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+            <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+            <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+            <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
           </div>
         </div>
       </div>
       
       {/* Panel content */}
       {!isMinimized && (
-        <div className="p-2">
+        <div className="p-4">
           {children}
         </div>
       )}

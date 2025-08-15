@@ -266,15 +266,17 @@ const Header: React.FC<HeaderProps> = () => {
     );
   };
 
+
+
   return (
-    <header className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between shadow-sm">
+    <header className="bg-white/90 backdrop-blur-md border-b border-purple-200 px-4 py-3 flex items-center justify-between shadow-purple-glow">
       <div className="flex items-center">
         {/* Debug Toggle Button */}
         <button 
-          className={`w-10 h-10 rounded-md flex items-center justify-center mr-3 transition-colors ${
+          className={`w-10 h-10 rounded-lg flex items-center justify-center mr-3 transition-colors ${
             showDebugPanels 
-              ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' 
-              : 'text-neutral-500 hover:bg-neutral-100'
+              ? 'bg-orange-100 text-orange-600 hover:bg-orange-200 border border-orange-200' 
+              : 'text-purple-500 hover:bg-purple-100 border border-transparent hover:border-purple-200'
           }`}
           onClick={() => setShowDebugPanels(!showDebugPanels)}
           title={showDebugPanels ? "Hide Debug Panels" : "Show Debug Panels"}
@@ -282,14 +284,14 @@ const Header: React.FC<HeaderProps> = () => {
           <Bug size={18} />
         </button>
         
-        <button className="w-10 h-10 rounded-md hover:bg-neutral-100 flex items-center justify-center mr-2">
+        <button className="w-10 h-10 rounded-lg hover:bg-purple-100 flex items-center justify-center mr-2 text-purple-600 hover:text-purple-700 transition-colors">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
         
         <div className="flex items-center mr-3">
-          <div className="w-6 h-6 rounded bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
+          <div className="w-6 h-6 rounded bg-gradient-to-r from-purple-500 to-pink-500 flex items-center justify-center text-white text-sm font-bold">
             C
           </div>
         </div>
@@ -372,6 +374,8 @@ const Header: React.FC<HeaderProps> = () => {
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
+          
+
         </div>
         
         <button className="px-3 py-1.5 text-sm rounded-md bg-purple-600 text-white hover:bg-purple-700 transition-colors">

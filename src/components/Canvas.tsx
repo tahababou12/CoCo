@@ -8,6 +8,7 @@ import { Mic, MicOff, Volume2 } from 'lucide-react'
 import { useShapes } from '../ShapesContext'
 import html2canvas from 'html2canvas'
 import Header from './Header'
+import { Hand, HandMetal } from 'lucide-react'
 
 
 
@@ -43,9 +44,11 @@ interface EnhancedImageResult {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-interface CanvasProps extends Record<string, never> {}
+interface CanvasProps {
+  onToggleStoryboard?: () => void;
+}
 
-const Canvas: React.FC<CanvasProps> = () => {
+const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
   const { state, dispatch } = useDrawing()
   const { setCanvas } = useShapes()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -119,6 +122,10 @@ const Canvas: React.FC<CanvasProps> = () => {
   const aiModeRef = useRef(aiMode);
   aiModeRef.current = aiMode;
 
+  // Hand tracking state
+  const [isHandTrackingEnabled, setIsHandTrackingEnabled] = useState(false);
+  const [isDualHandMode, setIsDualHandMode] = useState(false);
+
 
 
   // Debug effect to log when aiMode changes
@@ -141,8 +148,28 @@ const Canvas: React.FC<CanvasProps> = () => {
     const offsetX = state.viewTransform.offsetX % gridSize
     const offsetY = state.viewTransform.offsetY % gridSize
     
-    // Draw dots at intersections
-    ctx.fillStyle = '#e5e5e5'
+    // Draw subtle grid lines with purple tones
+    ctx.strokeStyle = 'rgba(196, 181, 253, 0.3)' // Very light purple
+    ctx.lineWidth = 0.5
+    
+    // Vertical lines
+    for (let x = offsetX; x < width; x += gridSize) {
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x, height)
+      ctx.stroke()
+    }
+    
+    // Horizontal lines
+    for (let y = offsetY; y < height; y += gridSize) {
+      ctx.beginPath()
+      ctx.moveTo(0, y)
+      ctx.lineTo(width, y)
+      ctx.stroke()
+    }
+    
+    // Draw subtle dots at intersections for major grid points with purple tones
+    ctx.fillStyle = 'rgba(147, 51, 234, 0.2)' // Light purple
     for (let x = offsetX; x < width; x += gridSize) {
       for (let y = offsetY; y < height; y += gridSize) {
         ctx.beginPath()
@@ -160,9 +187,17 @@ const Canvas: React.FC<CanvasProps> = () => {
     // Clear the entire canvas
     context.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Draw background
-    context.fillStyle = '#fffbeb';
+    // Draw professional gradient background with purple tones
+    const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#faf5ff'); // purple-50
+    gradient.addColorStop(0.5, '#f3e8ff'); // purple-100
+    gradient.addColorStop(1, '#e9d5ff'); // purple-200
+    
+    context.fillStyle = gradient;
     context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw grid with purple tones
+    drawGrid(context, canvas.width, canvas.height);
     
     // Apply transform and draw shapes
     context.save();
@@ -199,7 +234,7 @@ const Canvas: React.FC<CanvasProps> = () => {
       // Trigger additional captures during drawing for smoother streaming
       setTimeout(() => {
         const triggerCaptureInner = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
-        if (triggerCaptureInner && isDrawing) {
+        if (triggerCaptureInner) {
           triggerCaptureInner();
         }
       }, 100);
@@ -666,7 +701,7 @@ const Canvas: React.FC<CanvasProps> = () => {
 
   const handleClearAll = () => {
     dispatch({ type: 'CLEAR_ALL' });
-  }
+  };
 
   const saveCanvasAsPNG = async () => {
     const canvas = canvasRef.current;
@@ -1086,18 +1121,14 @@ const Canvas: React.FC<CanvasProps> = () => {
     return interactiveEnhancedImages.map((image, index) => (
       <div
         key={image.id}
-        className="absolute border-2 border-purple-500 bg-white shadow-lg rounded-lg overflow-hidden"
+        className="absolute bg-white shadow-xl rounded-xl overflow-hidden border border-slate-200"
         style={{
           left: `${image.x}px`,
           top: `${image.y}px`,
           width: `${image.width}px`,
           height: `${image.height}px`,
-          border: '2px solid #9333ea',
-          borderRadius: '4px',
-          overflow: 'hidden',
           pointerEvents: 'auto',
           touchAction: 'none',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
           zIndex: 20,
           cursor: image.isDragging ? 'grabbing' : 'grab'
         }}
@@ -1111,6 +1142,7 @@ const Canvas: React.FC<CanvasProps> = () => {
           e.preventDefault();
         }}
       >
+        {/* Image */}
         <img
           src={image.url}
           alt={`Enhanced image generated from prompt: ${image.prompt}`}
@@ -1124,14 +1156,13 @@ const Canvas: React.FC<CanvasProps> = () => {
         
         {/* Close button */}
         <button
-          className="absolute top-2 right-2 bg-white rounded-full w-8 h-8 flex items-center justify-center text-red-600 hover:text-red-800 hover:bg-red-100 shadow-md z-40"
+          className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm rounded-full w-8 h-8 flex items-center justify-center text-slate-600 hover:text-red-600 hover:bg-red-50 shadow-lg transition-all duration-200 z-40"
           style={{ cursor: 'pointer' }}
           onClick={e => {
             e.stopPropagation();
             const updatedImages = interactiveEnhancedImages.filter((_, i) => i !== index);
             setInteractiveEnhancedImages(updatedImages);
           }}
-
           onMouseDown={(e) => {
             e.stopPropagation();
             e.nativeEvent.stopImmediatePropagation();
@@ -1142,11 +1173,14 @@ const Canvas: React.FC<CanvasProps> = () => {
           }}
           aria-label="Close enhanced image"
         >
-          ✕
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
         
         {/* Action buttons at the bottom */}
-        <div className="absolute bottom-0 left-0 right-0 flex justify-center space-x-3 z-50 bg-black bg-opacity-60 py-2 px-3 pointer-events-auto">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent py-3 px-4 pointer-events-auto">
+          <div className="flex justify-center space-x-2">
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -1163,14 +1197,14 @@ const Canvas: React.FC<CanvasProps> = () => {
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
             }}
-            className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors shadow flex items-center cursor-pointer"
+              className="px-3 py-1.5 text-xs bg-white/90 backdrop-blur-sm text-slate-800 rounded-lg hover:bg-white transition-all duration-200 shadow-sm flex items-center cursor-pointer font-medium"
             title="Add to Storyboard"
             style={{ pointerEvents: 'auto' }}
           >
-            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
             </svg>
-            Add to Storyboard
+              Storyboard
           </button>
           
           <button
@@ -1189,15 +1223,40 @@ const Canvas: React.FC<CanvasProps> = () => {
               e.stopPropagation();
               e.nativeEvent.stopImmediatePropagation();
             }}
-            className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors shadow flex items-center cursor-pointer"
+              className="px-3 py-1.5 text-xs bg-white/90 backdrop-blur-sm text-slate-800 rounded-lg hover:bg-white transition-all duration-200 shadow-sm flex items-center cursor-pointer font-medium"
             title="Download Image"
             style={{ pointerEvents: 'auto' }}
           >
-            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
             Download
           </button>
+          </div>
+        </div>
+        
+        {/* Resize handles */}
+        <div className="absolute top-0 left-0 right-0 bottom-0 pointer-events-none">
+          {/* Top-left resize handle */}
+          <div
+            className="absolute top-1 left-1 w-3 h-3 bg-white/80 backdrop-blur-sm rounded-full border border-slate-300 cursor-nw-resize pointer-events-auto"
+            onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'nw')}
+          />
+          {/* Top-right resize handle */}
+          <div
+            className="absolute top-1 right-1 w-3 h-3 bg-white/80 backdrop-blur-sm rounded-full border border-slate-300 cursor-ne-resize pointer-events-auto"
+            onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'ne')}
+          />
+          {/* Bottom-left resize handle */}
+          <div
+            className="absolute bottom-1 left-1 w-3 h-3 bg-white/80 backdrop-blur-sm rounded-full border border-slate-300 cursor-sw-resize pointer-events-auto"
+            onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'sw')}
+          />
+          {/* Bottom-right resize handle */}
+          <div
+            className="absolute bottom-1 right-1 w-3 h-3 bg-white/80 backdrop-blur-sm rounded-full border border-slate-300 cursor-se-resize pointer-events-auto"
+            onPointerDown={(e) => handlePointerDownOnEnhancedImage(e, index, true, 'se')}
+          />
         </div>
       </div>
     ));
@@ -1880,28 +1939,85 @@ const Canvas: React.FC<CanvasProps> = () => {
   // Add this new function that only saves the drawing without enhancement
   
 
+  // Add missing functions for the sidebar buttons
+  const handleSave = () => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+
+    const link = document.createElement('a');
+    link.download = `coco-design-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
+  const handleEnhance = () => {
+    // This is a placeholder for the AI enhancement logic.
+    // In a real app, you would call an AI service here.
+    alert('AI enhancement feature is not yet implemented.');
+  };
+
+  const toggleStoryboard = () => {
+    if (onToggleStoryboard) {
+      onToggleStoryboard();
+    } else {
+      // Fallback if no prop provided
+      alert('Storyboard feature is not yet implemented.');
+    }
+  };
+
+  const toggleHandTracking = () => {
+    setIsHandTrackingEnabled(!isHandTrackingEnabled);
+  };
+
+  const toggleDualHandMode = () => {
+    setIsDualHandMode(!isDualHandMode);
+  };
+
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-yellow-50 overflow-hidden select-none" data-canvas-container>
+    <div ref={containerRef} className="relative w-full h-full bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 overflow-hidden select-none" data-canvas-container>
       <Header />
       
-      {/* AI Control Panel - Top Left */}
-      <div className="absolute top-4 left-4 z-50 flex flex-col space-y-2">
-            {/* Unified AI Control Block */}
-            <div className="bg-white rounded-lg shadow-md p-1 border border-gray-200">
+      {/* Professional Top Navigation Bar */}
+      <div className="absolute top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-lg border-b-2 border-purple-300 shadow-lg">
+        <div className="flex items-center justify-center px-8 py-5">
+          {/* Left: Empty space for balance */}
+          <div className="w-48"></div>
+          
+          {/* Center: Project Title */}
+          <div className="flex items-center space-x-3">
+            <div className="w-4 h-4 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full animate-pulse"></div>
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent animate-gradient-x">
+              CoCo Studio
+            </h1>
+            <div className="w-4 h-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-pulse delay-300"></div>
+          </div>
+
+          {/* Right: Empty space for balance */}
+          <div className="w-48"></div>
+        </div>
+      </div>
+
+      {/* Floating AI Controls Panel */}
+      <div className="absolute top-24 left-6 z-40 bg-white/95 backdrop-blur-lg rounded-xl border border-purple-200 shadow-lg p-4">
+        <div className="flex flex-col space-y-3">
+          {/* Panel Header */}
+          <div className="flex items-center space-x-2 mb-2">
+            <div className="w-3 h-3 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full"></div>
+            <h3 className="text-sm font-semibold text-gray-700">AI Assistant</h3>
+          </div>
+          
           {/* AI Mode Toggle */}
-          <div className="flex items-center mb-1">
-            <span className="text-xs mr-2 px-2 text-gray-600 font-medium">AI:</span>
+          <div className="flex items-center bg-purple-100 rounded-lg p-1">
             <button
-              className={`px-3 py-1.5 text-xs rounded-l-md transition-colors ${
+              className={`px-3 py-2 text-xs font-medium rounded-md transition-all duration-200 ${
                 !aiMode || aiMode === 'friendly' 
-                  ? 'bg-green-600 text-white' 
-                  : 'bg-gray-100 text-green-600 hover:bg-gray-200'
+                  ? 'bg-white text-purple-800 shadow-sm' 
+                  : 'text-purple-600 hover:text-purple-800'
               }`}
               onClick={async () => {
                 console.log('🎯 Friendly button clicked, current aiMode:', aiMode);
                 setAIMode('friendly');
                 
-                // Call our new personality switching endpoint
                 try {
                   const response = await fetch('http://localhost:9085/switch_personality', {
                     method: 'POST',
@@ -1911,7 +2027,6 @@ const Canvas: React.FC<CanvasProps> = () => {
                   
                   if (response.ok) {
                     console.log('✅ Switched to friendly personality via HTTP');
-                    // Force WebSocket reconnection to get new personality
                     if (isMultimodalConnected && multimodalWebSocketRef.current) {
                       console.log('🔄 Reconnecting to get new friendly personality...');
                       multimodalWebSocketRef.current.close();
@@ -1929,19 +2044,21 @@ const Canvas: React.FC<CanvasProps> = () => {
               }}
               disabled={aiMode === 'friendly'}
             >
-              Friendly
+              <span className="flex items-center space-x-1">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                <span>Friendly</span>
+              </span>
             </button>
             <button
-              className={`px-3 py-1.5 text-xs rounded-r-md transition-colors ${
+              className={`px-3 py-2 text-xs font-medium rounded-md transition-all duration-200 ${
                 aiMode === 'sarcastic' 
-                  ? 'bg-red-600 text-white' 
-                  : 'bg-gray-100 text-red-600 hover:bg-gray-200'
+                  ? 'bg-white text-purple-800 shadow-sm' 
+                  : 'text-purple-600 hover:text-purple-800'
               }`}
               onClick={async () => {
                 console.log('🎯 Sarcastic button clicked, current aiMode:', aiMode);
                 setAIMode('sarcastic');
                 
-                // Call our new personality switching endpoint
                 try {
                   const response = await fetch('http://localhost:9085/switch_personality', {
                     method: 'POST',
@@ -1951,7 +2068,6 @@ const Canvas: React.FC<CanvasProps> = () => {
                   
                   if (response.ok) {
                     console.log('✅ Switched to sarcastic personality via HTTP');
-                    // Force WebSocket reconnection to get new personality
                     if (isMultimodalConnected && multimodalWebSocketRef.current) {
                       console.log('🔄 Reconnecting to get new sarcastic personality...');
                       multimodalWebSocketRef.current.close();
@@ -1969,141 +2085,175 @@ const Canvas: React.FC<CanvasProps> = () => {
               }}
               disabled={aiMode === 'sarcastic'}
             >
-              Sarcastic
+              <span className="flex items-center space-x-1">
+                <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
+                <span>Sarcastic</span>
+              </span>
             </button>
           </div>
           
-          {/* Connect/Mute AI Button */}
+          {/* AI Connection Button */}
           <button
-            className={`w-full px-3 py-1.5 text-xs rounded-md transition-colors ${
+            className={`px-3 py-2 text-xs font-medium rounded-lg transition-all duration-200 ${
               isMultimodalConnected 
-                ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm' 
+                : 'bg-purple-600 hover:bg-purple-700 text-white shadow-sm'
             }`}
             onClick={isMultimodalConnected ? toggleMute : connectMultimodal}
             title={isMultimodalConnected ? (isMuted ? "Unmute AI Assistant" : "Mute AI Assistant") : "Connect AI Assistant"}
           >
             {isMultimodalConnected ? (
-              <div className="flex items-center justify-center space-x-1">
+              <span className="flex items-center space-x-2">
                 {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
-                <span className="text-xs">{isMuted ? "Unmute AI" : "Mute AI"}</span>
-              </div>
+                <span>{isMuted ? "Muted" : "Listening"}</span>
+              </span>
             ) : (
-              <div className="flex items-center justify-center space-x-1">
+              <span className="flex items-center space-x-2">
                 <Mic size={14} />
-                <span className="text-xs">Connect AI</span>
-              </div>
+                <span>Connect AI</span>
+              </span>
             )}
           </button>
         </div>
+        </div>
         
-        {/* AI Status Indicator - only show when connected */}
+      {/* AI Status Indicator - Floating */}
         {isMultimodalConnected && (
-          <div className="bg-green-600 text-white px-3 py-2 rounded-lg shadow-md text-xs">
+        <div className="absolute top-20 left-6 z-40">
+          <div className="bg-white/90 backdrop-blur-md border border-purple-200 rounded-lg shadow-purple-glow px-4 py-2">
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              <span>
+              <div className={`w-2 h-2 rounded-full ${
+                isMuted ? "bg-slate-400" :
+                voiceStatus === 'listening' ? "bg-green-500 animate-pulse" :
+                isPlayingAudio ? "bg-blue-500 animate-pulse" :
+                isLiveStreaming ? "bg-purple-500 animate-pulse" :
+                "bg-emerald-500"
+              }`}></div>
+              <span className="text-sm font-medium text-purple-700">
                 {isMuted ? "AI Muted" : 
                  voiceStatus === 'listening' ? "Listening..." :
-                 isPlayingAudio ? "Gemini speaking..." :
-                 isLiveStreaming ? "Gemini sees live canvas" :
+                 isPlayingAudio ? "AI Speaking..." :
+                 isLiveStreaming ? "AI Sees Canvas" :
                  "AI Ready"}
               </span>
             </div>
+            </div>
           </div>
         )}
+      
+
+      
+      {/* Floating Help Indicator - Bottom Left */}
+      <div className="absolute bottom-6 left-6 z-40">
+        <div className="bg-white/80 backdrop-blur-md border border-purple-200 rounded-lg shadow-purple-glow px-3 py-2">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+            <span className="text-xs font-medium text-purple-600">
+              {state.shapes.length > 0 ? `${state.shapes.length} shapes` : 'Start drawing'}
+            </span>
+          </div>
+        </div>
       </div>
       
-      {/* Clear All button - only shown when there are shapes */}
-      {state.shapes.length > 0 && (
-        <button
-          className="absolute left-4 top-1/2 -translate-y-1/2 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200 group relative"
-          onClick={handleClearAll}
-          title="Clear All Drawings"
-        >
-          Clear All
-        </button>
-      )}
-      
-      {/* Save to Folder button - only shown when there are shapes */}
-      {state.shapes.length > 0 && (
-        <button
-          className="absolute left-4 top-1/2 mt-24 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-          onClick={saveCanvasAsPNG}
-          title="Save to img folder"
-        >
-          Save to Folder
-        </button>
+      {/* Generation Settings Modal */}
+          {showGenSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-4">
+              <h2 className="text-xl font-semibold text-white">AI Generation Settings</h2>
+              <p className="text-purple-100 text-sm mt-1">Customize how AI enhances your drawings</p>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Art Style</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200" 
+                  placeholder="e.g., minimalist, watercolor, digital art"
+                  value={genSettings.style} 
+                  onChange={e => setGenSettings(s => ({...s, style: e.target.value}))} 
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Mood & Emotion</label>
+                <input 
+                  type="text" 
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200" 
+                  placeholder="e.g., peaceful, energetic, mysterious"
+                  value={genSettings.mood} 
+                  onChange={e => setGenSettings(s => ({...s, mood: e.target.value}))} 
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Additional Details</label>
+                <textarea 
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 resize-none" 
+                  rows={3}
+                  placeholder="Any specific details, lighting, composition preferences..."
+                  value={genSettings.details} 
+                  onChange={e => setGenSettings(s => ({...s, details: e.target.value}))} 
+                />
+              </div>
+              
+              <div className="flex space-x-3 pt-2">
+          <button
+                  className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all duration-200"
+                  onClick={() => setShowGenSettings(false)}
+                >
+                  Cancel
+          </button>
+          <button
+                  className="flex-1 px-4 py-2 text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg shadow-sm transition-all duration-200"
+                  onClick={() => setShowGenSettings(false)}
+                >
+                  Save Settings
+                </button>
+                  </div>
+                  </div>
+                  </div>
+                </div>
       )}
 
-      {/* Enhance with Gemini button - only shown when there are shapes */}
-      {state.shapes.length > 0 && (
-        <>
-          <button
-            className="absolute left-4 top-1/2 mt-36 -translate-y-1/2 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-            onClick={() => enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail')}
-            disabled={enhancementStatus === 'processing'}
-            title="Enhance with Gemini"
-          >
-            {enhancementStatus === 'processing' ? 'Enhancing...' : 'Enhance with Gemini'}
-          </button>
-          <button
-            className="absolute left-4 top-1/2 mt-48 -translate-y-1/2 bg-gray-600 hover:bg-gray-700 text-gray-100 px-3 py-1.5 rounded-lg shadow-md z-10 text-sm font-medium transition-colors duration-200"
-            onClick={() => setShowGenSettings(true)}
-            title="Generation Settings"
-          >
-            Generation Settings
-          </button>
-          {showGenSettings && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-              <div className="relative bg-white rounded-lg w-full max-w-md mx-auto shadow-xl overflow-hidden" style={{maxHeight: '90vh'}}>
-                <button
-                  className="absolute top-4 right-4 text-gray-400 hover:text-gray-500 text-2xl"
-                  onClick={() => setShowGenSettings(false)}
-                  title="Close"
-                >
-                  ×
-                </button>
-                <div className="p-6">
-                  <h2 className="text-2xl font-bold mb-6 text-purple-800">Generation Settings</h2>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700">Style</label>
-                    <div className="text-xs text-gray-500 mb-1">What artstyle should generations follow?</div>
-                    <input type="text" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.style} onChange={e => setGenSettings(s => ({...s, style: e.target.value}))} />
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700">Mood</label>
-                    <div className="text-xs text-gray-500 mb-1">What emotions are you hoping to showcase?</div>
-                    <input type="text" className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.mood} onChange={e => setGenSettings(s => ({...s, mood: e.target.value}))} />
-                  </div>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700">Additional details</label>
-                    <div className="text-xs text-gray-500 mb-1">Any relevant information.</div>
-                    <textarea className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" value={genSettings.details} onChange={e => setGenSettings(s => ({...s, details: e.target.value}))} />
-                  </div>
-                  <button
-                    className="w-full bg-purple-600 text-white rounded py-2 mt-2 hover:bg-purple-700 transition-colors"
-                    onClick={() => setShowGenSettings(false)}
-                  >
-                    Save
-                  </button>
-                </div>
+      {/* Error Display - Floating */}
+      {multimodalError && (
+        <div className="absolute right-6 top-20 z-50">
+          <div className="bg-red-50 border border-red-200 rounded-lg shadow-sm px-4 py-3 max-w-64">
+            <div className="flex items-start space-x-3">
+              <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium text-red-800">AI Connection Error</h3>
+                <p className="text-sm text-red-700 mt-1">{multimodalError}</p>
               </div>
             </div>
-          )}
-        </>
+              </div>
+            </div>
       )}
-
-      {/* Error Display */}
-      {multimodalError && (
-        <div className="absolute right-4 top-44 bg-red-600 text-white px-3 py-2 rounded-lg shadow-md z-50 text-xs max-w-48">
-          {multimodalError}
+      
+      {/* Drawing Status Indicator - Top Right */}
+      {isDrawing && (
+        <div className="absolute right-6 top-32 z-40">
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg shadow-sm px-3 py-2">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-xs font-medium text-emerald-700">
+                Drawing in progress...
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Render interactive enhanced images */}
       {renderEnhancedImages()}
       
+      {/* Main Canvas */}
       <canvas
         ref={canvasRef}
         className="absolute top-0 left-0 touch-none"
@@ -2114,6 +2264,8 @@ const Canvas: React.FC<CanvasProps> = () => {
         onPointerLeave={handlePointerLeave}
         onWheel={handleWheel}
       />
+      
+      {/* Text Input - Enhanced Styling */}
       {textInput.visible && (
         <div
           className="absolute"
@@ -2129,14 +2281,94 @@ const Canvas: React.FC<CanvasProps> = () => {
             onChange={handleTextInputChange}
             onKeyDown={handleTextInputKeyDown}
             onBlur={submitTextInput}
-            className="border border-blue-400 px-2 py-1 outline-none rounded shadow-sm"
+            className="border-2 border-blue-400 px-3 py-2 outline-none rounded-lg shadow-lg bg-white/95 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
             style={{
               fontSize: `${state.defaultStyle.fontSize! * state.viewTransform.scale}px`,
               color: state.defaultStyle.strokeColor,
             }}
+            placeholder="Type your text..."
           />
         </div>
       )}
+
+      {/* Unified Action Sidebar - Left Side */}
+      <div className="absolute left-6 top-80 bottom-6 z-50 flex flex-col space-y-3">
+        {/* Save Button */}
+        <button
+          onClick={handleSave}
+          className="w-12 h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
+          title="Save Canvas"
+        >
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+          </svg>
+        </button>
+
+        {/* Enhance Button */}
+        <button
+          onClick={handleEnhance}
+          className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
+          title="Enhance with AI"
+        >
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </button>
+
+        {/* Generation Settings Button */}
+        <button
+          onClick={() => setShowGenSettings(true)}
+          className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
+          title="AI Generation Settings"
+        >
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+
+        {/* Storyboard Button */}
+        <button
+          onClick={toggleStoryboard}
+          className="w-12 h-12 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
+          title="Storyboard"
+        >
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+
+        {/* Clear All Button */}
+        <button
+          onClick={handleClearAll}
+          className="w-12 h-12 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
+          title="Clear All"
+        >
+          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Current Tool Indicator - Above Toolbar */}
+      <div className="absolute bottom-32 left-1/2 transform -translate-x-1/2 z-40">
+        <div className="bg-white/90 backdrop-blur-md border border-purple-200 rounded-lg shadow-purple-glow px-4 py-2">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <span className="text-sm font-medium text-purple-700 capitalize">
+              {state.tool === 'pixel_eraser' ? 'Pixel Eraser' : 
+               state.tool === 'pencil' ? 'Pencil' :
+               state.tool === 'rectangle' ? 'Rectangle' :
+               state.tool === 'ellipse' ? 'Circle' :
+               state.tool === 'line' ? 'Line' :
+               state.tool === 'text' ? 'Text' :
+               state.tool === 'eraser' ? 'Object Eraser' :
+               state.tool === 'pan' ? 'Pan' :
+               state.tool === 'select' ? 'Select' : state.tool}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

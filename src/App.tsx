@@ -108,25 +108,12 @@ function ProtectedApp() {
     >
       <Header />
       <div className="flex-1 overflow-hidden relative">
-        <Canvas />
+        <Canvas onToggleStoryboard={toggleStoryboard} />
         <Toolbar />
         <HandDrawing />
-        <SimpleWebcam />
         <CollaborationPanel />
         <WebcamDisplays />
         <CollaboratorCursors />
-        
-        {/* Video generation button - positioned in the middle-right */}
-        <button
-          className="fixed right-4 top-1/2 transform -translate-y-1/2 z-50 bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg shadow-lg flex items-center transition-transform hover:scale-105"
-          onClick={toggleStoryboard}
-          style={{ boxShadow: '0 4px 12px rgba(147, 51, 234, 0.3)' }}
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-          Storyboard
-        </button>
         
         {/* Storyboard modal */}
         <Storyboard isOpen={showStoryboard} onClose={() => setShowStoryboard(false)} />

@@ -64,50 +64,60 @@ const UserWebcam: React.FC<UserWebcamProps> = ({
   
   const positionStyle = positionStyles[position] as React.CSSProperties;
   
-  // Determine position-specific styling
-  const borderColor = position === 'top-left' ? 'rgba(255, 87, 51, 0.8)' :
-                    position === 'top-right' ? 'rgba(51, 255, 87, 0.8)' :
-                    position === 'bottom-left' ? 'rgba(51, 87, 255, 0.8)' : 
-                    'rgba(255, 51, 245, 0.8)';
+  // Determine position-specific styling with purple theme
+  const borderColor = position === 'top-left' ? 'rgba(147, 51, 234, 0.8)' :      // Purple
+                    position === 'top-right' ? 'rgba(236, 72, 153, 0.8)' :       // Pink
+                    position === 'bottom-left' ? 'rgba(59, 130, 246, 0.8)' :      // Blue
+                    'rgba(168, 85, 247, 0.8)';                                    // Purple variant
   
   return (
     <div 
       className="user-webcam"
       style={{
         ...positionStyle,
-        zIndex: 99,
-        borderRadius: '8px',
+        zIndex: 1000,
+        width: '160px',
+        height: '120px',
+        borderRadius: '12px',
         overflow: 'hidden',
-        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)',
-        border: `2px solid ${borderColor}`,
+        border: `3px solid ${borderColor}`,
+        boxShadow: `0 4px 12px ${borderColor}40`,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+        backdropFilter: 'blur(8px)',
       }}
     >
-      <div 
-        className="webcam-header"
-        style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.7)',
-          color: 'white',
-          padding: '4px 8px',
-          fontSize: '14px',
-          textAlign: 'center',
-          fontWeight: 'bold',
-        }}
-      >
-        {username}
-      </div>
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        width={240}
-        height={180}
         style={{
-          transform: mirrored ? 'scaleX(-1)' : 'none',
+          width: '100%',
+          height: '100%',
           objectFit: 'cover',
-          backgroundColor: '#000',
+          transform: mirrored ? 'scaleX(-1)' : 'none',
+          borderRadius: '9px',
         }}
       />
+      
+      {/* Username overlay */}
+      <div 
+        style={{
+          position: 'absolute',
+          bottom: '0',
+          left: '0',
+          right: '0',
+          background: `linear-gradient(transparent, ${borderColor})`,
+          color: 'white',
+          padding: '8px 12px',
+          fontSize: '12px',
+          fontWeight: '600',
+          textAlign: 'center',
+          borderRadius: '0 0 9px 9px',
+        }}
+      >
+        {username}
+      </div>
     </div>
   );
 };

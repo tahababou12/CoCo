@@ -90,6 +90,7 @@ const UserCursor: React.FC<UserCursorProps> = ({ user }) => {
               backgroundColor: `${user.color}20`,
               animation: 'pulse 1.5s infinite',
               transform: 'translate(-50%, -50%)',
+              boxShadow: `0 0 8px ${user.color}40`,
             }}
           />
         ) : (
@@ -103,6 +104,7 @@ const UserCursor: React.FC<UserCursorProps> = ({ user }) => {
               transform: 'rotate(0deg) translateX(-2px)',
               position: 'relative',
               left: '-8px',
+              boxShadow: `0 0 6px ${user.color}40`,
             }}
           />
         )}
@@ -119,11 +121,14 @@ const UserCursor: React.FC<UserCursorProps> = ({ user }) => {
           color: user.color,
           fontSize: '12px',
           fontWeight: 600,
-          padding: '2px 4px',
-          borderRadius: '4px',
+          padding: '3px 6px',
+          borderRadius: '6px',
           whiteSpace: 'nowrap',
           pointerEvents: 'none',
           zIndex: 9999,
+          border: `1px solid ${user.color}60`,
+          backdropFilter: 'blur(4px)',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
         }}
       >
         {user.name}{isHandCursor ? ' ✋' : ''}
