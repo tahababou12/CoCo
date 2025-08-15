@@ -27,13 +27,29 @@ const PostLoginAuth: React.FC = () => {
       if (isAuthenticated) {
         try {
           const token = await getAccessTokenSilently();
-          const decodedToken = JSON.parse(atob(token.split('.')[1]));
-          console.log('Token claims:', decodedToken); // Debug log
+          
+          // Add safety checks for token
+          if (!token || typeof token !== 'string' || token.split('.').length !== 3) {
+            console.log('Invalid token format, proceeding with gesture auth');
+            if (!isGestureVerified) {
+              setShowGestureAuth(true);
+            }
+            setIsLoading(false);
+            return;
+          }
+          
+          try {
+            const decodedToken = JSON.parse(atob(token.split('.')[1]));
+            console.log('Token claims:', decodedToken); // Debug log
+          } catch (tokenError) {
+            console.log('Could not decode token, proceeding with gesture auth');
+          }
+          
           if (!isGestureVerified) {
             setShowGestureAuth(true);
           }
         } catch (error) {
-          console.error('Error checking gesture verification status:', error);
+          console.error('Error in gesture verification flow:', error);
           if (!isGestureVerified) {
             setShowGestureAuth(true);
           }

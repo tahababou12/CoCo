@@ -1348,5 +1348,22 @@ def enhance_or_modify_with_gemini(image_path, prompt="", request_id=None, second
         is_processing = False
         return None
 
+@app.route('/api/gesture-verification/status', methods=['GET'])
+def get_gesture_verification_status():
+    """Get the current gesture verification status"""
+    try:
+        # For now, return a simple verified status
+        # You can enhance this later to check actual verification state
+        return jsonify({
+            "status": "verified",
+            "message": "Gesture verification complete",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True) 

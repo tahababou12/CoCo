@@ -33,6 +33,7 @@ const Header: React.FC<HeaderProps> = () => {
   const [showStoryboard, setShowStoryboard] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [frames, setFrames] = useState<StoryboardFrame[]>([])
+
   
   const handleExport = () => {
     const canvas = document.createElement('canvas')
@@ -300,6 +301,8 @@ const Header: React.FC<HeaderProps> = () => {
           />
           {/* <span className="text-xs text-neutral-400 ml-1 font-normal">Free</span> */}
         </div>
+        
+
         
         <button className="ml-1 p-1 rounded hover:bg-neutral-100">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

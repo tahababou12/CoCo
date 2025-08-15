@@ -1205,8 +1205,8 @@ const Canvas: React.FC<CanvasProps> = () => {
       return;
     }
     try {
-      const port = aiModeRef.current === 'sarcastic' ? 9084 : 9083;
-      console.log(`🔌 Connecting to ${aiModeRef.current} server on port ${port}`);
+              const port = 9083; // Use single server for both personalities
+              console.log(`🔌 Connecting to AI server on port ${port}`);
       multimodalWebSocketRef.current = new WebSocket(`ws://localhost:${port}`);
       multimodalWebSocketRef.current.onopen = () => {
         console.log(`✅ Connected to ${aiModeRef.current} multimodal server`);
@@ -1891,18 +1891,34 @@ const Canvas: React.FC<CanvasProps> = () => {
                   ? 'bg-green-600 text-white' 
                   : 'bg-gray-100 text-green-600 hover:bg-gray-200'
               }`}
-              onClick={() => {
+              onClick={async () => {
                 console.log('🎯 Friendly button clicked, current aiMode:', aiMode);
                 setAIMode('friendly');
-                // If connected, disconnect and reconnect to the new server
-                if (isMultimodalConnected && multimodalWebSocketRef.current) {
-                  console.log('🔄 Disconnecting from current server and reconnecting to new one...');
-                  console.log('📷 Stopping canvas streaming before switch...');
-                  multimodalWebSocketRef.current.close();
-                  setTimeout(() => {
-                    console.log('🔄 Reconnecting to friendly server...');
-                    connectMultimodal();
-                  }, 300);
+                
+                // Call our new personality switching endpoint
+                try {
+                  const response = await fetch('http://localhost:9085/switch_personality', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ personality: 'friendly' })
+                  });
+                  
+                  if (response.ok) {
+                    console.log('✅ Switched to friendly personality via HTTP');
+                    // Force WebSocket reconnection to get new personality
+                    if (isMultimodalConnected && multimodalWebSocketRef.current) {
+                      console.log('🔄 Reconnecting to get new friendly personality...');
+                      multimodalWebSocketRef.current.close();
+                      setTimeout(() => {
+                        console.log('🔄 Reconnecting to friendly server...');
+                        connectMultimodal();
+                      }, 300);
+                    }
+                  } else {
+                    console.error('❌ Failed to switch personality');
+                  }
+                } catch (error) {
+                  console.error('❌ Error switching personality:', error);
                 }
               }}
               disabled={aiMode === 'friendly'}
@@ -1915,18 +1931,34 @@ const Canvas: React.FC<CanvasProps> = () => {
                   ? 'bg-red-600 text-white' 
                   : 'bg-gray-100 text-red-600 hover:bg-gray-200'
               }`}
-              onClick={() => {
+              onClick={async () => {
                 console.log('🎯 Sarcastic button clicked, current aiMode:', aiMode);
                 setAIMode('sarcastic');
-                // If connected, disconnect and reconnect to the new server
-                if (isMultimodalConnected && multimodalWebSocketRef.current) {
-                  console.log('🔄 Disconnecting from current server and reconnecting to new one...');
-                  console.log('📷 Stopping canvas streaming before switch...');
-                  multimodalWebSocketRef.current.close();
-                  setTimeout(() => {
-                    console.log('🔄 Reconnecting to sarcastic server...');
-                    connectMultimodal();
-                  }, 300);
+                
+                // Call our new personality switching endpoint
+                try {
+                  const response = await fetch('http://localhost:9085/switch_personality', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ personality: 'sarcastic' })
+                  });
+                  
+                  if (response.ok) {
+                    console.log('✅ Switched to sarcastic personality via HTTP');
+                    // Force WebSocket reconnection to get new personality
+                    if (isMultimodalConnected && multimodalWebSocketRef.current) {
+                      console.log('🔄 Reconnecting to get new sarcastic personality...');
+                      multimodalWebSocketRef.current.close();
+                      setTimeout(() => {
+                        console.log('🔄 Reconnecting to sarcastic server...');
+                        connectMultimodal();
+                      }, 300);
+                    }
+                  } else {
+                    console.error('❌ Failed to switch personality');
+                  }
+                } catch (error) {
+                    console.error('❌ Error switching personality:', error);
                 }
               }}
               disabled={aiMode === 'sarcastic'}

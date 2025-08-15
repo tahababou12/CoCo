@@ -45,15 +45,13 @@ kill_process() {
 kill_port 5174 "Frontend Dev Server" $CYAN
 kill_port 5001 "Flask API Server" $BLUE
 kill_port 8008 "WebSocket Server" $YELLOW
-kill_port 9083 "Friendly AI Server" $GREEN
-kill_port 9084 "Sarcastic AI Server" $PURPLE
+kill_port 9083 "AI Server with Personality Switching" $GREEN
 
 # Kill processes by name pattern (backup method)
 kill_process "npm.*dev" "Frontend Dev Server" $CYAN
 kill_process "python.*app.py" "Flask API Server" $BLUE
 kill_process "node.*websocket-server.js" "WebSocket Server" $YELLOW
-kill_process "python.*multimodal_server.py" "Friendly AI Server" $GREEN
-kill_process "python.*sarcastic_multimodal_server.py" "Sarcastic AI Server" $PURPLE
+kill_process "python.*multimodal_server.py" "AI Server with Personality Switching" $GREEN
 
 # Clean up PID files
 echo -e "${BLUE}🧹 Cleaning up PID files...${NC}"
@@ -72,7 +70,7 @@ echo -e "${BLUE}📊 Final Status Check:${NC}"
 echo "----------------------------------------"
 
 # Check if any of our ports are still in use
-ports=(5174 5001 8008 9083 9084)
+ports=(5174 5001 8008 9083)
 all_clear=true
 
 for port in "${ports[@]}"; do

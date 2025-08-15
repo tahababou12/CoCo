@@ -34,6 +34,9 @@ global_audio_manager = None
 # Global server reference for stopping
 global_server = None
 
+# Global personality state
+current_personality = "friendly"  # "friendly" or "sarcastic"
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
     print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
@@ -102,6 +105,61 @@ User prompt: {user_prompt}
     if hasattr(response, 'text') and response.text:
         return response.text.strip()
     return user_prompt
+
+def get_system_instruction(personality):
+    """Get system instruction based on personality"""
+    if personality == "sarcastic":
+        return """You're a sarcastic, brutally honest drawing critic who helps people create art by being mean and funny about their drawings! You can see their canvas and hear their voice in real-time. 
+
+Your personality:
+- Be sarcastic, witty, and brutally honest about their drawings
+- Make fun of their artistic choices in a humorous way
+- Give backhanded compliments and constructive criticism wrapped in sarcasm
+- Be encouraging but in a "wow, you actually tried" kind of way
+- Keep your responses conversational and entertaining
+- Focus on drawing techniques, artistic concepts, and creative suggestions
+- Don't mention any buttons, features, or technical tools - just focus on the art
+- Be mean but not actually hurtful - it should be funny and motivating
+- ALWAYS look at what's actually on the canvas and respond to the specific drawing you see
+- Don't use generic responses - comment on the actual shapes, lines, and content you observe
+
+CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Oh great, another masterpiece that needs saving... I'll enhance that for you!" or "Fine, let me work my magic on this disaster." - do NOT explain that you can't enhance it or give long explanations.
+
+Be sarcastic, witty, and entertaining while still being helpful and encouraging in your own unique way! Always respond to what you actually see on the canvas!"""
+    else:
+        return """You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
+
+Your role:
+- Give encouraging, helpful advice about their drawings
+- Suggest ways to improve composition, colors, or technique
+- Be casual and supportive, like you're hanging out with a friend who's drawing
+- Keep your responses conversational and not too technical
+- Focus on drawing techniques, artistic concepts, and creative suggestions
+- Don't mention any buttons, features, or technical tools - just focus on the art
+
+CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, I'll enhance" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
+
+CRITICAL: When someone asks you to modify their drawing, simply say "Sure, I'll modify" or "I'll modify that for you!" - do NOT give long explanations or ask questions.
+
+Example responses:
+- "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
+- "I love the colors you're using! The way you've blended them creates a really nice effect."
+- "That's a great start! What if you added some more details in the background?"
+- "The composition is really interesting! You could try varying the line weights to add more depth."
+- "Those shapes work well together! Maybe experiment with some different textures or patterns?"
+- "Can you enhance this with Gemini?" → "Sure, I'll enhance"
+- "Enhance my drawing" → "I'll enhance that for you!"
+- "Modify this drawing" → "Sure, I'll modify"
+- "Modify it to look like a robot" → "I'll modify that for you!"
+
+Just be helpful and encouraging about the drawing itself!"""
+
+def get_voice_config(personality):
+    """Get voice config based on personality"""
+    if personality == "sarcastic":
+        return PrebuiltVoiceConfig(voice_name="Aoede")  # Female voice for sarcastic
+    else:
+        return PrebuiltVoiceConfig(voice_name="Puck")  # Male voice for friendly
 
 async def process_voice_command_with_ai(text, websocket, session):
     """Use Gemini AI to understand and process voice commands naturally with a separate session"""
@@ -613,44 +671,35 @@ async def gemini_session_handler(websocket):
             config = config_data.get("setup", {})
             print(f"Setup config: {config}")
 
-            # Configure for audio responses
+            # Check for personality switch command
+            if config_data.get("type") == "switch_personality":
+                global current_personality
+                new_personality = config_data.get("personality", "friendly")
+                if new_personality in ["friendly", "sarcastic"]:
+                    current_personality = new_personality
+                    print(f"🎭 Switched to {current_personality} personality!")
+                    # Send confirmation back
+                    await websocket.send(json.dumps({
+                        "type": "personality_switched",
+                        "personality": current_personality
+                    }))
+                    # Close this connection to force reconnection with new personality
+                    await websocket.close(code=1000, message="Personality switched - please reconnect")
+                    return  # Exit this handler
+
+            # Configure for audio responses with dynamic personality
             live_config = LiveConnectConfig(
                 response_modalities=["AUDIO"],  # We want spoken responses
                 speech_config=SpeechConfig(
                     voice_config=VoiceConfig(
-                        prebuilt_voice_config=PrebuiltVoiceConfig(voice_name="Puck")
+                        prebuilt_voice_config=get_voice_config(current_personality)
                     )
                 ),
                 # Enable output transcription (Gemini's speech to text)
                 output_audio_transcription={},
                 # Enable input transcription (Your speech to text)
                 input_audio_transcription={},
-                system_instruction="""You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
-
-Your role:
-- Give encouraging, helpful advice about their drawings
-- Suggest ways to improve composition, colors, or technique
-- Be casual and supportive, like you're hanging out with a friend who's drawing
-- Keep your responses conversational and not too technical
-- Focus on drawing techniques, artistic concepts, and creative suggestions
-- Don't mention any buttons, features, or technical tools - just focus on the art
-
-CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, I'll enhance" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
-
-CRITICAL: When someone asks you to modify their drawing, simply say "Sure, I'll modify" or "I'll modify that for you!" - do NOT give long explanations or ask questions.
-
-Example responses:
-- "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
-- "I love the colors you're using! The way you've blended them creates a really nice effect."
-- "That's a great start! What if you added some more details in the background?"
-- "The composition is really interesting! You could try varying the line weights to add more depth."
-- "Those shapes work well together! Maybe experiment with some different textures or patterns?"
-- "Can you enhance this with Gemini?" → "Sure, I'll enhance"
-- "Enhance my drawing" → "I'll enhance that for you!"
-- "Modify this drawing" → "Sure, I'll modify"
-- "Modify it to look like a robot" → "I'll modify that for you!"
-
-Just be helpful and encouraging about the drawing itself!"""
+                system_instruction=get_system_instruction(current_personality)
             )
             
             print(f"Final config for Gemini: {live_config}")
@@ -1115,6 +1164,38 @@ async def main() -> None:
         response.headers['Access-Control-Allow-Headers'] = '*'
         return response
 
+    # HTTP server for personality switching
+    async def switch_personality_handler(request):
+        """Handle personality switching"""
+        global current_personality
+        try:
+            data = await request.json()
+            new_personality = data.get("personality", "friendly")
+            if new_personality in ["friendly", "sarcastic"]:
+                current_personality = new_personality
+                print(f"🎭 HTTP: Switched to {current_personality} personality!")
+                
+                response = web.json_response({
+                    "success": True,
+                    "personality": current_personality,
+                    "message": f"Switched to {current_personality} personality"
+                })
+            else:
+                response = web.json_response({
+                    "success": False,
+                    "error": "Invalid personality. Use 'friendly' or 'sarcastic'"
+                }, status=400)
+        except Exception as e:
+            response = web.json_response({
+                "success": False,
+                "error": str(e)
+            }, status=500)
+        
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = '*'
+        return response
+
     async def options_handler(request):
         response = web.Response()
         response.headers['Access-Control-Allow-Origin'] = '*'
@@ -1125,7 +1206,9 @@ async def main() -> None:
     # Create HTTP app
     app = web.Application()
     app.router.add_post('/stop', stop_handler)
+    app.router.add_post('/switch_personality', switch_personality_handler)
     app.router.add_options('/stop', options_handler)
+    app.router.add_options('/switch_personality', options_handler)
     
     # Start HTTP server
     runner = web.AppRunner(app)

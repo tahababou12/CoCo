@@ -57,38 +57,21 @@ mkdir -p logs
 # Start servers
 echo -e "${BLUE}📡 Starting servers...${NC}"
 
-# Start friendly AI server
-echo -e "${GREEN}🎯 Starting Friendly AI Server on port 9083...${NC}"
+# Start AI server with personality switching
+echo -e "${GREEN}🎯 Starting AI Server with Personality Switching on port 9083...${NC}"
 cd backend
 source venv/bin/activate
-python multimodal_server.py > "../logs/Friendly AI Server.log" 2>&1 &
-FRIENDLY_PID=$!
+python multimodal_server.py > "../logs/AI Server.log" 2>&1 &
+AI_PID=$!
 cd ..
 
 # Wait a moment and check if it started successfully
 sleep 3
-if kill -0 $FRIENDLY_PID 2>/dev/null; then
-    echo -e "${GREEN}✅ Friendly AI Server started successfully (PID: $FRIENDLY_PID)${NC}"
-    echo $FRIENDLY_PID > "logs/Friendly AI Server.pid"
+if kill -0 $AI_PID 2>/dev/null; then
+    echo -e "${GREEN}✅ AI Server with Personality Switching started successfully (PID: $AI_PID)${NC}"
+    echo $AI_PID > "logs/AI Server.pid"
 else
-    echo -e "${RED}❌ Failed to start Friendly AI Server${NC}"
-fi
-
-# Start sarcastic AI server
-echo -e "${PURPLE}🎯 Starting Sarcastic AI Server on port 9084...${NC}"
-cd backend
-source venv/bin/activate
-python sarcastic_multimodal_server.py > "../logs/Sarcastic AI Server.log" 2>&1 &
-SARCASTIC_PID=$!
-cd ..
-
-# Wait a moment and check if it started successfully
-sleep 3
-if kill -0 $SARCASTIC_PID 2>/dev/null; then
-    echo -e "${PURPLE}✅ Sarcastic AI Server started successfully (PID: $SARCASTIC_PID)${NC}"
-    echo $SARCASTIC_PID > "logs/Sarcastic AI Server.pid"
-else
-    echo -e "${RED}❌ Failed to start Sarcastic AI Server${NC}"
+    echo -e "${RED}❌ Failed to start AI Server${NC}"
 fi
 
 # Start frontend dev server
@@ -146,18 +129,18 @@ sleep 5
 echo -e "${BLUE}📊 Server Status:${NC}"
 echo "----------------------------------------"
 
-# Check friendly AI server
+# Check AI server with personality switching
 if check_port 9083; then
-    echo -e "${GREEN}✅ Friendly AI Server (port 9083) - RUNNING${NC}"
+    echo -e "${GREEN}✅ AI Server WebSocket (port 9083) - RUNNING${NC}"
 else
-    echo -e "${RED}❌ Friendly AI Server (port 9083) - NOT RUNNING${NC}"
+    echo -e "${RED}❌ AI Server WebSocket (port 9083) - NOT RUNNING${NC}"
 fi
 
-# Check sarcastic AI server
-if check_port 9084; then
-    echo -e "${PURPLE}✅ Sarcastic AI Server (port 9084) - RUNNING${NC}"
+# Check AI server HTTP endpoint
+if check_port 9085; then
+    echo -e "${GREEN}✅ AI Server HTTP (port 9085) - RUNNING${NC}"
 else
-    echo -e "${RED}❌ Sarcastic AI Server (port 9084) - NOT RUNNING${NC}"
+    echo -e "${RED}❌ AI Server HTTP (port 9085) - NOT RUNNING${NC}"
 fi
 
 # Check frontend server
@@ -191,7 +174,7 @@ echo -e "${BLUE}🌐 Access your application at:${NC}"
 echo -e "${CYAN}   Frontend: http://localhost:5174${NC}"
 echo -e "${BLUE}   Flask API: http://localhost:5001${NC}"
 echo -e "${YELLOW}   WebSocket: ws://localhost:8008${NC}"
-echo -e "${GREEN}   Friendly AI: ws://localhost:9083${NC}"
-echo -e "${PURPLE}   Sarcastic AI: ws://localhost:9084${NC}"
+echo -e "${GREEN}   AI Server WebSocket: ws://localhost:9083${NC}"
+echo -e "${GREEN}   AI Server HTTP: http://localhost:9085${NC}"
 echo ""
 echo -e "${YELLOW}💡 You can now toggle between Friendly and Sarcastic AI in the header!${NC}" 
