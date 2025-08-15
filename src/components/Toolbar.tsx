@@ -13,7 +13,14 @@ import {
   Plus,
   Minus,
   Palette,
-  RotateCcw
+  RotateCcw,
+  Layers,
+  Grid3X3,
+  Ruler,
+  Pipette,
+  PenTool,
+  Hexagon,
+  CurlyBraces
 } from 'lucide-react'
 
 const Toolbar: React.FC = () => {
@@ -202,6 +209,94 @@ const Toolbar: React.FC = () => {
           
           {/* Divider */}
           <div className="w-px h-8 bg-slate-200 mx-1"></div>
+          
+          {/* Professional Tools Section */}
+          
+          {/* Vector tool */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'vector' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => handleToolClick('vector')}
+            title="Vector Path"
+          >
+            <PenTool size={22} />
+          </button>
+          
+          {/* Polygon tool */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'polygon' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => handleToolClick('polygon')}
+            title="Polygon"
+          >
+            <Hexagon size={22} />
+          </button>
+          
+          {/* Bezier curve tool */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'bezier' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => handleToolClick('bezier')}
+            title="Bezier Curve"
+          >
+            <CurlyBraces size={22} />
+          </button>
+          
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
+          
+          {/* Measurement tool */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'measure' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => handleToolClick('measure')}
+            title="Measure"
+          >
+            <Ruler size={22} />
+          </button>
+          
+          {/* Eyedropper tool */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.tool === 'eyedropper' ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => handleToolClick('eyedropper')}
+            title="Eyedropper"
+          >
+            <Pipette size={22} />
+          </button>
+          
+          {/* Divider */}
+          <div className="w-px h-8 bg-slate-200 mx-1"></div>
+          
+          {/* Layers toggle */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.showLayersPanel ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => dispatch({ type: 'TOGGLE_LAYERS_PANEL' })}
+            title="Layers"
+          >
+            <Layers size={22} />
+          </button>
+          
+          {/* Grid toggle */}
+          <button
+            className={`p-3 rounded-xl transition-all duration-200 ${
+              state.gridSettings.enabled ? 'bg-purple-100 text-purple-700 shadow-inner' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            onClick={() => dispatch({ 
+              type: 'UPDATE_GRID_SETTINGS', 
+              payload: { enabled: !state.gridSettings.enabled } 
+            })}
+            title="Grid"
+          >
+            <Grid3X3 size={22} />
+          </button>
           
           {/* Text tool */}
           <button

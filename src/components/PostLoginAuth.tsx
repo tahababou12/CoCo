@@ -8,18 +8,12 @@ const PostLoginAuth: React.FC = () => {
   const [showGestureAuth, setShowGestureAuth] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isGestureVerified, setIsGestureVerified] = useState(false);
-  const [gestureKey, setGestureKey] = useState(0); // Add key to force re-render
 
   const resetGestureAuth = () => {
     console.log('Resetting gesture authentication...');
     setIsGestureVerified(false);
     setShowGestureAuth(false);
-    
-    // Force a complete re-render of the GestureAuth component
-    setTimeout(() => {
-      setGestureKey(prev => prev + 1);
     setShowGestureAuth(true);
-    }, 100);
   };
 
   useEffect(() => {
@@ -62,18 +56,19 @@ const PostLoginAuth: React.FC = () => {
   }, [isAuthenticated, getAccessTokenSilently, isGestureVerified]);
 
   const handleGestureSuccess = () => {
+    console.log('=== POSTLOGIN SUCCESS TIMELINE ===');
+    console.log('0ms: handleGestureSuccess called');
     console.log('Gesture verification successful');
     setIsGestureVerified(true);
-    setTimeout(() => {
-      setShowGestureAuth(false);
-    }, 100);
+    console.log('1ms: setIsGestureVerified called');
+    setShowGestureAuth(false);
+    console.log('2ms: setShowGestureAuth(false) called');
+    console.log('=== END POSTLOGIN TIMELINE ===');
   };
 
   const handleGestureFailure = () => {
     console.log('Gesture verification failed');
-    setTimeout(() => {
-      setShowGestureAuth(false);
-    }, 100);
+    setShowGestureAuth(false);
   };
 
   if (isAuthenticated && !isLoading && isGestureVerified) {
@@ -123,7 +118,6 @@ const PostLoginAuth: React.FC = () => {
           {showGestureAuth && (
             <div className="relative">
               <GestureAuth
-                key={gestureKey} // Force re-render when key changes
                 onSuccess={handleGestureSuccess}
                 onFailure={handleGestureFailure}
               />

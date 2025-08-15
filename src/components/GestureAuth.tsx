@@ -17,9 +17,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   const [currentGesture, setCurrentGesture] = useState<string>('');
   const [targetGestures, setTargetGestures] = useState<string[]>([]);
   const [currentGestureIndex, setCurrentGestureIndex] = useState(0);
+  const currentGestureIndexRef = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const isCompletedRef = useRef(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isDebouncing, setIsDebouncing] = useState(false);
   
   // Add debounce mechanism to prevent same gesture detection
@@ -68,15 +70,14 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   };
 
   // Reset gesture recognition state
-  const resetGestureState = () => {
-    console.log('Resetting gesture state...');
+  const resetGestureAuth = () => {
     setCurrentGestureIndex(0);
-    setCurrentGesture('');
+    currentGestureIndexRef.current = 0;
     setIsDebouncing(false);
     setIsCompleted(false);
-    lastGestureTimeRef.current = 0;
-    lastDetectedGestureRef.current = '';
-    generateTargetGestures();
+    isCompletedRef.current = false;
+    setError(null);
+    setIsLoading(true);
   };
 
   // Cleanup function
@@ -187,7 +188,12 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
           console.log('Setting up MediaPipe camera...');
           const camera = new Camera(videoRef.current, {
             onFrame: async () => {
-              if (videoRef.current && hands && isInitialized && !isCompleted) {
+              // Aggressive guard - return immediately if completed
+              if (isCompletedRef.current) {
+                return;
+              }
+              
+              if (videoRef.current && hands && isInitialized && !isCompletedRef.current) {
                 try {
                   await hands.send({ image: videoRef.current });
                 } catch (error) {
@@ -222,6 +228,16 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
     };
 
     const onHandResults = (results: Results) => {
+      // Guard against processing after completion - check this FIRST
+      if (isCompletedRef.current) {
+        return;
+      }
+      
+      // Guard against processing after cleanup
+      if (mediapipeRef.current === null) {
+        return;
+      }
+      
       if (!canvasRef.current) return;
 
       const ctx = canvasRef.current.getContext('2d');
@@ -230,8 +246,8 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
       // Clear the canvas
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
 
-      // Always draw hand landmarks if detected (prevents freezing)
-      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      // Only draw hand landmarks if not completed
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0 && !isCompletedRef.current) {
         const landmarks = results.multiHandLandmarks[0];
 
         // Draw hand landmarks
@@ -239,7 +255,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
         drawLandmarks(ctx, landmarks, { color: '#FF0000', lineWidth: 1 });
 
         // Only process gesture detection if not completed
-        if (!isCompleted) {
+        if (!isCompletedRef.current) {
           // Determine current gesture
           const { mode } = determineHandMode(landmarks);
           setCurrentGesture(mode);
@@ -251,11 +267,11 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
           
           // Only log occasionally to reduce console spam
           if (Math.random() < 0.1) { // Log only 10% of the time
-            console.log(`Gesture check: ${mode} vs target: ${targetGestures[currentGestureIndex]}`);
+            console.log(`Gesture check: ${mode} vs target: ${targetGestures[currentGestureIndexRef.current]}`);
           }
           
-          if (mode === targetGestures[currentGestureIndex] && 
-              (!isSameGesture || !isWithinDebounceTime)) {
+          if (mode === targetGestures[currentGestureIndexRef.current] && 
+              !isWithinDebounceTime) {
             
             console.log('Gesture matched:', mode); // Debug log
             setIsDebouncing(false);
@@ -265,24 +281,42 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
             lastGestureTimeRef.current = now;
             
             // Move to next gesture or complete
-            if (currentGestureIndex < targetGestures.length - 1) {
+            if (currentGestureIndexRef.current < targetGestures.length - 1) {
               console.log('Moving to next gesture'); // Debug log
-              setCurrentGestureIndex(prev => prev + 1);
+              currentGestureIndexRef.current += 1;
+              setCurrentGestureIndex(currentGestureIndexRef.current);
             } else {
               console.log('All gestures completed'); // Debug log
               const startTime = Date.now();
+              console.log('=== GESTURE COMPLETION TIMELINE ===');
+              console.log('0ms: Gesture completion detected');
+              
+              isCompletedRef.current = true;
+              console.log('1ms: isCompletedRef set to true');
+              
               setIsCompleted(true);
-              console.log('Time after setIsCompleted:', Date.now() - startTime, 'ms');
+              console.log('2ms: setIsCompleted called');
               
-              // Call onSuccess immediately
+              // Force stop camera immediately
+              if (cameraRef.current) {
+                console.log('3ms: Starting camera stop...');
+                try {
+                  cameraRef.current.stop();
+                  console.log('4ms: camera.stop() called');
+                  cameraRef.current = null;
+                  console.log('5ms: cameraRef set to null');
+                } catch (error) {
+                  console.error('Error force stopping camera:', error);
+                }
+              }
+              
+              // Call onSuccess immediately - let React handle the unmounting
+              console.log('6ms: Calling onSuccess...');
               onSuccess();
-              console.log('Time after onSuccess:', Date.now() - startTime, 'ms');
-              
-              // Cleanup immediately - no delay
-              cleanup();
-              console.log('Time after cleanup:', Date.now() - startTime, 'ms');
+              console.log('7ms: onSuccess called');
+              console.log('=== END TIMELINE ===');
             }
-          } else if (mode === targetGestures[currentGestureIndex] && isSameGesture && isWithinDebounceTime) {
+          } else if (mode === targetGestures[currentGestureIndexRef.current] && isSameGesture && isWithinDebounceTime) {
             console.log('Gesture matched but debounced - waiting for new gesture or timeout');
             setIsDebouncing(true);
           } else {
@@ -297,11 +331,10 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
     return () => {
       console.log('Gesture auth cleanup triggered');
       isInitialized = false;
-      if (!isCompleted) {
-        cleanup();
-      }
+      isCompletedRef.current = false;
+      cleanup();
     };
-  }, [targetGestures, currentGestureIndex, onSuccess, isCompleted]);
+  }, [targetGestures, onSuccess, isCompleted]);
 
   if (isLoading) {
     return <div className="text-center">Loading gesture recognition...</div>;
@@ -317,7 +350,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
 
   return (
     <div className="flex flex-col items-center space-y-1">
-      <div className="relative w-56 h-42">
+      <div className="relative w-56 h-42" style={{ width: '224px', height: '168px' }}>
         <video
           ref={videoRef}
           className="w-full h-full object-cover rounded-lg shadow-lg"
@@ -326,12 +359,14 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
           muted
           width="640"
           height="480"
+          style={{ width: '100%', height: '100%' }}
         />
         <canvas
           ref={canvasRef}
           className="absolute top-0 left-0 w-full h-full pointer-events-none"
           width={640}
           height={480}
+          style={{ width: '100%', height: '100%' }}
         />
       </div>
       

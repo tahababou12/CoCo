@@ -1,14 +1,16 @@
 import React, { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { useDrawing } from '../context/DrawingContext'
-import { Point, Shape } from '../types'
+import { useWebSocket } from '../context/WebSocketContext'
+import { useHandGesture } from '../context/HandGestureContext'
+import { Shape, Point, Tool } from '../types'
 import { renderShape } from '../utils/renderShape'
-import { hitTest } from '../utils/hitTest'
-import EnhancedImageActions from './EnhancedImageActions'
-import { Mic, MicOff, Volume2 } from 'lucide-react'
-import { useShapes } from '../ShapesContext'
+import { addPointToPath, getSmoothedCursorPosition } from '../utils/cursorUtils'
+import { UserPosition } from '../types'
+import { Hand, HandMetal, Mic, MicOff } from 'lucide-react'
 import html2canvas from 'html2canvas'
 import Header from './Header'
-import { Hand, HandMetal } from 'lucide-react'
+import LayersPanel from './LayersPanel'
+import GridSettings from './GridSettings'
 
 
 
@@ -50,7 +52,6 @@ interface CanvasProps {
 
 const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
   const { state, dispatch } = useDrawing()
-  const { setCanvas } = useShapes()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -144,12 +145,28 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
 
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const gridSize = 20 * state.viewTransform.scale
+    // Only draw grid if enabled
+    if (!state.gridSettings.enabled) return;
+    
+    const gridSize = state.gridSettings.size * state.viewTransform.scale
+    
     const offsetX = state.viewTransform.offsetX % gridSize
     const offsetY = state.viewTransform.offsetY % gridSize
     
-    // Draw subtle grid lines with purple tones
-    ctx.strokeStyle = 'rgba(196, 181, 253, 0.3)' // Very light purple
+    // Use grid settings for color and opacity
+    const gridColor = state.gridSettings.color;
+    const gridOpacity = state.gridSettings.opacity;
+    
+    // Convert hex color to rgba
+    const hexToRgba = (hex: string, alpha: number) => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+    
+    // Draw grid lines
+    ctx.strokeStyle = hexToRgba(gridColor, gridOpacity * 0.5);
     ctx.lineWidth = 0.5
     
     // Vertical lines
@@ -168,8 +185,8 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
       ctx.stroke()
     }
     
-    // Draw subtle dots at intersections for major grid points with purple tones
-    ctx.fillStyle = 'rgba(147, 51, 234, 0.2)' // Light purple
+    // Draw dots at intersections
+    ctx.fillStyle = hexToRgba(gridColor, gridOpacity);
     for (let x = offsetX; x < width; x += gridSize) {
       for (let y = offsetY; y < height; y += gridSize) {
         ctx.beginPath()
@@ -386,6 +403,74 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
           position: point,
           value: '',
         });
+        break;
+
+      // Professional vector tools
+      case 'vector':
+        // Vector path tool - create precise vector paths
+        setIsDrawing(true);
+        dispatch({
+          type: 'START_DRAWING',
+          payload: { point, type: 'pencil' }, // Use pencil for now, can be enhanced later
+        });
+        break;
+
+      case 'polygon':
+        // Polygon tool - create regular polygons
+        setIsDrawing(true);
+        dispatch({
+          type: 'START_DRAWING',
+          payload: { point, type: 'rectangle' }, // Use rectangle for now, can be enhanced
+        });
+        break;
+
+      case 'bezier':
+        // Bezier curve tool - create smooth curves
+        setIsDrawing(true);
+        dispatch({
+          type: 'START_DRAWING',
+          payload: { point, type: 'pencil' }, // Use pencil for now, can be enhanced
+        });
+        break;
+
+      case 'measure':
+        // Measurement tool - measure distances
+        const measuredShape = findShapeAtPoint(point);
+        if (measuredShape) {
+          // Calculate and display measurements
+          const width = Math.max(...measuredShape.points.map(p => p.x)) - Math.min(...measuredShape.points.map(p => p.x));
+          const height = Math.max(...measuredShape.points.map(p => p.y)) - Math.min(...measuredShape.points.map(p => p.y));
+          const diagonal = Math.sqrt(width * width + height * height);
+          
+          window.showToast(`Width: ${Math.round(width)}px, Height: ${Math.round(height)}px, Diagonal: ${Math.round(diagonal)}px`, 'info', 3000);
+        } else {
+          window.showToast('Click on a shape to measure it', 'info', 2000);
+        }
+        break;
+
+      case 'eyedropper':
+        // Eyedropper tool - sample colors
+        const shapeAtPoint = findShapeAtPoint(point);
+        if (shapeAtPoint) {
+          const sampledColor = shapeAtPoint.style.strokeColor;
+          dispatch({
+            type: 'SET_STYLE',
+            payload: { strokeColor: sampledColor }
+          });
+          window.showToast(`Color sampled: ${sampledColor}`, 'success', 2000);
+        } else {
+          // Sample from canvas pixel
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            const pixel = ctx.getImageData(point.x, point.y, 1, 1).data;
+            const color = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+            dispatch({
+              type: 'SET_STYLE',
+              payload: { strokeColor: color }
+            });
+            window.showToast(`Color sampled: ${color}`, 'success', 2000);
+          }
+        }
         break;
 
       // Drawing tools
@@ -658,7 +743,17 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
 
   const findShapeAtPoint = (point: Point): Shape | undefined => {
     // Check shapes in reverse order (top to bottom)
-    return [...state.shapes].reverse().find(shape => hitTest(shape, point))
+    return [...state.shapes].reverse().find(shape => {
+      // Simple hit test - check if point is within shape bounds
+      if (shape.points.length === 0) return false;
+      
+      const minX = Math.min(...shape.points.map(p => p.x));
+      const maxX = Math.max(...shape.points.map(p => p.x));
+      const minY = Math.min(...shape.points.map(p => p.y));
+      const maxY = Math.max(...shape.points.map(p => p.y));
+      
+      return point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY;
+    })
   }
 
   const handleTextInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1820,12 +1915,13 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
     }
   };
 
-  // Connect canvas to shapes context
+  // Canvas setup effect
   useEffect(() => {
     if (canvasRef.current) {
-      setCanvas(canvasRef.current);
+      // Canvas is ready
+      console.log('Canvas element ready');
     }
-  }, [canvasRef.current, setCanvas]);
+  }, [canvasRef.current]);
 
   // Function to get canvas hash for change detection
   const getCanvasHash = () => {
@@ -2249,6 +2345,10 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
           </div>
         </div>
       )}
+
+      {/* Professional Panels */}
+      {state.showLayersPanel && <LayersPanel />}
+      {state.showGridSettings && <GridSettings />}
 
       {/* Render interactive enhanced images */}
       {renderEnhancedImages()}

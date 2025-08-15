@@ -47,10 +47,10 @@ const CollaborationPanel: React.FC = () => {
   const headerRef = useRef<HTMLDivElement>(null);
   
   // Use a ref to store the panel position for smoother updates
-  const panelPositionRef = useRef({ x: window.innerWidth - 300, y: 400 });
+  const panelPositionRef = useRef({ x: window.innerWidth - 300, y: 500 });
   
   // For React state updates (less frequent)
-  const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 300, y: 400 });
+  const [panelPosition, setPanelPosition] = useState({ x: window.innerWidth - 300, y: 500 });
   
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();

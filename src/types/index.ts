@@ -27,7 +27,34 @@ export type Shape = {
   createdBy?: string // User ID who created the shape
 }
 
-export type Tool = 'select' | 'rectangle' | 'ellipse' | 'line' | 'pencil' | 'text' | 'pan' | 'eraser' | 'pixel_eraser'
+export type Tool = 'select' | 'rectangle' | 'ellipse' | 'line' | 'pencil' | 'text' | 'pan' | 'eraser' | 'pixel_eraser' | 'vector' | 'polygon' | 'bezier' | 'measure' | 'eyedropper'
+
+export type Layer = {
+  id: string
+  name: string
+  visible: boolean
+  locked: boolean
+  opacity: number
+  shapes: Shape[]
+  order: number
+}
+
+export type GridSettings = {
+  enabled: boolean
+  size: number
+  color: string
+  opacity: number
+  snapToGrid: boolean
+  showRulers: boolean
+}
+
+export type VectorPoint = {
+  x: number
+  y: number
+  type: 'corner' | 'smooth' | 'symmetric'
+  handleIn?: Point
+  handleOut?: Point
+}
 
 export type ViewTransform = {
   scale: number
@@ -98,12 +125,11 @@ export type DrawingState = {
   }
   viewTransform: ViewTransform
   defaultStyle: ShapeStyle
-  // Collaboration properties
-  currentUser?: User
-  collaborators: User[]
-  isConnected: boolean
-  peerConnections: Record<string, RTCPeerConnection>
-  remoteStreams: Record<string, MediaStream>
+  layers: Layer[]
+  activeLayerId: string
+  gridSettings: GridSettings
+  showLayersPanel: boolean
+  showGridSettings: boolean
 }
 
 // Export all types from handTracking file

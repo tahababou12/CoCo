@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer } from 'react'
-import { Shape, Tool, Point, ShapeStyle, User } from '../types'
+import { Shape, Tool, Point, ShapeStyle, User, Layer, GridSettings } from '../types'
 import { v4 as uuidv4 } from '../utils/uuid'
 
 // Define DrawingState interface locally
@@ -24,6 +24,12 @@ interface DrawingState {
     past: Shape[][]
     future: Shape[][]
   }
+  // Professional features
+  layers: Layer[]
+  activeLayerId: string
+  gridSettings: GridSettings
+  showLayersPanel: boolean
+  showGridSettings: boolean
 }
 
 type DrawingAction =
@@ -63,6 +69,15 @@ type DrawingAction =
   | { type: 'CLEAR_ALL' }
   | { type: 'SAVE_DRAWING_REQUEST' }
   | { type: 'CLEAR_CANVAS' }
+  // Professional features
+  | { type: 'ADD_LAYER'; payload: Layer }
+  | { type: 'UPDATE_LAYER'; payload: { layerId: string; updates: Partial<Layer> } }
+  | { type: 'DELETE_LAYER'; payload: string }
+  | { type: 'SET_ACTIVE_LAYER'; payload: string }
+  | { type: 'MOVE_LAYER'; payload: { layerId: string; direction: 'up' | 'down' } }
+  | { type: 'UPDATE_GRID_SETTINGS'; payload: Partial<GridSettings> }
+  | { type: 'TOGGLE_LAYERS_PANEL' }
+  | { type: 'TOGGLE_GRID_SETTINGS' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -92,7 +107,28 @@ const initialState: DrawingState = {
   peerConnections: {},
   remoteStreams: {},
   selectionBox: null,
-  currentUser: null
+  currentUser: null,
+  // Professional features
+  layers: [{
+    id: 'default-layer',
+    name: 'Background',
+    visible: true,
+    locked: false,
+    opacity: 1,
+    shapes: [],
+    order: 0
+  }],
+  activeLayerId: 'default-layer',
+  gridSettings: {
+    enabled: true,
+    size: 20,
+    color: '#999999',
+    opacity: 0.4,
+    snapToGrid: false,
+    showRulers: false
+  },
+  showLayersPanel: false,
+  showGridSettings: false
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
@@ -640,6 +676,85 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
     case 'CLEAR_CANVAS':
       // Implementation of clear canvas
       return initialState;
+
+    // Professional features
+    case 'ADD_LAYER': {
+      return {
+        ...state,
+        layers: [...state.layers, action.payload]
+      }
+    }
+
+    case 'UPDATE_LAYER': {
+      const updatedLayers = state.layers.map(layer =>
+        layer.id === action.payload.layerId
+          ? { ...layer, ...action.payload.updates }
+          : layer
+      );
+      return {
+        ...state,
+        layers: updatedLayers
+      }
+    }
+
+    case 'DELETE_LAYER': {
+      const newLayers = state.layers.filter(layer => layer.id !== action.payload);
+      // If we deleted the active layer, switch to the first available layer
+      const newActiveLayerId = state.activeLayerId === action.payload 
+        ? (newLayers[0]?.id || 'default-layer')
+        : state.activeLayerId;
+      return {
+        ...state,
+        layers: newLayers,
+        activeLayerId: newActiveLayerId
+      }
+    }
+
+    case 'SET_ACTIVE_LAYER': {
+      return {
+        ...state,
+        activeLayerId: action.payload
+      }
+    }
+
+    case 'MOVE_LAYER': {
+      const { layerId, direction } = action.payload;
+      const layerIndex = state.layers.findIndex(layer => layer.id === layerId);
+      if (layerIndex === -1) return state;
+
+      const newLayers = [...state.layers];
+      if (direction === 'up' && layerIndex > 0) {
+        [newLayers[layerIndex], newLayers[layerIndex - 1]] = [newLayers[layerIndex - 1], newLayers[layerIndex]];
+      } else if (direction === 'down' && layerIndex < newLayers.length - 1) {
+        [newLayers[layerIndex], newLayers[layerIndex + 1]] = [newLayers[layerIndex + 1], newLayers[layerIndex]];
+      }
+
+      return {
+        ...state,
+        layers: newLayers
+      }
+    }
+
+    case 'UPDATE_GRID_SETTINGS': {
+      return {
+        ...state,
+        gridSettings: { ...state.gridSettings, ...action.payload }
+      }
+    }
+
+    case 'TOGGLE_LAYERS_PANEL': {
+      return {
+        ...state,
+        showLayersPanel: !state.showLayersPanel
+      }
+    }
+
+    case 'TOGGLE_GRID_SETTINGS': {
+      return {
+        ...state,
+        showGridSettings: !state.showGridSettings
+      }
+    }
 
     default:
       return state
