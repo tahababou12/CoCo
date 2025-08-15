@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import GestureAuth from './GestureAuth';
 import LogoutButton from './LogoutButton';
@@ -53,9 +53,9 @@ const PostLoginAuth: React.FC = () => {
     };
 
     checkGestureVerification();
-  }, [isAuthenticated, getAccessTokenSilently, isGestureVerified]);
+  }, [isAuthenticated, getAccessTokenSilently]);
 
-  const handleGestureSuccess = () => {
+  const handleGestureSuccess = useCallback(() => {
     console.log('=== POSTLOGIN SUCCESS TIMELINE ===');
     console.log('0ms: handleGestureSuccess called');
     console.log('Gesture verification successful');
@@ -64,12 +64,12 @@ const PostLoginAuth: React.FC = () => {
     setShowGestureAuth(false);
     console.log('2ms: setShowGestureAuth(false) called');
     console.log('=== END POSTLOGIN TIMELINE ===');
-  };
+  }, []);
 
-  const handleGestureFailure = () => {
+  const handleGestureFailure = useCallback(() => {
     console.log('Gesture verification failed');
     setShowGestureAuth(false);
-  };
+  }, []);
 
   if (isAuthenticated && !isLoading && isGestureVerified) {
     return null;

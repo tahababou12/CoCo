@@ -19,6 +19,7 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   const [currentGestureIndex, setCurrentGestureIndex] = useState(0);
   const currentGestureIndexRef = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
   const isCompletedRef = useRef(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +139,42 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
     generateTargetGestures();
   }, []);
 
+  // Preload MediaPipe model in background
+  useEffect(() => {
+    let preloadHands: Hands | null = null;
+    
+    const preloadMediaPipe = async () => {
+      try {
+        console.log('Preloading MediaPipe model...');
+        preloadHands = new Hands({
+          locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+          }
+        });
+
+        preloadHands.setOptions({
+          maxNumHands: 1,
+          modelComplexity: 0,
+          minDetectionConfidence: 0.3,
+          minTrackingConfidence: 0.3
+        });
+
+        // Just initialize the model, don't start processing
+        console.log('MediaPipe model preloaded successfully');
+      } catch (error) {
+        console.error('Error preloading MediaPipe:', error);
+      }
+    };
+
+    preloadMediaPipe();
+
+    return () => {
+      if (preloadHands) {
+        preloadHands.close();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     let videoStream: MediaStream | null = null;
     let isInitialized = false;
@@ -153,21 +190,21 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
           }
         });
 
-        // Optimized settings for faster detection
+        // Optimized settings for faster detection and startup - minimal WebGL usage
         hands.setOptions({
           maxNumHands: 1,                    // Only need 1 hand for auth
-          modelComplexity: 1,                // Use medium model for better quality
-          minDetectionConfidence: 0.5,       // Higher threshold for better accuracy
-          minTrackingConfidence: 0.5         // Higher threshold for better tracking
+          modelComplexity: 0,                // Use light model for faster startup
+          minDetectionConfidence: 0.3,       // Lower threshold for faster detection
+          minTrackingConfidence: 0.3         // Lower threshold for faster tracking
         });
 
-        // Set up the camera with better resolution for quality
+        // Set up the camera with minimal resolution for fastest processing
         if (videoRef.current) {
           console.log('Getting camera stream...');
           videoStream = await navigator.mediaDevices.getUserMedia({
             video: {
-              width: 640,                    // Better resolution for quality
-              height: 480,                   // Better resolution for quality
+              width: 320,                    // Minimal resolution for fastest processing
+              height: 240,                   // Minimal resolution for fastest processing
               facingMode: 'user'
             }
           });
@@ -204,19 +241,28 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
                 }
               }
             },
-            width: 640,                      // Match the better resolution
-            height: 480
+            width: 320,                      // Match the minimal resolution
+            height: 240
           });
+
+          // Start camera immediately after creating it
+          console.log('Starting camera...');
+          await camera.start();
+          console.log('Camera started successfully');
+
+          // Show warming up state while MediaPipe initializes
+          setIsWarmingUp(true);
+          setIsLoading(false);
 
           console.log('Setting up MediaPipe results handler...');
           hands.onResults(onHandResults);
           mediapipeRef.current = hands;
           cameraRef.current = camera;
           
-          console.log('Starting camera...');
-          await camera.start();
-          console.log('Camera started successfully');
+          // Start MediaPipe processing immediately
+          console.log('Starting MediaPipe processing...');
           isInitialized = true;
+          setIsWarmingUp(false);
         }
 
         setIsLoading(false);
@@ -337,7 +383,35 @@ const GestureAuth: React.FC<GestureAuthProps> = ({ onSuccess, onFailure }) => {
   }, [targetGestures, onSuccess, isCompleted]);
 
   if (isLoading) {
-    return <div className="text-center">Loading gesture recognition...</div>;
+    return (
+      <div className="text-center space-y-4">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+        <div className="text-sm text-gray-600">Initializing hand tracking...</div>
+      </div>
+    );
+  }
+
+  if (isWarmingUp) {
+    return (
+      <div className="flex flex-col items-center space-y-1">
+        <div className="relative w-56 h-42" style={{ width: '224px', height: '168px' }}>
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover rounded-lg shadow-lg"
+            autoPlay
+            playsInline
+            muted
+            width="320"
+            height="240"
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
+        <div className="text-center space-y-2">
+          <div className="animate-pulse text-sm text-purple-600">Warming up hand tracking...</div>
+          <div className="text-xs text-gray-500">Camera is ready, initializing AI model</div>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
