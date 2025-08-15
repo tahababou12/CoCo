@@ -8,6 +8,7 @@ import LogoutButton from './LogoutButton'
 import { useAuth0 } from "@auth0/auth0-react"
 import { useHandGesture } from '../context/HandGestureContext'
 
+
 interface HeaderProps {
   onToggleAI?: () => void;
   showAIAssistant?: boolean;
@@ -32,6 +33,7 @@ const Header: React.FC<HeaderProps> = () => {
   const [documentName, setDocumentName] = useState('Untitled')
   const [showStoryboard, setShowStoryboard] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
   const [frames, setFrames] = useState<StoryboardFrame[]>([])
 
   
@@ -265,11 +267,11 @@ const Header: React.FC<HeaderProps> = () => {
   };
 
   return (
-    <header className="bg-white border-b border-neutral-100 px-2 py-1.5 flex items-center justify-between shadow-sm">
+    <header className="bg-white border-b border-neutral-100 px-4 py-3 flex items-center justify-between shadow-sm">
       <div className="flex items-center">
         {/* Debug Toggle Button */}
         <button 
-          className={`w-8 h-8 rounded-md flex items-center justify-center mr-2 transition-colors ${
+          className={`w-10 h-10 rounded-md flex items-center justify-center mr-3 transition-colors ${
             showDebugPanels 
               ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' 
               : 'text-neutral-500 hover:bg-neutral-100'
@@ -277,17 +279,17 @@ const Header: React.FC<HeaderProps> = () => {
           onClick={() => setShowDebugPanels(!showDebugPanels)}
           title={showDebugPanels ? "Hide Debug Panels" : "Show Debug Panels"}
         >
-          <Bug size={16} />
+          <Bug size={18} />
         </button>
         
-        <button className="w-8 h-8 rounded-md hover:bg-neutral-100 flex items-center justify-center mr-1">
+        <button className="w-10 h-10 rounded-md hover:bg-neutral-100 flex items-center justify-center mr-2">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
         
-        <div className="flex items-center mr-2">
-          <div className="w-5 h-5 rounded bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
+        <div className="flex items-center mr-3">
+          <div className="w-6 h-6 rounded bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
             C
           </div>
         </div>
@@ -297,10 +299,20 @@ const Header: React.FC<HeaderProps> = () => {
             type="text" 
             value={documentName} 
             onChange={handleNameChange}
-            className="text-sm font-medium text-neutral-800 bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-1 py-0.5 rounded hover:bg-neutral-100 focus:bg-neutral-100 transition-colors"
+            className="text-base font-medium text-neutral-800 bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-2 py-1 rounded hover:bg-neutral-100 focus:bg-neutral-100 transition-colors"
           />
           {/* <span className="text-xs text-neutral-400 ml-1 font-normal">Free</span> */}
         </div>
+
+        {/* Feedback Button */}
+        <button
+          className="ml-6 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          onClick={() => setShowFeedbackModal(true)}
+        >
+          Feedback
+        </button>
+
+
         
 
         
@@ -630,6 +642,81 @@ const Header: React.FC<HeaderProps> = () => {
             >
               Play
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="relative bg-white rounded-lg w-full max-w-lg mx-auto shadow-xl overflow-hidden max-h-[90vh]">
+            <button
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-500 text-2xl"
+              onClick={() => setShowFeedbackModal(false)}
+              title="Close"
+            >
+              ×
+            </button>
+            <div className="p-6">
+              <h2 className="text-2xl font-bold mb-6 text-gray-800">Feedback</h2>
+              <p className="text-gray-600 mb-6">
+                We'd love to hear what you think about this app!
+              </p>
+              
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                const feedback = formData.get('feedback');
+                
+                if (!feedback || feedback.toString().trim() === '') {
+                  alert('Please enter some feedback before submitting.');
+                  return;
+                }
+                
+                try {
+                  const response = await fetch('http://localhost:5001/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      feedback: feedback.toString().trim(),
+                      timestamp: new Date().toISOString()
+                    }),
+                  });
+                  
+                  if (response.ok) {
+                    alert('Thank you for your feedback!');
+                    setShowFeedbackModal(false);
+                  } else {
+                    alert('Failed to submit feedback. Please try again.');
+                  }
+                } catch (error) {
+                  alert('Failed to submit feedback. Please try again.');
+                }
+              }} className="space-y-4">
+                <div>
+                  <label htmlFor="feedback" className="block text-sm font-medium text-gray-700 mb-2">
+                    What do you think about this app?
+                  </label>
+                  <textarea
+                    id="feedback"
+                    name="feedback"
+                    placeholder="Share your thoughts, suggestions, or any issues you've encountered..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    rows={4}
+                    required
+                  />
+                </div>
+                
+                <div className="text-center">
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 text-white rounded py-2 hover:bg-blue-700 transition-colors"
+                  >
+                    Submit Feedback
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

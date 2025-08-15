@@ -9,6 +9,8 @@ import { useShapes } from '../ShapesContext'
 import html2canvas from 'html2canvas'
 import Header from './Header'
 
+
+
 // Debug flag to control console logging
 const DEBUG = false;
 
@@ -117,10 +119,14 @@ const Canvas: React.FC<CanvasProps> = () => {
   const aiModeRef = useRef(aiMode);
   aiModeRef.current = aiMode;
 
+
+
   // Debug effect to log when aiMode changes
   useEffect(() => {
     console.log('🎯 AI Mode changed to:', aiMode);
   }, [aiMode]);
+
+
 
   // Debug effect to log when shapes change
   useEffect(() => {
@@ -1880,8 +1886,8 @@ const Canvas: React.FC<CanvasProps> = () => {
       
       {/* AI Control Panel - Top Left */}
       <div className="absolute top-4 left-4 z-50 flex flex-col space-y-2">
-        {/* Unified AI Control Block */}
-        <div className="bg-white rounded-lg shadow-md p-1 border border-gray-200">
+            {/* Unified AI Control Block */}
+            <div className="bg-white rounded-lg shadow-md p-1 border border-gray-200">
           {/* AI Mode Toggle */}
           <div className="flex items-center mb-1">
             <span className="text-xs mr-2 px-2 text-gray-600 font-medium">AI:</span>

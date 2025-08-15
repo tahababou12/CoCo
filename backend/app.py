@@ -12,6 +12,8 @@ from PIL import Image
 import platform
 import subprocess
 import time
+import json
+import uuid
 
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
@@ -1362,6 +1364,82 @@ def get_gesture_verification_status():
     except Exception as e:
         return jsonify({
             "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    """Submit user feedback"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'feedback' not in data:
+            return jsonify({"error": "Feedback text is required"}), 400
+        
+        feedback_text = data['feedback'].strip()
+        if not feedback_text:
+            return jsonify({"error": "Feedback text cannot be empty"}), 400
+        
+        # Create feedback entry
+        feedback_entry = {
+            "feedback": feedback_text,
+            "timestamp": data.get('timestamp', datetime.now().isoformat()),
+            "id": str(uuid.uuid4())
+        }
+        
+        # Save to feedback file
+        feedback_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feedback_submissions.json")
+        
+        # Load existing feedback or create new list
+        if os.path.exists(feedback_file):
+            try:
+                with open(feedback_file, 'r') as f:
+                    feedback_list = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                feedback_list = []
+        else:
+            feedback_list = []
+        
+        # Add new feedback
+        feedback_list.append(feedback_entry)
+        
+        # Save back to file
+        with open(feedback_file, 'w') as f:
+            json.dump(feedback_list, f, indent=2)
+        
+        print(f"✅ Feedback submitted: {feedback_text[:50]}...")
+        
+        return jsonify({
+            "success": True,
+            "message": "Feedback submitted successfully",
+            "id": feedback_entry["id"]
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error submitting feedback: {str(e)}")
+        return jsonify({
+            "error": "Failed to submit feedback",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/feedback', methods=['GET'])
+def get_feedback():
+    """Get all feedback submissions (for admin purposes)"""
+    try:
+        feedback_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feedback_submissions.json")
+        
+        if not os.path.exists(feedback_file):
+            return jsonify([]), 200
+        
+        with open(feedback_file, 'r') as f:
+            feedback_list = json.load(f)
+        
+        return jsonify(feedback_list), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting feedback: {str(e)}")
+        return jsonify({
+            "error": "Failed to get feedback",
             "message": str(e)
         }), 500
 
