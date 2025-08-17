@@ -61,7 +61,7 @@ echo -e "${BLUE}📡 Starting servers...${NC}"
 echo -e "${GREEN}🎯 Starting AI Server with Personality Switching on port 9083...${NC}"
 cd backend
 source venv/bin/activate
-python multimodal_server.py > "../logs/AI Server.log" 2>&1 &
+python multimodal_server_gemini_live_refactored.py > "../logs/AI Server.log" 2>&1 &
 AI_PID=$!
 cd ..
 

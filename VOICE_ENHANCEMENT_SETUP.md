@@ -49,7 +49,7 @@ python app.py
 
 # Terminal 2: Start multimodal server
 cd backend
-python multimodal_server.py
+python multimodal_server_gemini_live_refactored.py
 
 # Terminal 3: Start frontend
 npm run dev
@@ -111,7 +111,7 @@ To stop individual servers:
 pkill -f "python.*app.py"
 
 # Stop multimodal server
-pkill -f "python.*multimodal_server.py"
+pkill -f "python.*multimodal_server_gemini_live_refactored.py"
 
 # Stop frontend
 pkill -f "npm.*dev"
@@ -141,7 +141,7 @@ Here are some phrases that will trigger enhancement:
 ### Check Server Status
 ```bash
 # Check if servers are running
-ps aux | grep -E "(app.py|multimodal_server.py|npm.*dev)"
+ps aux | grep -E "(app.py|multimodal_server_gemini_live_refactored.py|npm.*dev)"
 
 # Check ports in use
 lsof -i :5000  # Flask backend

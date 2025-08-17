@@ -51,7 +51,7 @@ kill_port 9083 "AI Server with Personality Switching" $GREEN
 kill_process "npm.*dev" "Frontend Dev Server" $CYAN
 kill_process "python.*app.py" "Flask API Server" $BLUE
 kill_process "node.*websocket-server.js" "WebSocket Server" $YELLOW
-kill_process "python.*multimodal_server.py" "AI Server with Personality Switching" $GREEN
+kill_process "python.*multimodal_server_gemini_live_refactored.py" "AI Server with Gemini Live & LangChain" $GREEN
 
 # Clean up PID files
 echo -e "${BLUE}🧹 Cleaning up PID files...${NC}"

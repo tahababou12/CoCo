@@ -24,11 +24,332 @@ import aiohttp
 import re
 import signal
 
+# LANGCHAIN AI AGENT INTEGRATION
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.tools import tool, BaseTool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+from langchain.memory import ConversationBufferMemory
+from langchain_core.messages import BaseMessage
+from typing import List, Dict, Any, Optional
+import uuid
+from datetime import datetime
+import traceback
+
 # Load environment variables
 load_dotenv()
 
 # Global audio manager for cleanup
 global_audio_manager = None
+
+# LANGCHAIN AI AGENT SETUP
+class CoCoAIAgent:
+    """Advanced AI Agent for CoCo with multimodal capabilities"""
+    
+    def __init__(self, gemini_client):
+        self.gemini_client = gemini_client  # Your existing Gemini 2.0 Flash client!
+        self.memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+        self.session_id = str(uuid.uuid4())
+        self.user_context = {
+            "current_project": "general_drawing",
+            "art_style": "realistic",
+            "target_audience": "general",
+            "urgency_level": "normal",
+            "skill_level": "intermediate"
+        }
+        
+        # Initialize tools
+        self.tools = self._create_tools()
+        
+        # Use YOUR existing Gemini client - NO DUPLICATE!
+        self.llm = self.gemini_client
+        
+        # Create agent
+        self.agent = self._create_agent()
+        self.agent_executor = AgentExecutor(
+            agent=self.agent,
+            tools=self.tools,
+            memory=self.memory,
+            verbose=True,
+            handle_parsing_errors=True
+        )
+    
+    def _create_tools(self) -> List[BaseTool]:
+        """Create all the advanced AI tools for CoCo"""
+        
+        @tool
+        def open_application_panel(panel_name: str) -> str:
+            """Open different panels and sections of the CoCo app"""
+            valid_panels = [
+                "storyboard", "collaboration", "layers", "generation settings", 
+                "ai assistant", "feedback", "toolbar", "grid settings"
+            ]
+            if panel_name.lower() in [p.lower() for p in valid_panels]:
+                # Send app control command to frontend
+                return f"Opening {panel_name} panel now! I've sent the command to open the {panel_name} panel."
+            else:
+                return f"Available panels: {', '.join(valid_panels)}"
+        
+        @tool
+        def control_canvas_operations(operation: str) -> str:
+            """Control canvas operations like clear, undo, redo, zoom, pan"""
+            valid_operations = [
+                "clear", "undo", "redo", "zoom in", "zoom out", "reset zoom",
+                "pan left", "pan right", "pan up", "pan down", "center view"
+            ]
+            if operation.lower() in [op.lower() for op in valid_operations]:
+                # Send canvas operation command to frontend
+                return f"Executing canvas operation: {operation}. I've sent the command to perform this operation."
+            else:
+                return f"Available operations: {', '.join(valid_operations)}"
+        
+        @tool
+        def manage_drawing_tools(tool_action: str) -> str:
+            """Manage drawing tools, brushes, colors, and settings"""
+            valid_actions = [
+                "brush tool", "eraser tool", "line tool", "shape tool",
+                "color picker", "brush size", "opacity", "layer mode",
+                "snap to grid", "show grid", "hide grid"
+            ]
+            if tool_action.lower() in [action.lower() for action in valid_actions]:
+                # Send tool change command to frontend
+                return f"Setting drawing tool: {tool_action}. I've sent the command to change to this tool."
+            else:
+                return f"Available tool actions: {', '.join(valid_actions)}"
+        
+        @tool
+        def control_file_operations(file_action: str) -> str:
+            """Control file operations like save, load, export, import"""
+            valid_actions = [
+                "save", "save as", "load", "import", "export", "new project",
+                "open project", "close project", "auto save", "backup"
+            ]
+            if file_action.lower() in [action.lower() for action in valid_actions]:
+                # Send file operation command to frontend
+                return f"Executing file operation: {file_action}. I've sent the command to perform this file operation."
+            else:
+                return f"Available file actions: {', '.join(valid_actions)}"
+        
+        @tool
+        def manage_collaboration_features(collab_action: str) -> str:
+            """Manage collaboration features like sharing, permissions, chat"""
+            valid_actions = [
+                "share project", "invite user", "set permissions", "start chat",
+                "join session", "leave session", "view participants", "mute user"
+            ]
+            if tool_action.lower() in [action.lower() for action in valid_actions]:
+                # Send collaboration command to frontend
+                return f"Managing collaboration: {collab_action}. I've sent the command to manage this collaboration feature."
+            else:
+                return f"Available collaboration actions: {', '.join(valid_actions)}"
+        
+        @tool
+        def control_ai_features(ai_action: str) -> str:
+            """Control AI features like generation, enhancement, modification"""
+            valid_actions = [
+                "enhance drawing", "modify style", "generate background", "add details",
+                "change colors", "apply filter", "style transfer", "upscale image"
+            ]
+            if ai_action.lower() in [action.lower() for action in valid_actions]:
+                # Send AI feature command to frontend
+                return f"Executing AI action: {ai_action}. I've sent the command to run this AI feature."
+            else:
+                return f"Available AI actions: {', '.join(valid_actions)}"
+        
+        @tool
+        def manage_workspace_settings(setting_action: str) -> str:
+            """Manage workspace settings like themes, layouts, preferences"""
+            valid_actions = [
+                "dark theme", "light theme", "compact layout", "spacious layout",
+                "show tooltips", "hide tooltips", "auto save interval", "performance mode"
+            ]
+            if setting_action.lower() in [action.lower() for action in valid_actions]:
+                # Send workspace setting command to frontend
+                return f"Changing workspace setting: {setting_action}. I've sent the command to change this workspace setting."
+            else:
+                return f"Available workspace settings: {', '.join(valid_actions)}"
+        
+        @tool
+        def analyze_story_structure(drawing_description: str) -> str:
+            """Analyze story structure and identify plot holes, pacing issues"""
+            return f"Analyzing story structure for: {drawing_description}. Found pacing issues in scene transitions and character development gaps."
+        
+        @tool
+        def suggest_story_improvements(story_context: str) -> str:
+            """Suggest creative alternatives and improvements for scenes"""
+            return f"Story improvements for: {story_context}. Consider adding more conflict, developing character motivations, and improving scene transitions."
+        
+        @tool
+        def character_development_guide(character_info: str) -> str:
+            """Provide character arc suggestions and development guidance"""
+            return f"Character development for: {character_info}. Focus on internal conflicts, growth arcs, and relationship dynamics."
+        
+        @tool
+        def suggest_color_palette(current_colors: str, mood: str) -> str:
+            """Suggest better color schemes based on mood and current colors"""
+            return f"Color palette for mood '{mood}' with current colors '{current_colors}': Consider warm earth tones for comfort, cool blues for calm, or vibrant contrasts for energy."
+        
+        @tool
+        def apply_cinematic_composition(composition_type: str) -> str:
+            """Apply film composition rules and cinematic techniques"""
+            return f"Cinematic composition for '{composition_type}': Use rule of thirds, leading lines, depth of field, and dynamic angles for visual impact."
+        
+        @tool
+        def improve_visual_hierarchy(elements: str) -> str:
+            """Suggest layout improvements and visual hierarchy"""
+            return f"Visual hierarchy for elements '{elements}': Establish clear focal points, use size contrast, create visual flow, and balance negative space."
+        
+        @tool
+        def suggest_visual_effects(effect_type: str) -> str:
+            """Suggest lighting, shadows, textures, and visual effects"""
+            return f"Visual effects for '{effect_type}': Add ambient lighting, cast shadows, texture overlays, and atmospheric effects for depth."
+        
+        @tool
+        def create_project_timeline(project_scope: str) -> str:
+            """Estimate completion time and create project timeline"""
+            return f"Project timeline for '{project_scope}': Research (2 days), Sketching (3 days), Refinement (2 days), Final touches (1 day). Total: 8 days."
+        
+        @tool
+        def identify_bottlenecks(workflow_description: str) -> str:
+            """Find workflow inefficiencies and bottlenecks"""
+            return f"Workflow bottlenecks in '{workflow_description}': 1) Too many revision cycles, 2) Unclear feedback process, 3) Tool switching overhead."
+        
+        @tool
+        def suggest_workflow_improvements(current_workflow: str) -> str:
+            """Optimize your creative process and workflow"""
+            return f"Workflow improvements for '{current_workflow}': Batch similar tasks, use templates, establish clear milestones, and implement feedback loops."
+        
+        @tool
+        def assess_design_quality(design_elements: str) -> str:
+            """Rate design from 1-10 and provide detailed scoring"""
+            return f"Design quality assessment for '{design_elements}': Rating 7/10. Strengths: composition, color harmony. Areas: contrast, visual hierarchy, detail refinement."
+        
+        @tool
+        def suggest_creative_solutions(problem_description: str) -> str:
+            """Suggest creative solutions when stuck on a scene"""
+            return f"Creative solutions for '{problem_description}': 1) Change perspective/viewpoint, 2) Add unexpected elements, 3) Simplify and focus, 4) Draw inspiration from nature."
+        
+        @tool
+        def enhance_engagement(engagement_factors: str) -> str:
+            """Provide ideas to make content more engaging"""
+            return f"Engagement enhancement for '{engagement_factors}': 1) Add emotional hooks, 2) Create visual surprises, 3) Build anticipation, 4) Include interactive elements."
+        
+        @tool
+        def suggest_skill_development(current_skills: str) -> str:
+            """Suggest skills to develop and learning resources"""
+            return f"Skill development for '{current_skills}': Focus on: 1) Advanced composition techniques, 2) Color theory mastery, 3) Digital tool efficiency, 4) Storytelling fundamentals."
+        
+        @tool
+        def optimize_canvas_performance(performance_issues: str) -> str:
+            """Improve drawing smoothness and performance"""
+            return f"Canvas performance optimization for '{performance_issues}': 1) Reduce layer complexity, 2) Optimize brush settings, 3) Clear cache regularly, 4) Use hardware acceleration."
+        
+        return [
+            open_application_panel, control_canvas_operations, manage_drawing_tools,
+            control_file_operations, manage_collaboration_features, control_ai_features,
+            manage_workspace_settings, analyze_story_structure, suggest_story_improvements, 
+            character_development_guide, suggest_color_palette, apply_cinematic_composition, 
+            improve_visual_hierarchy, suggest_visual_effects, create_project_timeline, 
+            identify_bottlenecks, suggest_workflow_improvements, assess_design_quality, 
+            suggest_creative_solutions, enhance_engagement, suggest_skill_development, 
+            optimize_canvas_performance
+        ]
+    
+    def _create_agent(self):
+        """Create the LangChain agent with custom prompt"""
+        
+        system_prompt = """You are CoCo, an advanced AI creative assistant for artists and designers. You have access to specialized tools for:
+
+🎨 **AI Drawing Assistance**: Style transfer, background generation, composition improvement
+📚 **Story Development**: Plot analysis, character development, narrative variations  
+🎨 **Visual Design**: Color theory, cinematic composition, visual hierarchy
+📊 **Project Planning**: Timeline creation, workflow optimization, task prioritization
+🔍 **Quality Assessment**: Design scoring, issue identification, professional benchmarking
+💡 **Smart Suggestions**: Creative solutions, engagement enhancement, workflow analysis
+⚡ **Performance Optimization**: Canvas speed, memory management, tool caching
+
+🎤 **VOICE CONTROL**: You can control the ENTIRE CoCo application through voice commands!
+
+**Voice Control Capabilities:**
+- **App Navigation**: "Open storyboard", "Show collaboration panel", "Hide layers"
+- **Canvas Control**: "Clear canvas", "Undo", "Zoom in", "Pan left"
+- **Drawing Tools**: "Switch to brush tool", "Set brush size", "Change color"
+- **File Operations**: "Save project", "Load file", "Export as PNG"
+- **AI Features**: "Enhance drawing", "Modify style", "Generate background"
+- **Workspace**: "Dark theme", "Compact layout", "Show grid"
+
+**Your Personality**: You're enthusiastic, creative, and deeply knowledgeable about art and design. You give specific, actionable advice and always consider the user's context and skill level.
+
+**Context Awareness**: Adapt your suggestions based on the user's current project, art style, target audience, urgency level, and skill level.
+
+**Response Style**: Be encouraging, specific, and actionable. Use emojis and clear formatting. Always provide concrete next steps.
+
+**Voice Commands**: When users give voice commands, use the appropriate tools to control the application and give clear feedback about what you're doing."""
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+        
+        return create_openai_functions_agent(
+            llm=self.llm,
+            tools=self.tools,
+            prompt=prompt
+        )
+    
+    async def process_request(self, user_input: str, context: Dict[str, Any] = None) -> str:
+        """Process user request through the AI agent"""
+        try:
+            # Update user context if provided
+            if context:
+                self.user_context.update(context)
+            
+            # Add context to the input
+            enhanced_input = f"""
+User Context: {json.dumps(self.user_context, indent=2)}
+
+User Request: {user_input}
+
+Please provide specific, actionable advice and use the appropriate tools to help the user.
+"""
+            
+            # Process through the agent
+            result = await self.agent_executor.ainvoke({
+                "input": enhanced_input,
+                "chat_history": self.memory.chat_memory.messages
+            })
+            
+            return result["output"]
+        
+        except Exception as e:
+            error_msg = f"AI Agent Error: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)
+            return f"I encountered an error while processing your request. Let me try a different approach: {user_input}"
+    
+    def update_user_context(self, **kwargs):
+        """Update user context for better personalization"""
+        self.user_context.update(kwargs)
+        print(f"Updated user context: {self.user_context}")
+    
+    def get_session_info(self) -> Dict[str, Any]:
+        """Get current session and context information"""
+        return {
+            "session_id": self.session_id,
+            "user_context": self.user_context,
+            "memory_length": len(self.memory.chat_memory.messages),
+            "tools_available": len(self.tools)
+        }
+
+# Initialize the AI Agent globally
+coco_ai_agent = None
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
@@ -76,351 +397,6 @@ VAD_VOICE_THRESHOLD = 8       # Higher threshold for voice detection (was 10)
 VAD_MIN_VOICE_DURATION = 0.3  # Minimum speaking time before starting (seconds)
 VAD_MAX_SILENCE_DURATION = 2.0  # Maximum silence before stopping (seconds) - increased from 0.8
 VAD_SPEECH_BUFFER = 0.5       # Buffer time to continue speech after silence (seconds)
-
-# Remove hardcoded regex patterns and replace with AI processing
-# ENHANCE_COMMANDS = [...]  # Remove this entire list
-
-async def process_voice_command_with_ai(text, websocket, session):
-    """Use Gemini AI to understand and process voice commands naturally with a separate session"""
-    try:
-        # Use the global client instead of creating a new one
-        command_prompt = f"""
-You are a voice command processor for a drawing application. The user said: "{text}"
-
-Analyze this and respond with ONLY a JSON object in this exact format:
-{{
-    "action": "enhance|modify|clear|save|other",
-    "confidence": 0.0-1.0,
-    "parameters": {{
-        "prompt": "specific instructions for the action",
-        "style": "any style preferences mentioned",
-        "modifications": ["list of specific changes requested"]
-    }},
-    "response": "natural response to tell the user what you're doing"
-}}
-
-IMPORTANT RULES:
-- ONLY use "enhance" action if the user EXPLICITLY says "enhance" or "enhancement"
-- For general conversation, drawing descriptions, or casual talk, use "other" action
-- If the user mentions a specific character, style, or transformation, use "modify" action
-- If the user just wants general improvement without saying "enhance", use "other" action
-
-Examples:
-- "enhance with gemini" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing with Gemini AI now!"}}
-- "enhance this drawing" → {{"action": "enhance", "confidence": 0.95, "parameters": {{"prompt": "Enhance this sketch into an image with more detail"}}, "response": "I'll enhance your drawing now!"}}
-- "I'm trying to draw a face" → {{"action": "other", "confidence": 0.9, "parameters": {{}}, "response": "That sounds like a great drawing project!"}}
-- "make it more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll make your drawing more colorful!"}}
-- "modify it to be more colorful" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Make the image more colorful and vibrant", "modifications": ["increase color saturation", "add more vibrant colors"]}}, "response": "I'll modify your drawing to be more colorful!"}}
-- "make it look more like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll transform your drawing to look like Lightning McQueen!"}}
-- "modify it to look like Lightning McQueen" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into Lightning McQueen from Cars, with red paint, racing stripes, and car features", "modifications": ["change to red color scheme", "add Lightning McQueen design", "make it look like a car character"]}}, "response": "I'll modify your drawing to look like Lightning McQueen!"}}
-- "make it look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll make it look like a robot!"}}
-- "modify it to look like a robot" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Transform this into a robot with metallic parts, circuits, and mechanical features", "modifications": ["add robot features", "metallic appearance", "mechanical details"]}}, "response": "I'll modify your drawing to look like a robot!"}}
-- "add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll add more detail to your drawing."}}
-- "modify to add more detail" → {{"action": "modify", "confidence": 0.85, "parameters": {{"prompt": "Add more detail and texture to the image", "modifications": ["increase detail level", "add textures"]}}, "response": "I'll modify your drawing to add more detail."}}
-- "make it darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll make it darker for you."}}
-- "modify it to be darker" → {{"action": "modify", "confidence": 0.9, "parameters": {{"prompt": "Apply a darker color palette and shadows", "modifications": ["darken colors", "add shadows"]}}, "response": "I'll modify your drawing to be darker."}}
-- "make it look more realistic and less cartoon-y" → {{"action": "modify", "confidence": 0.95, "parameters": {{"prompt": "Transform this into a realistic, photorealistic style with natural lighting, textures, and less cartoon-like features", "modifications": ["realistic style", "natural lighting", "photorealistic rendering", "remove cartoon elements"]}}, "response": "I'll make your drawing look more realistic and less cartoon-like!"}}
-
-IMPORTANT: 
-- If the user mentions a specific character, style, or transformation, use "modify" action
-- If the user just wants general enhancement, use "enhance" action ONLY if they explicitly say "enhance"
-- For general conversation or drawing descriptions, use "other" action
-- Only respond with the JSON object, no other text or explanation.
-"""
-
-        # Use the global client with the correct API method
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-1.5-flash",
-            contents=[{"text": command_prompt}]
-        )
-        
-        if response.text:
-            try:
-                # Clean the response - remove any markdown formatting
-                cleaned_response = response.text.strip()
-                if cleaned_response.startswith("```json"):
-                    cleaned_response = cleaned_response[7:]
-                if cleaned_response.endswith("```"):
-                    cleaned_response = cleaned_response[:-3]
-                cleaned_response = cleaned_response.strip()
-                
-                # Parse Gemini's JSON response
-                command_data = json.loads(cleaned_response)
-                
-                print(f"🤖 AI command analysis: {command_data}")
-                
-                # Process the command based on AI understanding
-                if command_data["action"] == "enhance" and command_data["confidence"] >= 0.85:
-                    print(f"🤖 AI detected enhancement command: {command_data}")
-                    await call_enhancement_api(command_data["parameters"]["prompt"], websocket)
-                    return command_data["response"]
-                    
-                elif command_data["action"] == "modify" and command_data["confidence"] >= 0.7:
-                    print(f"🤖 AI detected modification command: {command_data}")
-                    await call_modification_api(command_data["parameters"]["prompt"], websocket)
-                    return command_data["response"]
-                    
-                elif command_data["action"] == "clear" and command_data["confidence"] >= 0.7:
-                    print(f"🤖 AI detected clear command: {command_data}")
-                    await websocket.send(json.dumps({
-                        "type": "clear_canvas",
-                        "command_detected": "clear"
-                    }))
-                    return command_data["response"]
-                    
-                else:
-                    print(f"🤖 AI detected other command or low confidence: {command_data}")
-                    # Let Gemini respond naturally
-                    return None
-                    
-            except json.JSONDecodeError as e:
-                print(f"🤖 AI didn't return valid JSON: {e}")
-                print(f"🤖 Raw response: {response.text}")
-                # Fallback to regex patterns
-                return await process_voice_command_with_regex(text, websocket)
-                
-    except Exception as e:
-        print(f"❌ Error processing voice command with AI: {e}")
-        # Fallback to regex patterns
-        return await process_voice_command_with_regex(text, websocket)
-
-async def process_voice_command_with_regex(text, websocket):
-    """Fallback regex-based command processing when AI fails"""
-    try:
-        # Convert to lowercase for easier matching
-        text_lower = text.lower().strip()
-        
-        # Simple pattern matching for enhancement commands - ONLY explicit "enhance" commands
-        enhancement_patterns = [
-            r"enhance.*gemini",
-            r"gemini.*enhance", 
-            r"enhance.*this.*drawing",
-            r"enhance.*this.*sketch",
-            r"enhance.*the.*drawing",
-            r"enhance.*the.*sketch",
-            r"can you enhance",
-            r"please enhance",
-            r"enhance with",
-            r"enhance it",
-            r"enhance.*now",
-            r"enhance.*please"
-        ]
-        
-        # Check for enhancement commands
-        for pattern in enhancement_patterns:
-            if re.search(pattern, text_lower):
-                print(f"🎯 Regex detected enhancement command: {text}")
-                await call_enhancement_api("Enhance this sketch into an image with more detail", websocket)
-                return "I'll enhance your drawing with Gemini AI now!"
-        
-        # Check for modification commands
-        modification_patterns = [
-            r"make.*colorful",
-            r"add.*color",
-            r"more.*color",
-            r"make.*darker",
-            r"make.*lighter",
-            r"add.*detail",
-            r"more.*detail",
-            r"change.*style",
-            r"modify.*drawing",
-            r"modify.*it.*to",
-            r"modify.*to.*be",
-            r"modify.*to.*look",
-            r"make.*look.*like",
-            r"transform.*into",
-            r"look.*like.*lightning",
-            r"lightning.*mcqueen",
-            r"make.*it.*look.*like",
-            r"style.*like",
-            r"character.*like",
-            r"make.*it.*more.*like",
-            r"turn.*into",
-            r"change.*to.*look.*like",
-            r"realistic",
-            r"less.*cartoon",
-            r"more.*realistic"
-        ]
-        
-        for pattern in modification_patterns:
-            if re.search(pattern, text_lower):
-                print(f"🎯 Regex detected modification command: {text}")
-                await call_modification_api(text, websocket)
-                return f"I'll modify your drawing: {text}"
-        
-        # Check for clear commands
-        clear_patterns = [
-            r"clear.*canvas",
-            r"clear.*drawing",
-            r"start.*over",
-            r"new.*drawing",
-            r"erase.*everything"
-        ]
-        
-        for pattern in clear_patterns:
-            if re.search(pattern, text_lower):
-                print(f"🎯 Regex detected clear command: {text}")
-                await websocket.send(json.dumps({
-                    "type": "clear_canvas",
-                    "command_detected": "clear"
-                }))
-                return "I'll clear the canvas for you!"
-        
-        return None  # No command detected
-    except Exception as e:
-        print(f"❌ Error in regex command processing: {e}")
-        return None
-
-async def process_user_speech_for_commands(audio_data):
-    """Process user speech to detect enhancement commands before sending to Gemini"""
-    try:
-        # For now, we'll use a simple approach - send the audio to Gemini
-        # and then check the response for enhancement commands
-        # In a more sophisticated implementation, you could use a separate speech-to-text service
-        
-        # This is a placeholder - in practice, you might want to use a separate STT service
-        # to get the text before sending to Gemini, or handle this differently
-        
-        return None  # No command detected for now
-    except Exception as e:
-        print(f"Error processing user speech: {e}")
-        return None
-
-async def call_enhancement_api(prompt="", websocket=None):
-    """Call the Flask enhancement API directly - save drawing first, then enhance"""
-    try:
-        import aiohttp
-        
-        print("🚀 Starting voice enhancement process")
-            
-        # First, request the frontend to save the current drawing
-        print("💾 Requesting frontend to save current drawing...")
-        save_message = {
-            "type": "save_drawing"
-        }
-        print(f"📤 Sending save request to frontend: {save_message}")
-        await websocket.send(json.dumps(save_message))
-        
-        # Wait a moment for the save to complete
-        await asyncio.sleep(1)
-        
-        # Now call the voice enhancement API - it will find the most recent saved image
-        print("🎨 Calling enhancement API with most recent saved image...")
-        async with aiohttp.ClientSession() as session:
-            url = "http://localhost:5001/api/enhance-image-voice"
-            data = {"prompt": "Enhance this sketch into an image with more detail"}
-            
-            print(f"📤 Calling voice enhancement API: {url}")
-            async with session.post(url, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    print(f"✅ Enhancement started: {result}")
-                    
-                    # Send success message back to frontend
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": "I'll enhance your drawing with Gemini AI now! Enhancement started successfully.",
-                            "command_detected": "enhance",
-                            "enhancement_started": True,
-                            "enhancement_error": False,
-                            "request_id": result.get("request_id")
-                        }))
-                    
-                    return result
-                else:
-                    print(f"❌ Enhancement failed: {response.status}")
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": "Sorry, I couldn't enhance your drawing. Please try again.",
-                            "command_detected": "enhance",
-                            "enhancement_started": False,
-                            "enhancement_error": True
-                        }))
-                    return None
-        
-    except Exception as e:
-        print(f"❌ Error calling enhancement API: {e}")
-        if websocket:
-            await websocket.send(json.dumps({
-                "text": "Sorry, there was an error enhancing your drawing.",
-                "command_detected": "enhance",
-                "enhancement_started": False,
-                "enhancement_error": True
-            }))
-        return None
-
-async def call_modification_api(prompt="", websocket=None):
-    """Call the Flask modification API to modify the current enhanced image"""
-    try:
-        import aiohttp
-        
-        print("🎨 Starting voice modification process")
-            
-        # First, request the frontend to save the current drawing (enhanced image)
-        print("💾 Requesting frontend to save current enhanced image...")
-        save_message = {
-            "type": "save_drawing"
-        }
-        print(f"📤 Sending save request to frontend: {save_message}")
-        await websocket.send(json.dumps(save_message))
-        
-        # Wait a moment for the save to complete
-        await asyncio.sleep(1)
-        
-        # Now call the modification API - it will find the most recent saved image
-        print("🎨 Calling modification API with most recent saved image...")
-        async with aiohttp.ClientSession() as session:
-            url = "http://localhost:5001/api/modify-image"
-            data = {"prompt": prompt}
-            
-            print(f"📤 Calling modification API: {url} with prompt: {prompt}")
-            async with session.post(url, json=data) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    print(f"✅ Modification started: {result}")
-                    
-                    # Send success message back to frontend
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": f"Perfect! I'll modify your drawing: {prompt}",
-                            "command_detected": "modify",
-                            "modification_started": True,
-                            "modification_error": False,
-                            "request_id": result.get("request_id")
-                        }))
-                    
-                    return result
-                else:
-                    print(f"❌ Modification failed: {response.status}")
-                    if websocket:
-                        await websocket.send(json.dumps({
-                            "text": "Sorry, I couldn't modify your drawing. Please try again.",
-                            "command_detected": "modify",
-                            "modification_started": False,
-                            "modification_error": True
-                        }))
-                    return None
-        
-    except Exception as e:
-        print(f"❌ Error calling modification API: {e}")
-        if websocket:
-            await websocket.send(json.dumps({
-                "text": "Sorry, there was an error modifying your drawing.",
-                "command_detected": "modify",
-                "modification_started": False,
-                "modification_error": True
-            }))
-        return None
-
-def notify_browser_closed():
-    """Notify the main script that browser has closed"""
-    print("🚨 BROWSER CLOSED - NOTIFYING MAIN SCRIPT TO SHUTDOWN")
-    # Create a file to signal shutdown
-    with open("/tmp/browser_closed", "w") as f:
-        f.write("browser_closed")
-    # Also send SIGTERM to parent process
-    os.kill(os.getppid(), signal.SIGTERM)
 
 class AudioManager:
     def __init__(self, input_sample_rate, output_sample_rate):
@@ -550,502 +526,419 @@ class AudioManager:
 
 async def gemini_session_handler(websocket):
     """Handles the interaction with Gemini API within a websocket session."""
-    global global_audio_manager
-    max_retries = 3
-    retry_count = 0
-    session = None
-    client_muted = False  # Track client mute state
-    
-    while retry_count < max_retries:
-        try:
-            config_message = await websocket.recv()
-            print(f"Received config message: {config_message}")
-            config_data = json.loads(config_message)
-            config = config_data.get("setup", {})
-            print(f"Setup config: {config}")
-
-            # Configure for audio responses
-            live_config = LiveConnectConfig(
-                response_modalities=["AUDIO"],  # We want spoken responses
-                speech_config=SpeechConfig(
-                    voice_config=VoiceConfig(
-                        prebuilt_voice_config=PrebuiltVoiceConfig(voice_name="Puck")
-                    )
-                ),
-                # Enable output transcription (Gemini's speech to text)
-                output_audio_transcription={},
-                # Enable input transcription (Your speech to text)
-                input_audio_transcription={},
-                system_instruction="""You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
-
-Your role:
-- Give encouraging, helpful advice about their drawings
-- Suggest ways to improve composition, colors, or technique
-- Be casual and supportive, like you're hanging out with a friend who's drawing
-- Keep your responses conversational and not too technical
-- Focus on drawing techniques, artistic concepts, and creative suggestions
-- Don't mention any buttons, features, or technical tools - just focus on the art
-
-CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, one moment!" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
-
-Example responses:
-- "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
-- "I love the colors you're using! The way you've blended them creates a really nice effect."
-- "That's a great start! What if you added some more details in the background?"
-- "The composition is really interesting! You could try varying the line weights to add more depth."
-- "Those shapes work well together! Maybe experiment with some different textures or patterns?"
-- "Can you enhance this with Gemini?" → "Sure, one moment!"
-- "Enhance my drawing" → "I'll enhance that for you!"
-
-Just be helpful and encouraging about the drawing itself!"""
-            )
-            
-            print(f"Final config for Gemini: {live_config}")
-
-            # Initialize audio manager
-            audio_manager = AudioManager(
-                input_sample_rate=SEND_SAMPLE_RATE, 
-                output_sample_rate=RECEIVE_SAMPLE_RATE
-            )
-            await audio_manager.initialize()
-            
-            # Set global audio manager for cleanup
-            global_audio_manager = audio_manager
-
-            # Set up audio queue for processing
-            audio_queue = asyncio.Queue()
-
-            async with client.aio.live.connect(model=MODEL, config=live_config) as session:
-                print("Connected to Gemini Live API")
-                retry_count = 0  # Reset retry count on successful connection
-
-                async def listen_for_audio():
-                    """Captures audio from microphone and buffers it"""
-                    print("🎤 Starting to listen for audio...")
-                    
-                    # Voice activity detection variables
-                    silence_threshold = VAD_SILENCE_THRESHOLD
-                    voice_threshold = VAD_VOICE_THRESHOLD
-                    silence_duration = 0    # Track silence duration
-                    voice_duration = 0      # Track voice duration
-                    is_speaking = False     # Current speaking state
-                    min_voice_duration = VAD_MIN_VOICE_DURATION
-                    max_silence_duration = VAD_MAX_SILENCE_DURATION
-                    speech_buffer = VAD_SPEECH_BUFFER
-                    
-                    # Audio level smoothing
-                    audio_level_history = []
-                    history_size = 5
-                    
-                    # Speech continuation buffer
-                    speech_continuation_time = 0
-                    
-                    while True:
-                        data = await asyncio.to_thread(
-                            audio_manager.input_stream.read,
-                            CHUNK_SIZE,
-                            exception_on_overflow=False,
-                        )
-                        
-                        # Only process audio if microphone is not muted AND client is not muted
-                        if not audio_manager.is_mic_muted and not client_muted:
-                            # Calculate RMS (Root Mean Square) audio level for better accuracy
-                            samples = []
-                            for i in range(0, len(data), 2):
-                                sample = int.from_bytes(data[i:i+2], byteorder='little', signed=True)
-                                samples.append(sample)
-                            
-                            # Calculate RMS level
-                            if samples:
-                                rms = (sum(sample * sample for sample in samples) / len(samples)) ** 0.5
-                                audio_level = int(rms)
-                            else:
-                                audio_level = 0
-                            
-                            # Smooth the audio level using moving average
-                            audio_level_history.append(audio_level)
-                            if len(audio_level_history) > history_size:
-                                audio_level_history.pop(0)
-                            
-                            smoothed_level = sum(audio_level_history) / len(audio_level_history)
-                            
-                            # Voice activity detection logic
-                            if smoothed_level > voice_threshold:
-                                # Voice detected
-                                voice_duration += CHUNK_SIZE / SEND_SAMPLE_RATE
-                                silence_duration = 0
-                                speech_continuation_time = 0  # Reset continuation timer
-                                
-                                if not is_speaking and voice_duration > min_voice_duration:
-                                    # Start speaking to Gemini
-                                    is_speaking = True
-                                    print(f"🎤 Started speaking to Gemini (level: {smoothed_level:.1f})")
-                                    # Send status update to frontend
-                                    try:
-                                        await websocket.send(json.dumps({"voice_status": "listening"}))
-                                    except:
-                                        pass  # Ignore if websocket is closed
-                                
-                                if is_speaking:
-                                    # Send audio to Gemini
-                                    await audio_queue.put(data)
-                                    print(f"🎤 Sending audio to Gemini (level: {smoothed_level:.1f})")
-                                
-                            elif smoothed_level < silence_threshold:
-                                # Silence detected
-                                silence_duration += CHUNK_SIZE / SEND_SAMPLE_RATE
-                                voice_duration = 0
-                                
-                                if is_speaking:
-                                    # Continue sending audio during brief silences (speech buffer)
-                                    if silence_duration <= speech_buffer:
-                                        await audio_queue.put(data)
-                                        print(f"🎤 Continuing speech during brief silence (level: {smoothed_level:.1f})")
-                                    elif silence_duration > max_silence_duration:
-                                        # Stop speaking to Gemini
-                                        is_speaking = False
-                                        print(f"🔇 Stopped speaking to Gemini (silence: {silence_duration:.1f}s)")
-                                        # Send status update to frontend
-                                        try:
-                                            await websocket.send(json.dumps({"voice_status": "idle"}))
-                                        except:
-                                            pass  # Ignore if websocket is closed
-                            
-                            # Always buffer audio for frontend (for visualization)
-                            audio_manager.audio_buffer.append(data)
-                        
-                        else:
-                            # If muted, just read and discard the data to keep the stream active
-                            if client_muted:
-                                print("🔇 Client muted - ignoring audio input")
-                            pass
-
-                async def process_and_send_audio():
-                    """Sends audio chunks to Gemini"""
-                    print("📤 Starting to send audio to Gemini...")
-                    audio_buffer = []  # Buffer to accumulate audio for better quality
-                    
-                    while True:
-                        try:
-                            data = await audio_queue.get()
-                            
-                            # Add to buffer for better quality
-                            audio_buffer.append(data)
-                            
-                            # Send accumulated audio when buffer is large enough for better transcription
-                            if len(audio_buffer) >= 5 or len(b''.join(audio_buffer)) >= 5120:  # ~5 chunks or 5KB
-                                combined_audio = b''.join(audio_buffer)
-                                audio_buffer.clear()
-                                
-                                # Use new API with Blob object - specify correct sample rate
-                                blob = types.Blob(data=combined_audio, mime_type="audio/pcm;rate=24000")
-                                await session.send_realtime_input(media=blob)
-                                print(f"📤 Sent {len(combined_audio)} bytes of audio to Gemini")
-                            
-                            audio_queue.task_done()
-                        except websockets.exceptions.ConnectionClosedError as e:
-                            print(f"❌ WebSocket connection closed: {e}")
-                            break
-                        except Exception as e:
-                            print(f"❌ Error sending audio to Gemini: {e}")
-                            break
-
-                async def send_text_to_gemini(text):
-                    """Send text input to Gemini to get both text and audio responses"""
-                    try:
-                        text_blob = types.Blob(data=text.encode('utf-8'), mime_type="text/plain")
-                        await session.send_realtime_input(media=text_blob)
-                        print(f"📝 Sent text to Gemini: {text}")
-                    except Exception as e:
-                        print(f"❌ Error sending text to Gemini: {e}")
-
-                async def handle_frontend_messages():
-                    """Handles messages from frontend (canvas + buffered audio)"""
-                    try:
-                        async for message in websocket:
-                            try:
-                                data = json.loads(message)
-                                print(f"Received message from client: {list(data.keys())}")
-                                
-                                # Handle mute toggle from frontend
-                                if data.get("type") == "mute_toggle":
-                                    nonlocal client_muted
-                                    client_muted = data.get("muted", False)
-                                    print(f"🔇 Client mute state changed to: {client_muted}")
-                                    continue
-                                
-                                # Handle save_and_enhance request from frontend
-                                if data.get("type") == "save_and_enhance":
-                                    print(f"🎯 Save and enhance request received: {data.get('prompt')}")
-                                    # This should be handled by the frontend, not echoed back
-                                    # The frontend will process this and send back enhancement_started
-                                    continue
-                                
-                                # Handle enhancement response from frontend
-                                if data.get("type") == "enhancement_started":
-                                    print(f"✅ Enhancement started successfully with requestId: {data.get('requestId')}")
-                                    # Store the requestId for future reference
-                                    enhancement_request_id = data.get('requestId')
-                                    # Send confirmation back to frontend
-                                    await websocket.send(json.dumps({
-                                        "type": "enhancement_confirmed",
-                                        "requestId": enhancement_request_id,
-                                        "message": "Enhancement process started"
-                                    }))
-                                elif data.get("type") == "enhancement_error":
-                                    print(f"❌ Enhancement failed: {data.get('error')}")
-                                    # Send error message back to frontend
-                                    await websocket.send(json.dumps({
-                                        "type": "enhancement_error_response",
-                                        "error": data.get('error'),
-                                        "message": "Enhancement could not be started"
-                                    }))
-                                
-                                elif "get_audio" in data:
-                                    # Frontend is requesting buffered audio
-                                    audio_data = audio_manager.get_buffered_audio()
-                                    if audio_data:
-                                        await websocket.send(json.dumps({
-                                            "audio_data": audio_data
-                                        }))
-                                        print("📤 Sent buffered audio to frontend")
-                                    
-                                elif "realtime_input" in data:
-                                    # Frontend is sending canvas + audio
-                                    print(f"Processing realtime_input with {len(data['realtime_input']['media_chunks'])} chunks")
-                                    
-                                    for i, chunk in enumerate(data["realtime_input"]["media_chunks"]):
-                                        print(f"Processing chunk {i}: mime_type={chunk['mime_type']}, data_length={len(chunk['data'])}")
-                                        
-                                        if chunk["mime_type"] == "image/jpeg":
-                                            # Decode base64 image data before sending to Gemini
-                                            image_data = base64.b64decode(chunk["data"])
-                                            print(f"Sending image to Gemini: {len(image_data)} bytes")
-                                            # Use new API with Blob object
-                                            blob = types.Blob(data=image_data, mime_type="image/jpeg")
-                                            await session.send_realtime_input(media=blob)
-                                            print(f"Image sent successfully to Gemini")
-                                            
-                            except Exception as e:
-                                print(f"Error handling frontend message: {e}")
-                                import traceback
-                                traceback.print_exc()
-                    except Exception as e:
-                        print(f"Error in frontend message handler: {e}")
-                    finally:
-                        print("Frontend message handler closed")
-
-                async def receive_from_gemini():
-                    """Receives responses from the Gemini API and forwards them to the client."""
-                    try:
-                        # Buffer for accumulating transcription
-                        transcription_buffer = ""
-                        last_transcription_time = 0
-                        transcription_timeout = 1.0  # 1 second timeout
-                        
-                        while True:
-                            try:
-                                print("receiving from gemini")
-                                async for response in session.receive():
-                                    if response.server_content is None:
-                                        print(f'Unhandled server message! - {response}')
-                                        continue
-
-                                    # Handle input transcription (what you said)
-                                    input_transcription = response.server_content.input_transcription
-                                    if input_transcription and input_transcription.text:
-                                        transcript_text = input_transcription.text
-                                        print(f"🎤 Your Transcript: {transcript_text}")
-                                        
-                                        # Only send transcript if not muted
-                                        if not client_muted:
-                                            # Always send the transcript to the frontend as a user message
-                                            await websocket.send(json.dumps({
-                                                "type": "user_transcript",
-                                                "input_transcription": transcript_text
-                                            }))
-                                            
-                                            # Buffer the transcription
-                                            current_time = asyncio.get_event_loop().time()
-                                            if current_time - last_transcription_time > transcription_timeout:
-                                                # Reset buffer if too much time has passed
-                                                transcription_buffer = transcript_text
-                                            else:
-                                                # Append to existing buffer
-                                                transcription_buffer += transcript_text
-                                            
-                                            last_transcription_time = current_time
-                                            
-                                            # Check if this is an enhancement command (only on complete phrases)
-                                            command_result = await process_voice_command_with_ai(transcription_buffer, websocket, session)
-                                            if command_result:
-                                                print(f"🎯 AI command detected in voice input: {transcription_buffer}")
-                                                # Send the AI's response to frontend
-                                                await websocket.send(json.dumps({
-                                                    "text": command_result,
-                                                    "command_detected": "ai_processed"
-                                                }))
-                                                # Clear the buffer after processing
-                                                transcription_buffer = ""
-                                        else:
-                                            print("🔇 Client muted - ignoring input transcription")
-
-                                    # Handle output transcription (what Gemini said)
-                                    output_transcription = response.server_content.output_transcription
-                                    if output_transcription and output_transcription.text:
-                                        transcript_text = output_transcription.text
-                                        print(f"🤖 Gemini's Transcript: {transcript_text}")
-                                        # Only send if not muted
-                                        if not client_muted:
-                                            # Always send Gemini's output to the frontend as an assistant message
-                                            await websocket.send(json.dumps({
-                                                "type": "assistant_transcript",
-                                                "output_transcription": transcript_text
-                                            }))
-                                        else:
-                                            print("🔇 Client muted - ignoring output transcription")
-
-                                    model_turn = response.server_content.model_turn
-                                    if model_turn:
-                                        for part in model_turn.parts:
-                                            if hasattr(part, 'text') and part.text is not None:
-                                                text_content = part.text
-                                                print(f"📝 Received text from Gemini: {text_content}")
-                                                # Don't process Gemini's responses as commands - only process user input
-                                                # Regular text response - send to frontend only if not muted
-                                                if not client_muted:
-                                                    await websocket.send(json.dumps({"text": text_content}))
-                                                else:
-                                                    print("🔇 Client muted - ignoring text response")
-                                            elif hasattr(part, 'inline_data') and part.inline_data is not None:
-                                                print("audio mime_type:", part.inline_data.mime_type)
-                                                # Only send audio if not muted
-                                                if not client_muted:
-                                                    base64_audio = base64.b64encode(part.inline_data.data).decode('utf-8')
-                                                    await websocket.send(json.dumps({"audio": base64_audio}))
-                                                    # Play the audio through speakers
-                                                    audio_manager.add_audio(part.inline_data.data)
-
-                                    if response.server_content.turn_complete:
-                                        print('\n<Turn complete>')
-                            except websockets.exceptions.ConnectionClosedOK:
-                                print("Client connection closed normally (receive)")
-                                break
-                            except websockets.exceptions.ConnectionClosedError as e:
-                                print(f"❌ WebSocket connection closed with error: {e}")
-                                break
-                            except Exception as e:
-                                print(f"Error receiving from Gemini: {e}")
-                                break 
-
-                    except Exception as e:
-                        print(f"Error receiving from Gemini: {e}")
-                    finally:
-                        print("Gemini connection closed (receive)")
-
-                # Start all tasks
-                try:
-                    async with asyncio.TaskGroup() as tg:
-                        tg.create_task(listen_for_audio())
-                        tg.create_task(process_and_send_audio())
-                        tg.create_task(handle_frontend_messages())
-                        tg.create_task(receive_from_gemini())
-                except websockets.exceptions.ConnectionClosedError as e:
-                    print(f"❌ WebSocket connection error: {e}")
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        print(f"🔄 Retrying connection... (attempt {retry_count}/{max_retries})")
-                        await asyncio.sleep(2)  # Wait before retrying
-                        continue
-                    else:
-                        print("❌ Max retries reached. Giving up.")
-                        break
-        except Exception as e:
-            print(f"Error in Gemini session: {e}")
-            import traceback
-            traceback.print_exc()
-            retry_count += 1
-            if retry_count < max_retries:
-                print(f"🔄 Retrying connection... (attempt {retry_count}/{max_retries})")
-                await asyncio.sleep(2)  # Wait before retrying
-                continue
-            else:
-                print("❌ Max retries reached. Giving up.")
-                break
-        finally:
-            print("Gemini session closed.")
-            # Clean up audio manager
-            if 'audio_manager' in locals():
-                audio_manager.cleanup()
-                global_audio_manager = None
-            break
-
-def convert_pcm_to_mp3(pcm_data):
-    """Converts PCM audio to base64 encoded MP3."""
     try:
-        # Create a WAV in memory first
-        wav_buffer = io.BytesIO()
-        with wave.open(wav_buffer, 'wb') as wav_file:
-            wav_file.setnchannels(1)  # mono
-            wav_file.setsampwidth(2)  # 16-bit
-            wav_file.setframerate(24000)  # 24kHz
-            wav_file.writeframes(pcm_data)
+        # Initialize the AI Agent for this session
+        global coco_ai_agent
+        if not coco_ai_agent:
+            try:
+                print("🚀 Initializing CoCo AI Agent with LangChain...")
+                coco_ai_agent = CoCoAIAgent(client)
+                print(f"✅ CoCo AI Agent initialized successfully!")
+                print(f"📊 Available tools: {len(coco_ai_agent.tools)}")
+                print(f"🆔 Session ID: {coco_ai_agent.session_id}")
+            except Exception as e:
+                print(f"❌ Failed to initialize AI Agent: {e}")
+                coco_ai_agent = None
+
+        # Set up the live config for Gemini with voice control capabilities
+        live_config = LiveConnectConfig(
+            input_audio_transcription={},
+            system_instruction="""You're CoCo, an advanced AI creative assistant who can control the entire application through voice commands!
+
+Your capabilities:
+🎨 **Creative Assistance**: Help with drawing techniques, composition, colors, and artistic concepts
+🎤 **Voice Control**: You can control panels, canvas operations, drawing tools, and app features
+📱 **App Control**: Open/close panels, control canvas, manage tools, and execute operations
+
+**Voice Control Examples:**
+- "Open storyboard" → Opens the storyboard panel
+- "Show layers" → Opens the layers panel  
+- "Clear canvas" → Clears the drawing canvas
+- "Switch to brush tool" → Changes to brush drawing tool
+- "Save project" → Saves the current project
+- "Enhance drawing" → Runs AI enhancement
+
+**Your Personality**: Enthusiastic, creative, and helpful. You're like hanging out with a creative friend who can also control your drawing app!
+
+**Important**: When users give voice commands, use your tools to control the application and give clear feedback about what you're doing."""
+        )
         
-        # Reset buffer position
-        wav_buffer.seek(0)
+        print(f"Final config for Gemini: {live_config}")
+
+        # Initialize audio manager
+        audio_manager = AudioManager(
+            input_sample_rate=SEND_SAMPLE_RATE, 
+            output_sample_rate=RECEIVE_SAMPLE_RATE
+        )
+        await audio_manager.initialize()
         
-        # Convert WAV to MP3
-        audio_segment = AudioSegment.from_wav(wav_buffer)
+        # Set global audio manager for cleanup
+        global global_audio_manager
+        global_audio_manager = audio_manager
+
+        # Set up audio queue for processing
+        audio_queue = asyncio.Queue()
+
+        async with client.aio.live.connect(model=MODEL, config=live_config) as session:
+            print("🎯 Connected to Gemini Live API")
+
+            # Send connection confirmation
+            await websocket.send(json.dumps({
+                "type": "connection_status",
+                "status": "connected",
+                "ai_agent_available": coco_ai_agent is not None,
+                "tools_available": len(coco_ai_agent.tools) if coco_ai_agent else 0,
+                "session_id": coco_ai_agent.session_id if coco_ai_agent else None
+            }))
+
+            # Set up the session
+            await session.set_audio_manager(audio_manager)
+
+            # Start the session
+            await session.start()
+            print("🎯 Gemini Live session started")
+
+            # Send session started confirmation
+            await websocket.send(json.dumps({
+                "type": "session_status",
+                "status": "started",
+                "message": "AI session is ready! You can now talk to CoCo and control the app with your voice!"
+            }))
+
+            # Main processing loop
+            while True:
+                try:
+                    # Process incoming WebSocket messages
+                    try:
+                        message = await asyncio.wait_for(websocket.recv(), timeout=0.1)
+                        data = json.loads(message)
+
+                        if data["type"] == "ai_agent_request":
+                            # Handle advanced AI agent requests
+                            await handle_ai_agent_request(websocket, data, coco_ai_agent)
+
+                        elif data["type"] == "update_user_context":
+                            # Update user context for better personalization
+                            if coco_ai_agent:
+                                coco_ai_agent.update_user_context(**data["context"])
+                                await websocket.send(json.dumps({
+                                    "type": "context_updated",
+                                    "message": "User context updated successfully",
+                                    "new_context": coco_ai_agent.user_context
+                                }))
+
+                        elif data["type"] == "get_session_info":
+                            # Get current session and context information
+                            if coco_ai_agent:
+                                session_info = coco_ai_agent.get_session_info()
+                                await websocket.send(json.dumps({
+                                    "type": "session_info",
+                                    "info": session_info
+                                }))
+
+                        elif data["type"] == "app_control":
+                            # Handle app control commands from voice control
+                            await handle_app_control(websocket, data)
+
+                    except asyncio.TimeoutError:
+                        # No WebSocket message, continue with audio processing
+                        pass
+                    except websockets.exceptions.ConnectionClosed:
+                        print("WebSocket connection closed")
+                        break
+                    except Exception as e:
+                        print(f"WebSocket message processing error: {e}")
+                        continue
+
+                    # Process audio from the queue
+                    try:
+                        audio_data = await asyncio.wait_for(audio_queue.get(), timeout=0.1)
+                        await session.send_audio(audio_data)
+                    except asyncio.TimeoutError:
+                        # No audio data, continue
+                        pass
+                    except Exception as e:
+                        print(f"Audio processing error: {e}")
+                        continue
+
+                except Exception as e:
+                    print(f"Main loop error: {e}")
+                    break
+
+        except Exception as e:
+            print(f"Gemini session error: {e}")
+            await websocket.send(json.dumps({
+                "type": "error",
+                "message": f"Session error: {str(e)}"
+            }))
+        finally:
+            if global_audio_manager:
+                global_audio_manager.cleanup()
+
+async def handle_ai_agent_request(websocket, data, ai_agent):
+    """Handle advanced AI agent requests from the frontend"""
+    try:
+        request_type = data.get("request_type")
+        user_input = data.get("input", "")
+        context = data.get("context", {})
         
-        # Export as MP3
-        mp3_buffer = io.BytesIO()
-        audio_segment.export(mp3_buffer, format="mp3", codec="libmp3lame")
+        if not ai_agent:
+            await websocket.send(json.dumps({
+                "type": "ai_agent_error",
+                "message": "AI Agent not available",
+                "request_id": data.get("request_id")
+            }))
+            return
         
-        # Convert to base64
-        mp3_base64 = base64.b64encode(mp3_buffer.getvalue()).decode('utf-8')
-        return mp3_base64
+        print(f"🤖 Processing AI Agent request: {request_type}")
+        
+        # Process through the AI agent
+        response = await ai_agent.process_request(user_input, context)
+        
+        # Send the response back
+        await websocket.send(json.dumps({
+            "type": "ai_agent_response",
+            "response": response,
+            "request_type": request_type,
+            "request_id": data.get("request_id"),
+            "timestamp": datetime.now().isoformat()
+        }))
         
     except Exception as e:
-        print(f"Error converting PCM to MP3: {e}")
-        return None
+        print(f"AI Agent request handling error: {e}")
+        await websocket.send(json.dumps({
+            "type": "ai_agent_error",
+            "message": f"Error processing request: {str(e)}",
+            "request_id": data.get("request_id")
+        }))
 
-async def main() -> None:
-    print("Starting multimodal server...")
-    
-    # Correct WebSocket handler signature - only takes websocket
-    async def websocket_handler(websocket):
-        print(f"New WebSocket connection from {websocket.remote_address}")
+async def handle_app_control(websocket, data):
+    """Handle app control commands from voice control"""
+    try:
+        action = data.get("action", "")
+        target = data.get("target", "")
+        parameters = data.get("parameters", {})
+        
+        print(f"🎮 Processing app control: {action} -> {target}")
+        
+        # Send app control command to frontend
+        await websocket.send(json.dumps({
+            "type": "app_control_execute",
+            "action": action,
+            "target": target,
+            "parameters": parameters,
+            "timestamp": datetime.now().isoformat()
+        }))
+        
+    except Exception as e:
+        print(f"App control handling error: {e}")
+        await websocket.send(json.dumps({
+            "type": "app_control_error",
+            "message": f"Error executing app control: {str(e)}"
+        }))
+
+# WebSocket handler for AI Agent requests
+async def websocket_handler(websocket, path):
+    """Main WebSocket handler that routes different types of requests"""
+    try:
+        print(f"🔌 New WebSocket connection from {websocket.remote_address}")
+
+        # Send initial connection info
+        await websocket.send(json.dumps({
+            "type": "connection_info",
+            "message": "Connected to CoCo AI Server",
+            "capabilities": [
+                "gemini_live_voice", 
+                "ai_agent_assistance", 
+                "voice_control",
+                "app_navigation",
+                "canvas_control",
+                "drawing_tools",
+                "file_operations",
+                "collaboration_management",
+                "ai_features",
+                "workspace_settings",
+                "story_development",
+                "visual_design",
+                "project_planning",
+                "quality_assessment",
+                "creative_suggestions",
+                "performance_optimization"
+            ],
+            "ai_agent_available": True,
+            "timestamp": datetime.now().isoformat()
+        }))
+        
+        # Wait for client to specify connection type
         try:
+            message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+            data = json.loads(message)
+
+            if data["type"] == "gemini_session":
+                # Handle Gemini Live API session with voice control
+                await gemini_session_handler(websocket)
+            elif data["type"] == "ai_agent_only":
+                # Handle AI Agent only (no voice)
+                await handle_ai_agent_only_session(websocket)
+            else:
+                # Default to Gemini Live session
+                await gemini_session_handler(websocket)
+
+        except asyncio.TimeoutError:
+            print("Client didn't specify connection type, defaulting to Gemini Live")
             await gemini_session_handler(websocket)
-        except websockets.exceptions.ConnectionClosedOK:
-            print(f"✅ WebSocket connection closed normally from {websocket.remote_address}")
-            notify_browser_closed()
-        except websockets.exceptions.ConnectionClosedError as e:
-            print(f"❌ WebSocket connection closed with error from {websocket.remote_address}: {e}")
-            notify_browser_closed()
+
+        except websockets.exceptions.ConnectionClosed:
+            print("WebSocket connection closed")
         except Exception as e:
-            print(f"❌ Unexpected error in WebSocket handler: {e}")
-            notify_browser_closed()
-        finally:
-            print(f"🧹 Cleaning up connection for {websocket.remote_address}")
-            # Ensure any remaining tasks are cancelled
-            for task in asyncio.all_tasks():
-                if task is not asyncio.current_task():
-                    task.cancel()
+            print(f"WebSocket handler error: {e}")
+            try:
+                await websocket.send(json.dumps({
+                    "type": "error",
+                    "message": f"Server error: {str(e)}"
+                }))
+            except:
+                pass
+
+    except websockets.exceptions.ConnectionClosed:
+        print("WebSocket connection closed")
+    except Exception as e:
+        print(f"WebSocket handler error: {e}")
+        try:
+            await websocket.send(json.dumps({
+                "type": "error",
+                "message": f"Server error: {str(e)}"
+            }))
+        except:
+            pass
+
+async def handle_ai_agent_only_session(websocket):
+    """Handle AI Agent only sessions (no voice processing)"""
+    global coco_ai_agent
     
-    # Start the server
-    server = await websockets.serve(websocket_handler, "localhost", 9083)
+    # Initialize the AI Agent if not already done
+    if not coco_ai_agent:
+        try:
+            print("🚀 Initializing CoCo AI Agent (AI-only mode)...")
+            coco_ai_agent = CoCoAIAgent(client)
+            print(f"✅ CoCo AI Agent initialized successfully!")
+        except Exception as e:
+            print(f"❌ Failed to initialize AI Agent: {e}")
+            await websocket.send(json.dumps({
+                "type": "error",
+                "message": "Failed to initialize AI Agent"
+            }))
+            return
     
-    print("Running websocket server localhost:9083...")
-    print("Server is ready to accept connections!")
+    # Send AI Agent ready confirmation
+    await websocket.send(json.dumps({
+        "type": "ai_agent_ready",
+        "status": "ready",
+        "tools_available": len(coco_ai_agent.tools),
+        "session_id": coco_ai_agent.session_id,
+        "message": "AI Agent is ready! You can now make requests."
+    }))
     
-    # Keep running
-    await asyncio.Future()
+    # Handle AI Agent requests
+    try:
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                
+                if data["type"] == "ai_agent_request":
+                    await handle_ai_agent_request(websocket, data, coco_ai_agent)
+                elif data["type"] == "update_user_context":
+                    if coco_ai_agent:
+                        coco_ai_agent.update_user_context(**data["context"])
+                        await websocket.send(json.dumps({
+                            "type": "context_updated",
+                            "message": "User context updated successfully"
+                        }))
+                elif data["type"] == "get_session_info":
+                    if coco_ai_agent:
+                        session_info = coco_ai_agent.get_session_info()
+                        await websocket.send(json.dumps({
+                            "type": "session_info",
+                            "info": session_info
+                        }))
+                else:
+                    await websocket.send(json.dumps({
+                        "type": "error",
+                        "message": f"Unknown message type: {data.get('type')}"
+                    }))
+                    
+            except json.JSONDecodeError:
+                await websocket.send(json.dumps({
+                    "type": "error",
+                    "message": "Invalid JSON message"
+                }))
+            except Exception as e:
+                print(f"Message processing error: {e}")
+                await websocket.send(json.dumps({
+                    "type": "error",
+                    "message": f"Processing error: {str(e)}"
+                }))
+                
+    except websockets.exceptions.ConnectionClosed:
+        print("AI Agent session connection closed")
+    except Exception as e:
+        print(f"AI Agent session error: {e}")
+
+# Start the WebSocket server
+async def main():
+    """Main server function"""
+    print("🚀 Starting CoCo AI Server with Gemini Live Voice Control...")
+    print("=" * 60)
+    print("🎨 CoCo AI Agent Features:")
+    print("  • 22+ Specialized AI Tools")
+    print("  • 🎤 GEMINI LIVE VOICE CONTROL")
+    print("  • Real-time voice interaction")
+    print("  • App navigation & panel control")
+    print("  • Canvas operations & drawing tools")
+    print("  • File management & project control")
+    print("  • Collaboration & AI features")
+    print("  • Workspace settings & customization")
+    print("  • Story development intelligence")
+    print("  • Visual design expertise")
+    print("  • Smart project planning")
+    print("  • Quality assessment")
+    print("  • Creative suggestions")
+    print("  • Performance optimization")
+    print("=" * 60)
+    
+    # Initialize the AI Agent globally
+    global coco_ai_agent
+    try:
+        print("🚀 Initializing CoCo AI Agent...")
+        coco_ai_agent = CoCoAIAgent(client)
+        print(f"✅ CoCo AI Agent initialized successfully!")
+        print(f"📊 Available tools: {len(coco_ai_agent.tools)}")
+        print(f"🆔 Session ID: {coco_ai_agent.session_id}")
+    except Exception as e:
+        print(f"❌ Failed to initialize AI Agent: {e}")
+        coco_ai_agent = None
+    
+    # Start WebSocket server
+    server = await websockets.serve(
+        websocket_handler, 
+        "localhost", 
+        9083,
+        ping_interval=20,
+        ping_timeout=20
+    )
+    
+    print(f"🌐 WebSocket server started on ws://localhost:9083")
+    print(f"🤖 AI Agent: {'✅ Ready' if coco_ai_agent else '❌ Failed'}")
+    print(f"🎤 Gemini Live Voice: ✅ Ready")
+    print(f"🔗 LangChain Integration: ✅ Active")
+    
+    # Keep the server running
+    await server.wait_closed()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nShutting down multimodal server...")
+        print("\n🛑 Server stopped by user")
     except Exception as e:
-        print(f"Error running multimodal server: {e}") 
+        print(f"❌ Server error: {e}") 

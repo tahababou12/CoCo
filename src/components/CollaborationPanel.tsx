@@ -215,34 +215,104 @@ const CollaborationPanel: React.FC = () => {
     };
   }, [isDragging]);
   
-  // Set initial position once on mount - no more moving around!
+  // Set initial position once on mount - intelligent positioning!
   useEffect(() => {
-    // Set fixed position on the right side, near bottom
-    const fixedPosition = { 
-      x: window.innerWidth - 300, 
-      y: 450 
-    };
+    // Get saved position from localStorage or use intelligent default
+    const savedPosition = localStorage.getItem('collaborationPanelPosition');
+    let initialPosition;
+    
+    if (savedPosition) {
+      try {
+        const parsed = JSON.parse(savedPosition);
+        // Convert "300px" to number
+        const x = parseInt(parsed.x) || window.innerWidth - 320;
+        const y = parseInt(parsed.y) || window.innerHeight - 200;
+        initialPosition = { x, y };
+      } catch (e) {
+        console.warn('Failed to parse saved position, using default');
+        initialPosition = getDefaultPosition();
+      }
+    } else {
+      initialPosition = getDefaultPosition();
+    }
     
     // Update ref and state
-    panelPositionRef.current = fixedPosition;
-    setPanelPosition(fixedPosition);
+    panelPositionRef.current = initialPosition;
+    setPanelPosition(initialPosition);
     
     // Update DOM directly
     if (panelRef.current) {
-      panelRef.current.style.left = `${fixedPosition.x}px`;
-      panelRef.current.style.top = `${fixedPosition.y}px`;
+      panelRef.current.style.left = `${initialPosition.x}px`;
+      panelRef.current.style.top = `${initialPosition.y}px`;
     }
     
     // Save to localStorage
     localStorage.setItem('collaborationPanelPosition', JSON.stringify({
-      x: `${fixedPosition.x}px`,
-      y: `${fixedPosition.y}px`
+      x: `${initialPosition.x}px`,
+      y: `${initialPosition.y}px`
     }));
   }, []); // Only run once on mount
 
+  // Handle window resize to keep panel in view
+  useEffect(() => {
+    const handleResize = () => {
+      const currentPos = panelPositionRef.current;
+      const panelWidth = 320;
+      const panelHeight = 400;
+      const margin = 20;
+      
+      // Check if panel is still in view
+      const maxX = window.innerWidth - panelWidth - margin;
+      const maxY = window.innerHeight - panelHeight - margin;
+      
+      let newX = currentPos.x;
+      let newY = currentPos.y;
+      
+      // Adjust if panel is now outside viewport
+      if (newX > maxX) newX = maxX;
+      if (newY > maxY) newY = maxY;
+      if (newX < margin) newX = margin;
+      if (newY < margin) newY = margin;
+      
+      // Only update if position changed
+      if (newX !== currentPos.x || newY !== currentPos.y) {
+        const newPosition = { x: newX, y: newY };
+        panelPositionRef.current = newPosition;
+        setPanelPosition(newPosition);
+        
+        if (panelRef.current) {
+          panelRef.current.style.left = `${newX}px`;
+          panelRef.current.style.top = `${newY}px`;
+        }
+        
+        // Save new position
+        localStorage.setItem('collaborationPanelPosition', JSON.stringify({
+          x: `${newX}px`,
+          y: `${newY}px`
+        }));
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Get intelligent default position
+  const getDefaultPosition = () => {
+    const panelWidth = 320; // Panel width
+    const panelHeight = 400; // Estimated panel height
+    const margin = 20; // Margin from edges
+    
+    // Position on right side, near bottom but not too low
+    const x = window.innerWidth - panelWidth - margin;
+    const y = Math.max(margin, window.innerHeight - panelHeight - margin);
+    
+    return { x, y };
+  };
+
   // Reset panel to default position
   const resetPosition = () => {
-    const defaultPosition = { x: window.innerWidth - 300, y: 450 };
+    const defaultPosition = getDefaultPosition();
     
     // Update DOM directly
     if (panelRef.current) {
@@ -333,15 +403,27 @@ const CollaborationPanel: React.FC = () => {
         
         <div className="flex items-center space-x-2">
           {!minimized && (
-            <button
-              onClick={() => setMinimized(true)}
-              className="w-6 h-6 rounded-md bg-purple-100 hover:bg-purple-200 text-purple-600 flex items-center justify-center transition-colors"
-              title="Minimize"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-              </svg>
-            </button>
+            <>
+              <button
+                onClick={resetPosition}
+                className="w-6 h-6 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center transition-colors"
+                title="Reset Position"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+              
+              <button
+                onClick={() => setMinimized(true)}
+                className="w-6 h-6 rounded-md bg-purple-100 hover:bg-purple-200 text-purple-600 flex items-center justify-center transition-colors"
+                title="Minimize"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                </svg>
+              </button>
+            </>
           )}
           
           {minimized && (

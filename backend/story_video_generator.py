@@ -45,7 +45,7 @@ class EnhancedVideoEffects:
         # Scale image up to allow for spiral movement
         scale = 1.4
         scaled_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), 
-                                 interpolation=cv2.INTER_LANCZOS4)
+                                interpolation=cv2.INTER_LANCZOS4)
         scaled_h, scaled_w = scaled_frame.shape[:2]
         
         # Smooth easing
@@ -177,7 +177,7 @@ class EnhancedVideoEffects:
         # Scale image up to allow for movement
         scale = 1.3
         scaled_frame = cv2.resize(frame, (int(w * scale), int(h * scale)), 
-                                 interpolation=cv2.INTER_LANCZOS4)
+                                interpolation=cv2.INTER_LANCZOS4)
         scaled_h, scaled_w = scaled_frame.shape[:2]
         
         # Smooth easing
@@ -690,8 +690,8 @@ class StoryVideoGenerator:
                 frame_with_text = frame.copy()
                 # Add title text overlay with black color
                 cv2.putText(frame_with_text, story_data["title"], 
-                           (self.resolution[0]//4, self.resolution[1]//2),
-                           cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
+                        (self.resolution[0]//4, self.resolution[1]//2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
                 title_frames[i] = frame_with_text
 
             all_frames.extend(title_frames)

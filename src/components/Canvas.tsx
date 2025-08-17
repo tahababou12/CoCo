@@ -7,7 +7,7 @@ import { renderShape } from '../utils/renderShape'
 import { addPointToPath, getSmoothedCursorPosition } from '../utils/cursorUtils'
 import { UserPosition } from '../types'
 import { Hand, HandMetal, Mic, MicOff } from 'lucide-react'
-import html2canvas from 'html2canvas'
+import html2canvas from 'html2canvas' // Still needed for package dependencies, but we use fast canvas.toDataURL() instead
 import Header from './Header'
 import LayersPanel from './LayersPanel'
 import GridSettings from './GridSettings'
@@ -491,19 +491,22 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
         break;
     }
     
-    // Capture canvas during drawing for real-time streaming
+    // Capture canvas during drawing for real-time streaming (FAST VERSION)
     if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-      const canvasContainer = document.querySelector('[data-canvas-container]');
-      if (canvasContainer) {
-        html2canvas(canvasContainer as HTMLElement, {
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#fafaf9',
-          scale: 1,
-          logging: false
-        }).then(canvas => {
+      const drawStartTime = performance.now();
+      console.log('⏱️ [PERFORMANCE] Starting FAST drawing capture...');
+      
+      // Use direct canvas capture instead of slow html2canvas
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const captureTime = performance.now();
+        console.log(`⏱️ [PERFORMANCE] Direct canvas access took: ${captureTime - drawStartTime}ms`);
+        
         const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-          console.log('📷 [DRAWING] Drawing detected - capturing canvas container...');
+        const dataUrlTime = performance.now();
+        console.log(`⏱️ [PERFORMANCE] Fast toDataURL took: ${dataUrlTime - captureTime}ms`);
+        
+        console.log('📷 [DRAWING] Fast canvas capture completed!');
         
         const payload = {
           realtime_input: {
@@ -514,11 +517,12 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
           },
         };
         
-        multimodalWebSocketRef.current.send(JSON.stringify(payload));
-          console.log('📷 [DRAWING] Canvas container frame sent to Gemini');
-        }).catch(err => {
-          console.error('❌ [DRAWING] Failed to capture canvas container:', err);
-        });
+        if (multimodalWebSocketRef.current) {
+          multimodalWebSocketRef.current.send(JSON.stringify(payload));
+          const totalTime = performance.now();
+          console.log(`⏱️ [PERFORMANCE] Total FAST capture + send took: ${totalTime - drawStartTime}ms`);
+        }
+        console.log('📷 [DRAWING] Fast canvas frame sent to Gemini');
       }
     }
   };
@@ -1865,37 +1869,35 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
         return;
       }
       
-      const canvasContainer = document.querySelector('[data-canvas-container]');
-      if (canvasContainer) {
-        // Use a more conservative approach to avoid interfering with canvas rendering
-        html2canvas(canvasContainer as HTMLElement, {
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#fafaf9',
-          scale: 0.6, // Further reduced scale to reduce processing load
-          logging: false,
-          imageTimeout: 1000 // Add timeout to prevent hanging
-        }).then(canvas => {
-          const imageData = canvas.toDataURL('image/jpeg', 0.5).split(',')[1]; // Further reduced quality
-          console.log('📷 [STREAMING] Capturing canvas container...');
+      const startTime = performance.now();
+      console.log('⏱️ [PERFORMANCE] Starting canvas capture...');
+      
+      // Use direct canvas capture instead of slow html2canvas
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const captureTime = performance.now();
+        console.log(`⏱️ [PERFORMANCE] Fast canvas access took: ${captureTime - startTime}ms`);
         
-          const payload = {
-            realtime_input: {
-              media_chunks: [{
-                mime_type: "image/jpeg",
-                data: imageData,
-              }],
-            },
-          };
+        const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1]; // Higher quality since it's fast now
+        const dataUrlTime = performance.now();
+        console.log(`⏱️ [PERFORMANCE] Fast toDataURL took: ${dataUrlTime - captureTime}ms`);
         
-          if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
-            multimodalWebSocketRef.current.send(JSON.stringify(payload));
-            console.log('📷 [STREAMING] Canvas container frame sent to Gemini');
-          }
-        }).catch(err => {
-          console.error('❌ [STREAMING] Failed to capture canvas container:', err);
-          // Don't let streaming errors affect the main canvas functionality
-        });
+        console.log('📷 [STREAMING] Fast canvas capture completed!');
+      
+        const payload = {
+          realtime_input: {
+            media_chunks: [{
+              mime_type: "image/jpeg",
+              data: imageData,
+            }],
+          },
+        };
+      
+        if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          multimodalWebSocketRef.current.send(JSON.stringify(payload));
+          const totalTime = performance.now();
+          console.log(`⏱️ [PERFORMANCE] Total FAST capture + send took: ${totalTime - startTime}ms`);
+        }
       }
     }, 5000); // Increased from 2000ms to 5000ms to reduce interference
     
@@ -1923,24 +1925,21 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
     }
   }, [canvasRef.current]);
 
-  // Function to get canvas hash for change detection
+  // Function to get canvas hash for change detection (FAST VERSION)
   const getCanvasHash = () => {
-    const canvasContainer = document.querySelector('[data-canvas-container]');
-    if (!canvasContainer) return '';
+    // Use direct canvas capture instead of slow html2canvas
+    const canvas = canvasRef.current;
+    if (!canvas) return Promise.resolve('');
     
-    // For change detection, we'll use a simpler approach that captures the container
+    // For change detection, use fast canvas capture
     return new Promise<string>((resolve) => {
-      html2canvas(canvasContainer as HTMLElement, {
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#fafaf9',
-        scale: 0.5, // Lower scale for faster processing
-        logging: false
-      }).then(canvas => {
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      }).catch(() => {
+      try {
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+        resolve(imageData);
+      } catch (err) {
+        console.error('Error in fast canvas capture:', err);
         resolve('');
-      });
+      }
     });
   };
 

@@ -11,7 +11,7 @@ NC='\033[0m' # No Color
 cleanup() {
     echo -e "\n${YELLOW}Cleaning up processes...${NC}"
     pkill -f "python app.py" || true
-    pkill -f "python multimodal_server.py" || true
+    pkill -f "python multimodal_server_gemini_live_refactored.py" || true
     pkill -f "vite" || true
     exit 0
 }
@@ -62,7 +62,7 @@ BACKEND_PID=$!
 # Start multimodal server with environment variables (run from backend directory)
 echo -e "${BLUE}Starting multimodal server on port 9083...${NC}"
 cd /Users/sakethpoori/Documents/hacks/CoCo/backend
-python multimodal_server.py &
+python multimodal_server_gemini_live_refactored.py &
 MULTIMODAL_PID=$!
 
 cd /Users/sakethpoori/Documents/hacks/CoCo
