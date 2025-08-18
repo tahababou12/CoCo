@@ -48,9 +48,11 @@ interface EnhancedImageResult {
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface CanvasProps {
   onToggleStoryboard?: () => void;
+  showStoryboard?: boolean;
+  onCloseStoryboard?: () => void;
 }
 
-const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
+const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onCloseStoryboard }) => {
   const { state, dispatch } = useDrawing()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -1384,13 +1386,17 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
           }
         };
         console.log('📤 Sending setup message:', setupMessage);
-        multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+        if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          multimodalWebSocketRef.current.send(JSON.stringify(setupMessage));
+        }
         
         // Send mute state
-        multimodalWebSocketRef.current.send(JSON.stringify({
-          type: "mute_toggle",
-          muted: isMuted
-        }));
+        if (multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+          multimodalWebSocketRef.current.send(JSON.stringify({
+            type: "mute_toggle",
+            muted: isMuted
+          }));
+        }
         
         // Initialize audio system
         initializeMultimodalAudio();
@@ -1720,10 +1726,277 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
           });
         }
       }
+
+      // 🎤 NEW: Handle voice app control commands
+      if (data.type === 'app_control') {
+        console.log('🎤 Voice app control command received:', data);
+        
+        switch (data.action) {
+          case 'open_panel':
+            handleVoicePanelControl(data.target, 'open_panel');
+            break;
+          case 'close_panel':
+            console.log('🎤 Close panel action received for target:', data.target);
+            handleVoicePanelControl(data.target, 'close_panel');
+            break;
+          case 'open_modal':
+            handleVoiceModalControl(data.target, 'open_modal');
+            break;
+          case 'close_modal':
+            handleVoiceModalControl(data.target, 'close_modal');
+            break;
+          case 'switch_tool':
+            handleVoiceToolControl(data.target);
+            break;
+          default:
+            console.log('🎤 Unknown app control action:', data.action);
+        }
+      }
+
+      // 🎭 NEW: Handle personality switching commands
+      if (data.type === 'switch_personality') {
+        console.log('🎭 Personality switch command received:', data);
+        const personality = data.personality;
+        if (personality === 'sarcastic' || personality === 'friendly') {
+          window.showToast(`Switched to ${personality} mode! Reconnecting...`, 'success', 3000);
+          // The backend will close the connection to force reconnection with new personality
+        }
+      }
+
+      // 🎤 NEW: Handle canvas clear command from voice
+      if (data.type === 'clear_canvas') {
+        console.log('🎤 Voice clear canvas command received:', data);
+        handleVoiceCanvasClear();
+      }
+
+      // 🎤 NEW: Handle additional app control commands
+      if (data.type === 'app_control' && data.action) {
+        switch (data.action) {
+          case 'undo':
+            console.log('🎤 Voice undo command received');
+            dispatch({ type: 'UNDO' });
+            window.showToast('Undoing last action!', 'success', 2000);
+            break;
+          case 'redo':
+            console.log('🎤 Voice redo command received');
+            dispatch({ type: 'REDO' });
+            window.showToast('Redoing last action!', 'success', 2000);
+            break;
+          case 'save_drawing':
+            console.log('🎤 Voice save command received');
+            saveCanvasAsPNG();
+            window.showToast('Saving your drawing!', 'success', 2000);
+            break;
+        }
+      }
     } catch (err) {
       console.error('Error parsing WebSocket message:', err);
     }
   }, [isDrawing, isMuted, setMultimodalMessages, setVoiceStatus, enhanceDrawingWithGeminiWithPrompt, pollEnhancementStatus]);
+
+  // 🎤 NEW: Handle voice app control commands
+  const handleVoicePanelControl = (target: string, action: 'open_panel' | 'close_panel') => {
+    console.log(`🎤 ${action === 'open_panel' ? 'Opening' : 'Closing'} panel via voice command:`, target);
+    
+    switch (target) {
+      case 'storyboard':
+        // Storyboard is controlled by App.tsx via the onToggleStoryboard prop
+        console.log(`🎤 Storyboard voice command: ${action}, current state: ${showStoryboard}`);
+        
+        if (action === 'open_panel') {
+          // Open storyboard if it's closed
+          if (!showStoryboard && onToggleStoryboard) {
+            onToggleStoryboard();
+            window.showToast('Opening storyboard!', 'success', 2000);
+          } else if (showStoryboard) {
+            window.showToast('Storyboard is already open!', 'info', 2000);
+          } else {
+            window.showToast('Storyboard feature not available', 'error', 2000);
+          }
+        } else {
+          // Close storyboard if it's open
+          console.log('🎤 Attempting to close storyboard:');
+          console.log('  - showStoryboard:', showStoryboard);
+          console.log('  - onCloseStoryboard exists:', !!onCloseStoryboard);
+          
+          if (showStoryboard && onCloseStoryboard) {
+            console.log('🎤 Calling onCloseStoryboard()');
+            onCloseStoryboard();
+            window.showToast('Closing storyboard!', 'success', 2000);
+          } else if (!showStoryboard) {
+            console.log('🎤 Storyboard already closed');
+            window.showToast('Storyboard is already closed!', 'info', 2000);
+          } else {
+            console.log('🎤 onCloseStoryboard not available');
+            window.showToast('Storyboard feature not available', 'error', 2000);
+          }
+        }
+        break;
+      case 'layers':
+        if (action === 'open_panel') {
+          dispatch({ type: 'TOGGLE_LAYERS_PANEL' });
+          window.showToast('Opening layers panel!', 'success', 2000);
+        } else {
+          dispatch({ type: 'TOGGLE_LAYERS_PANEL' });
+          window.showToast('Closing layers panel!', 'success', 2000);
+        }
+        break;
+      case 'tools':
+        // Tools panel is always visible in the toolbar
+        if (action === 'open_panel') {
+          window.showToast('Tools are already visible in the toolbar!', 'info', 2000);
+        } else {
+          window.showToast('Tools cannot be hidden!', 'info', 2000);
+        }
+        break;
+      case 'collaboration':
+        // Collaboration panel is always visible, just show a message
+        if (action === 'open_panel') {
+          window.showToast('Collaboration panel is already open!', 'info', 2000);
+        } else {
+          window.showToast('Collaboration panel cannot be hidden!', 'info', 2000);
+        }
+        break;
+      case 'grid':
+        // Grid settings panel
+        if (action === 'open_panel') {
+          dispatch({ type: 'TOGGLE_GRID_SETTINGS' });
+          window.showToast('Opening grid settings!', 'success', 2000);
+        } else {
+          dispatch({ type: 'TOGGLE_GRID_SETTINGS' });
+          window.showToast('Closing grid settings!', 'success', 2000);
+        }
+        break;
+      default:
+        console.log('🎤 Unknown panel target:', target);
+    }
+  };
+
+  const handleVoiceModalControl = (target: string, action: 'open_modal' | 'close_modal') => {
+    console.log(`🎤 ${action === 'open_modal' ? 'Opening' : 'Closing'} modal via voice command:`, target);
+    
+    switch (target) {
+      case 'generation_settings':
+        if (action === 'open_modal') {
+          setShowGenSettings(true);
+          window.showToast('Opening generation settings!', 'success', 2000);
+        } else {
+          setShowGenSettings(false);
+          window.showToast('Closing generation settings!', 'success', 2000);
+        }
+        break;
+      default:
+        console.log('🎤 Unknown modal target:', target);
+    }
+  };
+
+  const handleVoiceToolControl = (target: string) => {
+    console.log('🎤 Switching tool via voice command:', target);
+    
+    switch (target) {
+      case 'brush':
+        dispatch({ type: 'SET_TOOL', payload: 'pencil' }); // 'pencil' is the brush-like tool
+        window.showToast('Switched to brush tool!', 'success', 2000);
+        break;
+      case 'pen':
+        dispatch({ type: 'SET_TOOL', payload: 'line' }); // 'line' is the pen-like tool
+        window.showToast('Switched to pen tool!', 'success', 2000);
+        break;
+      case 'eraser':
+        dispatch({ type: 'SET_TOOL', payload: 'eraser' });
+        window.showToast('Switched to eraser tool!', 'success', 2000);
+        break;
+      case 'pencil':
+        dispatch({ type: 'SET_TOOL', payload: 'pencil' });
+        window.showToast('Switched to pencil tool!', 'success', 2000);
+        break;
+      default:
+        console.log('🎤 Unknown tool target:', target);
+    }
+  };
+
+  // 🎤 NEW: Handle canvas clear command from voice
+  const handleVoiceCanvasClear = () => {
+    console.log('🎤 Voice clear canvas command received');
+    dispatch({ type: 'CLEAR_ALL' });
+    window.showToast('Canvas cleared via voice command!', 'success', 2000);
+  };
+
+  // 🧠 NEW: Get real-time app context for AI
+  const getAppContext = () => {
+    const context = {
+      // Panel states
+      panels: {
+        layers: state.showLayersPanel,
+        grid: state.showGridSettings,
+        storyboard: false, // This is in App.tsx, we'll need to access it
+        tools: true, // Always visible
+        collaboration: true, // Always visible
+      },
+      
+      // Current drawing state
+      drawing: {
+        currentTool: state.tool,
+        shapesCount: state.shapes.length,
+        isDrawing: isDrawing,
+        hasContent: state.shapes.length > 0,
+        currentShape: state.currentShape ? state.currentShape.type : null,
+      },
+      
+      // View state
+      view: {
+        scale: state.viewTransform.scale,
+        offsetX: state.viewTransform.offsetX,
+        offsetY: state.viewTransform.offsetY,
+        isPanning: isPanning,
+      },
+      
+      // AI connection state
+      ai: {
+        isConnected: isMultimodalConnected,
+        isMuted: isMuted,
+        voiceStatus: voiceStatus,
+        isRecording: isRecording,
+      },
+      
+      // Timestamp for context freshness
+      timestamp: new Date().toISOString(),
+    };
+    
+    console.log('🧠 App Context for AI:', context);
+    return context;
+  };
+
+  // 🧠 NEW: Send app context to AI periodically
+  const sendAppContextToAI = useCallback(() => {
+    if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
+      const context = getAppContext();
+      const contextMessage = {
+        type: 'app_context',
+        context: context,
+        timestamp: Date.now()
+      };
+      
+      multimodalWebSocketRef.current.send(JSON.stringify(contextMessage));
+      console.log('🧠 Sent app context to AI:', contextMessage);
+    }
+  }, [isMultimodalConnected, state.showLayersPanel, state.showGridSettings, state.tool, state.shapes.length, isDrawing, isPanning, isMuted, voiceStatus, isRecording]);
+
+  // 🧠 NEW: Send context when important things change
+  useEffect(() => {
+    sendAppContextToAI();
+  }, [state.showLayersPanel, state.showGridSettings, state.tool, isDrawing, isPanning, sendAppContextToAI]);
+
+  // 🧠 NEW: Send context periodically to keep AI updated
+  useEffect(() => {
+    if (isMultimodalConnected) {
+      const contextInterval = setInterval(() => {
+        sendAppContextToAI();
+      }, 10000); // Send context every 10 seconds
+      
+      return () => clearInterval(contextInterval);
+    }
+  }, [isMultimodalConnected, sendAppContextToAI]);
 
   const initializeMultimodalAudio = async () => {
     try {
@@ -2393,60 +2666,75 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard }) => {
       {/* Unified Action Sidebar - Left Side */}
       <div className="absolute left-6 top-80 bottom-6 z-50 flex flex-col space-y-3">
         {/* Save Button */}
-        <button
-          onClick={handleSave}
-          className="w-12 h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
-          title="Save Canvas"
-        >
-          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-          </svg>
-        </button>
+        <div className="flex flex-col items-center group">
+          <button
+            onClick={handleSave}
+            className="w-12 h-12 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group-hover:scale-105"
+            title="Save Canvas"
+          >
+            <svg className="w-5 h-5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+          </button>
+          <span className="text-xs font-medium text-slate-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">Save</span>
+        </div>
 
         {/* Enhance Button */}
-        <button
-          onClick={handleEnhance}
-          className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
-          title="Enhance with AI"
-        >
-          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        </button>
+        <div className="flex flex-col items-center group">
+          <button
+            onClick={handleEnhance}
+            className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group-hover:scale-105"
+            title="Enhance with AI"
+          >
+            <svg className="w-5 h-5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </button>
+          <span className="text-xs font-medium text-slate-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">Enhance</span>
+        </div>
 
         {/* Generation Settings Button */}
-        <button
-          onClick={() => setShowGenSettings(true)}
-          className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
-          title="AI Generation Settings"
-        >
-          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+        <div className="flex flex-col items-center group">
+          <button
+            onClick={() => setShowGenSettings(true)}
+            className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group-hover:scale-105"
+            title="AI Generation Settings"
+          >
+            <svg className="w-5 h-5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          <span className="text-xs font-medium text-slate-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">Settings</span>
+        </div>
 
         {/* Storyboard Button */}
-        <button
-          onClick={toggleStoryboard}
-          className="w-12 h-12 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
-          title="Storyboard"
-        >
-          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
-        </button>
+        <div className="flex flex-col items-center group">
+          <button
+            onClick={toggleStoryboard}
+            className="w-12 h-12 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group-hover:scale-105"
+            title="Storyboard"
+          >
+            <svg className="w-5 h-5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+          <span className="text-xs font-medium text-slate-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">Storyboard</span>
+        </div>
 
         {/* Clear All Button */}
-        <button
-          onClick={handleClearAll}
-          className="w-12 h-12 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group"
-          title="Clear All"
-        >
-          <svg className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+        <div className="flex flex-col items-center group">
+          <button
+            onClick={handleClearAll}
+            className="w-12 h-12 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center transition-all duration-200 group-hover:scale-105"
+            title="Clear All"
+          >
+            <svg className="w-5 h-5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+          <span className="text-xs font-medium text-slate-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">Clear</span>
+        </div>
       </div>
 
       {/* Current Tool Indicator - Above Toolbar */}

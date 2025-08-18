@@ -78,23 +78,434 @@ RECEIVE_SAMPLE_RATE = 24000 # Sample rate for audio received from Gemini (Hz)
 CHUNK_SIZE = 512          # Reduced from 1024 to 512 for faster processing
 CHANNELS = 1              # Mono audio
 
-# Voice Activity Detection (VAD) configuration - optimized for faster response
-VAD_SILENCE_THRESHOLD = 2     # Lower threshold for faster silence detection (was 3)
-VAD_VOICE_THRESHOLD = 6       # Lower threshold for faster voice detection (was 8)
-VAD_MIN_VOICE_DURATION = 0.2  # Reduced minimum speaking time (was 0.3)
-VAD_MAX_SILENCE_DURATION = 1.5  # Reduced maximum silence before stopping (was 2.0)
-VAD_SPEECH_BUFFER = 0.3       # Reduced buffer time for faster response (was 0.5)
+# Voice Activity Detection (VAD) configuration - optimized for casual speech
+VAD_SILENCE_THRESHOLD = 2     # Much lower threshold for casual speech (was 2)
+VAD_VOICE_THRESHOLD = 4       # Much lower threshold for casual speech (was 6)
+VAD_MIN_VOICE_DURATION = 0.1  # Very short minimum speaking time for casual speech (was 0.2)
+VAD_MAX_SILENCE_DURATION = 2.0  # Slightly longer silence tolerance for casual speech (was 1.5)
+VAD_SPEECH_BUFFER = 0.5       # Slightly longer buffer for casual speech (was 0.3)
+
+# Hybrid Command System Configuration
+COMMAND_CACHE_SIZE = 100      # How many commands to remember
+COMMAND_CACHE_TTL = 3600      # Cache commands for 1 hour
+
+# Hybrid Command System - Command Cache
+command_cache = {}  # Store successful commands for fast lookup
+command_cache_timestamps = {}  # Track when commands were cached
+command_cache_hits = 0  # Track cache performance
+command_cache_misses = 0  # Track cache performance
 
 # Remove hardcoded regex patterns and replace with AI processing
 # ENHANCE_COMMANDS = [...]  # Remove this entire list
 
+async def hybrid_command_processor(text, websocket):
+    """
+    🚀 HYBRID COMMAND SYSTEM: Cache → Regex → AI
+    
+    This function implements a 3-tier command processing system:
+    1. CACHE: Check if we've seen this exact command before
+    2. REGEX: Fast pattern matching for common commands  
+    3. AI: Fallback for complex/natural language requests
+    """
+    text_lower = text.lower().strip()
+    print(f"🔍 Hybrid command processing - Input: '{text}'")
+    
+    # 🎯 TIER 1: CACHE LOOKUP
+    cache_key = text_lower
+    if cache_key in command_cache:
+        # Check if cache entry is still valid
+        if time.time() - command_cache_timestamps.get(cache_key, 0) < COMMAND_CACHE_TTL:
+            global command_cache_hits
+            command_cache_hits += 1
+            print(f"⚡ CACHE HIT: '{cache_key}' -> {command_cache[cache_key]}")
+            return command_cache[cache_key]
+        else:
+            # Cache expired, remove it
+            del command_cache[cache_key]
+            del command_cache_timestamps[cache_key]
+            print(f"⏰ Cache expired for: '{cache_key}'")
+    
+    global command_cache_misses
+    command_cache_misses += 1
+    
+    # 🎯 TIER 2: REGEX PATTERN MATCHING
+    print(f"🔍 Trying regex patterns...")
+    regex_result = await process_voice_command_with_regex(text, websocket)
+    if regex_result:
+        # Cache the successful regex command
+        command_cache[cache_key] = regex_result
+        command_cache_timestamps[cache_key] = time.time()
+        
+        # Maintain cache size
+        if len(command_cache) > COMMAND_CACHE_SIZE:
+            # Remove oldest entries
+            oldest_key = min(command_cache_timestamps.keys(), key=lambda k: command_cache_timestamps[k])
+            del command_cache[oldest_key]
+            del command_cache_timestamps[oldest_key]
+        
+        print(f"✅ REGEX SUCCESS: '{cache_key}' -> {regex_result}")
+        return regex_result
+    
+    # 🎯 TIER 3: AI PROCESSING (Fallback)
+    print(f"🤖 Falling back to AI processing...")
+    # This will be handled by the main AI processing logic
+    return None
+
+def get_cache_stats():
+    """Get cache performance statistics"""
+    total_requests = command_cache_hits + command_cache_misses
+    hit_rate = (command_cache_hits / total_requests * 100) if total_requests > 0 else 0
+    
+    return {
+        "cache_size": len(command_cache),
+        "cache_hits": command_cache_hits,
+        "cache_misses": command_cache_misses,
+        "hit_rate_percent": round(hit_rate, 2),
+        "total_requests": total_requests
+    }
+
+def clear_command_cache():
+    """Clear the command cache"""
+    global command_cache, command_cache_timestamps, command_cache_hits, command_cache_misses
+    
+    command_cache.clear()
+    command_cache_timestamps.clear()
+    command_cache_hits = 0
+    command_cache_misses = 0
+    
+    print("🧹 Command cache cleared")
+    return {"message": "Command cache cleared successfully"}
+
 async def process_app_control_commands(text, websocket):
-    """Simple regex-based app control commands for voice control of the application"""
+    """Robust regex-based app control commands for voice control of the application"""
     text_lower = text.lower().strip()
     
-    # Panel control
-    if any(word in text_lower for word in ["open", "show", "display"]):
-        if "storyboard" in text_lower:
+    # Debug: Log the original and processed text
+    print(f"🔍 Command processing - Original: '{text}', Lower: '{text_lower}'")
+    
+    # 🚀 Use clean_transcript() like enhance/modify system to handle word spacing issues
+    cleaned_text = clean_transcript(text_lower)
+    print(f"🔍 Command processing - Cleaned: '{cleaned_text}'")
+    
+    # 🚀 Use the same comprehensive regex patterns as the hybrid system
+    # This ensures consistency between real-time and turn-complete processing
+    
+    # 🚀 STORYBOARD PANEL CONTROL - Comprehensive patterns
+    storyboard_open_patterns = [
+        r"open.*storyboard",
+        r"storyboard.*open",
+        r"show.*storyboard", 
+        r"storyboard.*show",
+        r"display.*storyboard",
+        r"storyboard.*display",
+        r"bring.*up.*storyboard",
+        r"storyboard.*up",
+        r"launch.*storyboard",
+        r"start.*storyboard",
+        r"get.*storyboard",
+        r"access.*storyboard",
+        r"can you.*storyboard",
+        r"could you.*storyboard",
+        r"would you.*storyboard",
+        r"please.*storyboard",
+        r"storyboard.*please",
+        r"i want.*storyboard",
+        r"need.*storyboard",
+        r"let me.*storyboard"
+    ]
+    
+    storyboard_close_patterns = [
+        r"close.*storyboard",
+        r"storyboard.*close",
+        r"hide.*storyboard",
+        r"storyboard.*hide",
+        r"remove.*storyboard",
+        r"storyboard.*remove",
+        r"put.*away.*storyboard",
+        r"storyboard.*away",
+        r"dismiss.*storyboard",
+        r"storyboard.*dismiss",
+        r"shut.*storyboard",
+        r"storyboard.*shut",
+        r"turn.*off.*storyboard",
+        r"storyboard.*off",
+        r"get.*rid.*storyboard",
+        r"storyboard.*gone",
+        r"can you.*close.*storyboard",
+        r"could you.*hide.*storyboard",
+        r"please.*close.*storyboard",
+        r"i want.*close.*storyboard"
+    ]
+    
+    # 🚀 LAYERS PANEL CONTROL - Comprehensive patterns
+    layers_open_patterns = [
+        r"open.*layers",
+        r"layers.*open",
+        r"show.*layers",
+        r"layers.*show",
+        r"display.*layers",
+        r"layers.*display",
+        r"bring.*up.*layers",
+        r"layers.*up",
+        r"launch.*layers",
+        r"start.*layers",
+        r"get.*layers",
+        r"access.*layers",
+        r"can you.*layers",
+        r"could you.*layers",
+        r"would you.*layers",
+        r"please.*layers",
+        r"layers.*please",
+        r"i want.*layers",
+        r"need.*layers",
+        r"let me.*layers"
+    ]
+    
+    layers_close_patterns = [
+        r"close.*layers",
+        r"layers.*close",
+        r"hide.*layers",
+        r"layers.*hide",
+        r"remove.*layers",
+        r"layers.*remove",
+        r"put.*away.*layers",
+        r"layers.*away",
+        r"dismiss.*layers",
+        r"layers.*dismiss",
+        r"shut.*layers",
+        r"layers.*shut",
+        r"turn.*off.*layers",
+        r"layers.*off",
+        r"get.*rid.*layers",
+        r"layers.*gone",
+        r"can you.*close.*layers",
+        r"could you.*hide.*layers",
+        r"please.*close.*layers",
+        r"i want.*close.*layers"
+    ]
+    
+    # 🚀 TOOLS PANEL CONTROL - Comprehensive patterns
+    tools_open_patterns = [
+        r"open.*tools",
+        r"tools.*open",
+        r"show.*tools",
+        r"tools.*show",
+        r"display.*tools",
+        r"tools.*display",
+        r"bring.*up.*tools",
+        r"tools.*up",
+        r"launch.*tools",
+        r"start.*tools",
+        r"get.*tools",
+        r"access.*tools",
+        r"can you.*tools",
+        r"could you.*tools",
+        r"would you.*tools",
+        r"please.*tools",
+        r"tools.*please",
+        r"i want.*tools",
+        r"need.*tools",
+        r"let me.*tools"
+    ]
+    
+    tools_close_patterns = [
+        r"close.*tools",
+        r"tools.*close",
+        r"hide.*tools",
+        r"tools.*hide",
+        r"remove.*tools",
+        r"tools.*remove",
+        r"put.*away.*tools",
+        r"tools.*away",
+        r"dismiss.*tools",
+        r"tools.*dismiss",
+        r"shut.*tools",
+        r"tools.*shut",
+        r"turn.*off.*tools",
+        r"tools.*off",
+        r"get.*rid.*tools",
+        r"tools.*gone",
+        r"can you.*close.*tools",
+        r"could you.*hide.*tools",
+        r"please.*close.*tools",
+        r"i want.*close.*tools"
+    ]
+    
+    # 🚀 COLLABORATION PANEL CONTROL - Comprehensive patterns
+    collaboration_open_patterns = [
+        r"open.*collaboration",
+        r"collaboration.*open",
+        r"open.*collab",
+        r"collab.*open",
+        r"show.*collaboration",
+        r"collaboration.*show",
+        r"show.*collab",
+        r"collab.*show",
+        r"display.*collaboration",
+        r"collaboration.*display",
+        r"display.*collab",
+        r"collab.*display",
+        r"bring.*up.*collaboration",
+        r"collaboration.*up",
+        r"bring.*up.*collab",
+        r"collab.*up",
+        r"launch.*collaboration",
+        r"launch.*collab",
+        r"start.*collaboration",
+        r"start.*collab",
+        r"get.*collaboration",
+        r"get.*collab",
+        r"access.*collaboration",
+        r"access.*collab",
+        r"can you.*collaboration",
+        r"can you.*collab",
+        r"could you.*collaboration",
+        r"could you.*collab",
+        r"would you.*collaboration",
+        r"would you.*collab",
+        r"please.*collaboration",
+        r"please.*collab",
+        r"collaboration.*please",
+        r"collab.*please",
+        r"i want.*collaboration",
+        r"i want.*collab",
+        r"need.*collaboration",
+        r"need.*collab",
+        r"let me.*collaboration",
+        r"let me.*collab"
+    ]
+    
+    collaboration_close_patterns = [
+        r"close.*collaboration",
+        r"collaboration.*close",
+        r"close.*collab",
+        r"collab.*close",
+        r"hide.*collaboration",
+        r"collaboration.*hide",
+        r"hide.*collab",
+        r"collab.*hide",
+        r"remove.*collaboration",
+        r"collaboration.*remove",
+        r"remove.*collab",
+        r"collab.*remove",
+        r"put.*away.*collaboration",
+        r"collaboration.*away",
+        r"put.*away.*collab",
+        r"collab.*away",
+        r"dismiss.*collaboration",
+        r"collaboration.*dismiss",
+        r"dismiss.*collab",
+        r"collab.*dismiss",
+        r"shut.*collaboration",
+        r"collaboration.*shut",
+        r"shut.*collab",
+        r"collab.*shut",
+        r"turn.*off.*collaboration",
+        r"collaboration.*off",
+        r"turn.*off.*collab",
+        r"collab.*off",
+        r"get.*rid.*collaboration",
+        r"collaboration.*gone",
+        r"get.*rid.*collab",
+        r"collab.*gone",
+        r"can you.*close.*collaboration",
+        r"can you.*close.*collab",
+        r"could you.*hide.*collaboration",
+        r"could you.*hide.*collab",
+        r"please.*close.*collaboration",
+        r"please.*close.*collab",
+        r"i want.*close.*collaboration",
+        r"i want.*close.*collab"
+    ]
+    
+    # 🚀 GENERATION SETTINGS MODAL - Comprehensive patterns
+    generation_settings_patterns = [
+        r"open.*generation.*settings",
+        r"generation.*settings.*open",
+        r"show.*generation.*settings",
+        r"generation.*settings.*show",
+        r"display.*generation.*settings",
+        r"generation.*settings.*display",
+        r"open.*gen.*settings",
+        r"gen.*settings.*open",
+        r"show.*gen.*settings",
+        r"gen.*settings.*show",
+        r"display.*gen.*settings",
+        r"gen.*settings.*display",
+        r"open.*ai.*settings",
+        r"ai.*settings.*open",
+        r"show.*ai.*settings",
+        r"ai.*settings.*show",
+        r"display.*ai.*settings",
+        r"ai.*settings.*display",
+        r"open.*settings",
+        r"settings.*open",
+        r"show.*settings",
+        r"settings.*show",
+        r"display.*settings",
+        r"settings.*display",
+        r"bring.*up.*generation.*settings",
+        r"generation.*settings.*up",
+        r"bring.*up.*gen.*settings",
+        r"gen.*settings.*up",
+        r"bring.*up.*ai.*settings",
+        r"ai.*settings.*up",
+        r"bring.*up.*settings",
+        r"settings.*up",
+        r"launch.*generation.*settings",
+        r"launch.*gen.*settings",
+        r"launch.*ai.*settings",
+        r"launch.*settings",
+        r"start.*generation.*settings",
+        r"start.*gen.*settings",
+        r"start.*ai.*settings",
+        r"start.*settings",
+        r"get.*generation.*settings",
+        r"get.*gen.*settings",
+        r"get.*ai.*settings",
+        r"get.*settings",
+        r"access.*generation.*settings",
+        r"access.*gen.*settings",
+        r"access.*ai.*settings",
+        r"access.*settings",
+        r"can you.*generation.*settings",
+        r"can you.*gen.*settings",
+        r"can you.*ai.*settings",
+        r"can you.*settings",
+        r"could you.*generation.*settings",
+        r"could you.*gen.*settings",
+        r"could you.*ai.*settings",
+        r"could you.*settings",
+        r"would you.*generation.*settings",
+        r"would you.*gen.*settings",
+        r"would you.*ai.*settings",
+        r"would you.*settings",
+        r"please.*generation.*settings",
+        r"please.*gen.*settings",
+        r"please.*ai.*settings",
+        r"please.*settings",
+        r"generation.*settings.*please",
+        r"gen.*settings.*please",
+        r"ai.*settings.*please",
+        r"settings.*please",
+        r"i want.*generation.*settings",
+        r"i want.*gen.*settings",
+        r"i want.*ai.*settings",
+        r"i want.*settings",
+        r"need.*generation.*settings",
+        r"need.*gen.*settings",
+        r"need.*ai.*settings",
+        r"need.*settings",
+        r"let me.*generation.*settings",
+        r"let me.*gen.*settings",
+        r"let me.*ai.*settings",
+        r"let me.*settings"
+    ]
+    
+    # 🎯 Check STORYBOARD OPEN patterns
+    for pattern in storyboard_open_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected storyboard open command: {text}")
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -102,7 +513,23 @@ async def process_app_control_commands(text, websocket):
                 "parameters": {}
             }))
             return "Opening storyboard panel"
-        elif "layers" in text_lower:
+    
+    # 🎯 Check STORYBOARD CLOSE patterns
+    for pattern in storyboard_close_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected storyboard close command: {text}")
+            await websocket.send(json.dumps({
+                "type": "app_control",
+                "action": "close_panel",
+                "target": "storyboard",
+                "parameters": {}
+            }))
+            return "Closing storyboard panel"
+    
+    # 🎯 Check LAYERS OPEN patterns
+    for pattern in layers_open_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected layers open command: {text}")
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -110,7 +537,23 @@ async def process_app_control_commands(text, websocket):
                 "parameters": {}
             }))
             return "Opening layers panel"
-        elif "tools" in text_lower:
+    
+    # 🎯 Check LAYERS CLOSE patterns
+    for pattern in layers_close_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected layers close command: {text}")
+            await websocket.send(json.dumps({
+                "type": "app_control",
+                "action": "close_panel",
+                "target": "layers",
+                "parameters": {}
+            }))
+            return "Closing layers panel"
+    
+    # 🎯 Check TOOLS OPEN patterns
+    for pattern in tools_open_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected tools open command: {text}")
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -118,7 +561,23 @@ async def process_app_control_commands(text, websocket):
                 "parameters": {}
             }))
             return "Opening tools panel"
-        elif "collaboration" in text_lower or "collab" in text_lower:
+    
+    # 🎯 Check TOOLS CLOSE patterns
+    for pattern in tools_close_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected tools close command: {text}")
+            await websocket.send(json.dumps({
+                "type": "app_control",
+                "action": "close_panel",
+                "target": "tools",
+                "parameters": {}
+            }))
+            return "Hiding tools panel"
+    
+    # 🎯 Check COLLABORATION OPEN patterns
+    for pattern in collaboration_open_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected collaboration open command: {text}")
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -127,8 +586,32 @@ async def process_app_control_commands(text, websocket):
             }))
             return "Opening collaboration panel"
     
+    # 🎯 Check COLLABORATION CLOSE patterns
+    for pattern in collaboration_close_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected collaboration close command: {text}")
+            await websocket.send(json.dumps({
+                "type": "app_control",
+                "action": "close_panel",
+                "target": "collaboration",
+                "parameters": {}
+            }))
+            return "Hiding collaboration panel"
+    
+    # 🎯 Check GENERATION SETTINGS patterns
+    for pattern in generation_settings_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎯 Regex detected generation settings command: {text}")
+            await websocket.send(json.dumps({
+                "type": "app_control",
+                "action": "open_modal",
+                "target": "generation_settings",
+                "parameters": {}
+            }))
+            return "Opening generation settings"
+    
     # Canvas operations
-    elif "clear" in text_lower and any(word in text_lower for word in ["canvas", "drawing", "draw"]):
+    if "clear" in text_lower and any(word in text_lower for word in ["canvas", "drawing", "draw"]):
         await websocket.send(json.dumps({
             "type": "clear_canvas",
             "command_detected": "clear"
@@ -136,7 +619,7 @@ async def process_app_control_commands(text, websocket):
         return "Clearing canvas"
     
     # Drawing tools
-    elif "switch" in text_lower and "tool" in text_lower:
+    if "switch" in text_lower and "tool" in text_lower:
         if "brush" in text_lower:
             await websocket.send(json.dumps({
                 "type": "app_control",
@@ -440,6 +923,431 @@ async def process_voice_command_with_regex(text, websocket):
                 }))
                 return "I'll clear the canvas for you!"
         
+        # 🎯 ROBUST PANEL CONTROL COMMANDS with comprehensive regex patterns
+        # Use clean_transcript() like enhance/modify system to handle word spacing issues
+        cleaned_text = clean_transcript(text_lower)
+        print(f"🔍 Real-time command processing - Text: '{text}', Lower: '{text_lower}', Cleaned: '{cleaned_text}'")
+        
+        # 🚀 STORYBOARD PANEL CONTROL - Comprehensive patterns
+        storyboard_open_patterns = [
+            r"open.*storyboard",
+            r"storyboard.*open",
+            r"show.*storyboard", 
+            r"storyboard.*show",
+            r"display.*storyboard",
+            r"storyboard.*display",
+            r"bring.*up.*storyboard",
+            r"storyboard.*up",
+            r"launch.*storyboard",
+            r"start.*storyboard",
+            r"get.*storyboard",
+            r"access.*storyboard",
+            r"can you.*storyboard",
+            r"could you.*storyboard",
+            r"would you.*storyboard",
+            r"please.*storyboard",
+            r"storyboard.*please",
+            r"i want.*storyboard",
+            r"need.*storyboard",
+            r"let me.*storyboard"
+        ]
+        
+        storyboard_close_patterns = [
+            r"close.*storyboard",
+            r"storyboard.*close",
+            r"hide.*storyboard",
+            r"storyboard.*hide",
+            r"remove.*storyboard",
+            r"storyboard.*remove",
+            r"put.*away.*storyboard",
+            r"storyboard.*away",
+            r"dismiss.*storyboard",
+            r"storyboard.*dismiss",
+            r"shut.*storyboard",
+            r"storyboard.*shut",
+            r"turn.*off.*storyboard",
+            r"storyboard.*off",
+            r"get.*rid.*storyboard",
+            r"storyboard.*gone",
+            r"can you.*close.*storyboard",
+            r"could you.*hide.*storyboard",
+            r"please.*close.*storyboard",
+            r"i want.*close.*storyboard"
+        ]
+        
+        # 🚀 LAYERS PANEL CONTROL - Comprehensive patterns
+        layers_open_patterns = [
+            r"open.*layers",
+            r"layers.*open",
+            r"show.*layers",
+            r"layers.*show",
+            r"display.*layers",
+            r"layers.*display",
+            r"bring.*up.*layers",
+            r"layers.*up",
+            r"launch.*layers",
+            r"start.*layers",
+            r"get.*layers",
+            r"access.*layers",
+            r"can you.*layers",
+            r"could you.*layers",
+            r"would you.*layers",
+            r"please.*layers",
+            r"layers.*please",
+            r"i want.*layers",
+            r"need.*layers",
+            r"let me.*layers"
+        ]
+        
+        layers_close_patterns = [
+            r"close.*layers",
+            r"layers.*close",
+            r"hide.*layers",
+            r"layers.*hide",
+            r"remove.*layers",
+            r"layers.*remove",
+            r"put.*away.*layers",
+            r"layers.*away",
+            r"dismiss.*layers",
+            r"layers.*dismiss",
+            r"shut.*layers",
+            r"layers.*shut",
+            r"turn.*off.*layers",
+            r"layers.*off",
+            r"get.*rid.*layers",
+            r"layers.*gone",
+            r"can you.*close.*layers",
+            r"could you.*hide.*layers",
+            r"please.*close.*layers",
+            r"i want.*close.*layers"
+        ]
+        
+        # 🚀 TOOLS PANEL CONTROL - Comprehensive patterns
+        tools_open_patterns = [
+            r"open.*tools",
+            r"tools.*open",
+            r"show.*tools",
+            r"tools.*show",
+            r"display.*tools",
+            r"tools.*display",
+            r"bring.*up.*tools",
+            r"tools.*up",
+            r"launch.*tools",
+            r"start.*tools",
+            r"get.*tools",
+            r"access.*tools",
+            r"can you.*tools",
+            r"could you.*tools",
+            r"would you.*tools",
+            r"please.*tools",
+            r"tools.*please",
+            r"i want.*tools",
+            r"need.*tools",
+            r"let me.*tools"
+        ]
+        
+        tools_close_patterns = [
+            r"close.*tools",
+            r"tools.*close",
+            r"hide.*tools",
+            r"tools.*hide",
+            r"remove.*tools",
+            r"tools.*remove",
+            r"put.*away.*tools",
+            r"tools.*away",
+            r"dismiss.*tools",
+            r"tools.*dismiss",
+            r"shut.*tools",
+            r"tools.*shut",
+            r"turn.*off.*tools",
+            r"tools.*off",
+            r"get.*rid.*tools",
+            r"tools.*gone",
+            r"can you.*close.*tools",
+            r"could you.*hide.*tools",
+            r"please.*close.*tools",
+            r"i want.*close.*tools"
+        ]
+        
+        # 🚀 COLLABORATION PANEL CONTROL - Comprehensive patterns
+        collaboration_open_patterns = [
+            r"open.*collaboration",
+            r"collaboration.*open",
+            r"open.*collab",
+            r"collab.*open",
+            r"show.*collaboration",
+            r"collaboration.*show",
+            r"show.*collab",
+            r"collab.*show",
+            r"display.*collaboration",
+            r"collaboration.*display",
+            r"display.*collab",
+            r"collab.*display",
+            r"bring.*up.*collaboration",
+            r"collaboration.*up",
+            r"bring.*up.*collab",
+            r"collab.*up",
+            r"launch.*collaboration",
+            r"launch.*collab",
+            r"start.*collaboration",
+            r"start.*collab",
+            r"get.*collaboration",
+            r"get.*collab",
+            r"access.*collaboration",
+            r"access.*collab",
+            r"can you.*collaboration",
+            r"can you.*collab",
+            r"could you.*collaboration",
+            r"could you.*collab",
+            r"would you.*collaboration",
+            r"would you.*collab",
+            r"please.*collaboration",
+            r"please.*collab",
+            r"collaboration.*please",
+            r"collab.*please",
+            r"i want.*collaboration",
+            r"i want.*collab",
+            r"need.*collaboration",
+            r"need.*collab",
+            r"let me.*collaboration",
+            r"let me.*collab"
+        ]
+        
+        collaboration_close_patterns = [
+            r"close.*collaboration",
+            r"collaboration.*close",
+            r"close.*collab",
+            r"collab.*close",
+            r"hide.*collaboration",
+            r"collaboration.*hide",
+            r"hide.*collab",
+            r"collab.*hide",
+            r"remove.*collaboration",
+            r"collaboration.*remove",
+            r"remove.*collab",
+            r"collab.*remove",
+            r"put.*away.*collaboration",
+            r"collaboration.*away",
+            r"put.*away.*collab",
+            r"collab.*away",
+            r"dismiss.*collaboration",
+            r"collaboration.*dismiss",
+            r"dismiss.*collab",
+            r"collab.*dismiss",
+            r"shut.*collaboration",
+            r"collaboration.*shut",
+            r"shut.*collab",
+            r"collab.*shut",
+            r"turn.*off.*collaboration",
+            r"collaboration.*off",
+            r"turn.*off.*collab",
+            r"collab.*off",
+            r"get.*rid.*collaboration",
+            r"collaboration.*gone",
+            r"get.*rid.*collab",
+            r"collab.*gone",
+            r"can you.*close.*collaboration",
+            r"can you.*close.*collab",
+            r"could you.*hide.*collaboration",
+            r"could you.*hide.*collab",
+            r"please.*close.*collaboration",
+            r"please.*close.*collab",
+            r"i want.*close.*collaboration",
+            r"i want.*close.*collab"
+        ]
+        
+        # 🚀 GENERATION SETTINGS MODAL - Comprehensive patterns
+        generation_settings_patterns = [
+            r"open.*generation.*settings",
+            r"generation.*settings.*open",
+            r"show.*generation.*settings",
+            r"generation.*settings.*show",
+            r"display.*generation.*settings",
+            r"generation.*settings.*display",
+            r"open.*gen.*settings",
+            r"gen.*settings.*open",
+            r"show.*gen.*settings",
+            r"gen.*settings.*show",
+            r"display.*gen.*settings",
+            r"gen.*settings.*display",
+            r"open.*ai.*settings",
+            r"ai.*settings.*open",
+            r"show.*ai.*settings",
+            r"ai.*settings.*show",
+            r"display.*ai.*settings",
+            r"ai.*settings.*display",
+            r"open.*settings",
+            r"settings.*open",
+            r"show.*settings",
+            r"settings.*show",
+            r"display.*settings",
+            r"settings.*display",
+            r"bring.*up.*generation.*settings",
+            r"generation.*settings.*up",
+            r"bring.*up.*gen.*settings",
+            r"gen.*settings.*up",
+            r"bring.*up.*ai.*settings",
+            r"ai.*settings.*up",
+            r"bring.*up.*settings",
+            r"settings.*up",
+            r"launch.*generation.*settings",
+            r"launch.*gen.*settings",
+            r"launch.*ai.*settings",
+            r"launch.*settings",
+            r"start.*generation.*settings",
+            r"start.*gen.*settings",
+            r"start.*ai.*settings",
+            r"start.*settings",
+            r"get.*generation.*settings",
+            r"get.*gen.*settings",
+            r"get.*ai.*settings",
+            r"get.*settings",
+            r"access.*generation.*settings",
+            r"access.*gen.*settings",
+            r"access.*ai.*settings",
+            r"access.*settings",
+            r"can you.*generation.*settings",
+            r"can you.*gen.*settings",
+            r"can you.*ai.*settings",
+            r"can you.*settings",
+            r"could you.*generation.*settings",
+            r"could you.*gen.*settings",
+            r"could you.*ai.*settings",
+            r"could you.*settings",
+            r"would you.*generation.*settings",
+            r"would you.*gen.*settings",
+            r"would you.*ai.*settings",
+            r"would you.*settings",
+            r"please.*generation.*settings",
+            r"please.*gen.*settings",
+            r"please.*ai.*settings",
+            r"please.*settings",
+            r"generation.*settings.*please",
+            r"gen.*settings.*please",
+            r"ai.*settings.*please",
+            r"settings.*please",
+            r"i want.*generation.*settings",
+            r"i want.*gen.*settings",
+            r"i want.*ai.*settings",
+            r"i want.*settings",
+            r"need.*generation.*settings",
+            r"need.*gen.*settings",
+            r"need.*ai.*settings",
+            r"need.*settings",
+            r"let me.*generation.*settings",
+            r"let me.*gen.*settings",
+            r"let me.*ai.*settings",
+            r"let me.*settings"
+        ]
+        
+        # 🎯 Check STORYBOARD OPEN patterns
+        for pattern in storyboard_open_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected storyboard open command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "open_panel",
+                    "target": "storyboard",
+                    "parameters": {}
+                }))
+                return "Opening storyboard panel"
+        
+        # 🎯 Check STORYBOARD CLOSE patterns
+        for pattern in storyboard_close_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected storyboard close command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "close_panel",
+                    "target": "storyboard",
+                    "parameters": {}
+                }))
+                return "Closing storyboard panel"
+        
+        # 🎯 Check LAYERS OPEN patterns
+        for pattern in layers_open_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected layers open command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "open_panel",
+                    "target": "layers",
+                    "parameters": {}
+                }))
+                return "Opening layers panel"
+        
+        # 🎯 Check LAYERS CLOSE patterns
+        for pattern in layers_close_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected layers close command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "close_panel",
+                    "target": "layers",
+                    "parameters": {}
+                }))
+                return "Closing layers panel"
+        
+        # 🎯 Check TOOLS OPEN patterns
+        for pattern in tools_open_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected tools open command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "open_panel",
+                    "target": "tools",
+                    "parameters": {}
+                }))
+                return "Opening tools panel"
+        
+        # 🎯 Check TOOLS CLOSE patterns
+        for pattern in tools_close_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected tools close command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "close_panel",
+                    "target": "tools",
+                    "parameters": {}
+                }))
+                return "Hiding tools panel"
+        
+        # 🎯 Check COLLABORATION OPEN patterns
+        for pattern in collaboration_open_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected collaboration open command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "open_panel",
+                    "target": "collaboration",
+                    "parameters": {}
+                }))
+                return "Opening collaboration panel"
+        
+        # 🎯 Check COLLABORATION CLOSE patterns
+        for pattern in collaboration_close_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected collaboration close command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "close_panel",
+                    "target": "collaboration",
+                    "parameters": {}
+                }))
+                return "Hiding collaboration panel"
+        
+        # 🎯 Check GENERATION SETTINGS patterns
+        for pattern in generation_settings_patterns:
+            if re.search(pattern, cleaned_text):
+                print(f"🎯 Regex detected generation settings command: {text}")
+                await websocket.send(json.dumps({
+                    "type": "app_control",
+                    "action": "open_modal",
+                    "target": "generation_settings",
+                    "parameters": {}
+                }))
+                return "Opening generation settings"
+        
         return None  # No command detected
     except Exception as e:
         print(f"❌ Error in regex command processing: {e}")
@@ -600,10 +1508,59 @@ def notify_browser_closed():
 def clean_transcript(text):
     """Collapse multiple spaces, join common split words, and strip leading/trailing spaces."""
     text = re.sub(r'\s+', ' ', text)
+    
     # Join common split words for modification
     text = re.sub(r"mo\s*di\s*fy", "modify", text, flags=re.IGNORECASE)
     text = re.sub(r"mod\s*if\s*y", "modify", text, flags=re.IGNORECASE)
-    # Add more as needed for other commands
+    
+    # 🚀 Join common split words for APP CONTROL commands
+    # Storyboard
+    text = re.sub(r"sto\s*ry\s*board", "storyboard", text, flags=re.IGNORECASE)
+    text = re.sub(r"story\s*board", "storyboard", text, flags=re.IGNORECASE)
+    
+    # Layers
+    text = re.sub(r"lay\s*ers", "layers", text, flags=re.IGNORECASE)
+    text = re.sub(r"la\s*yers", "layers", text, flags=re.IGNORECASE)
+    
+    # Tools
+    text = re.sub(r"tool\s*s", "tools", text, flags=re.IGNORECASE)
+    text = re.sub(r"too\s*ls", "tools", text, flags=re.IGNORECASE)
+    
+    # Collaboration
+    text = re.sub(r"col\s*lab\s*o\s*ra\s*tion", "collaboration", text, flags=re.IGNORECASE)
+    text = re.sub(r"col\s*lab", "collab", text, flags=re.IGNORECASE)
+    text = re.sub(r"col\s*la\s*bo\s*ra\s*tion", "collaboration", text, flags=re.IGNORECASE)
+    
+    # Generation Settings
+    text = re.sub(r"gen\s*er\s*a\s*tion", "generation", text, flags=re.IGNORECASE)
+    text = re.sub(r"gen\s*er\s*at\s*ion", "generation", text, flags=re.IGNORECASE)
+    text = re.sub(r"set\s*ting\s*s", "settings", text, flags=re.IGNORECASE)
+    text = re.sub(r"set\s*tings", "settings", text, flags=re.IGNORECASE)
+    
+    # Close/Hide/Remove/Dismiss
+    text = re.sub(r"clo\s*se", "close", text, flags=re.IGNORECASE)
+    text = re.sub(r"hi\s*de", "hide", text, flags=re.IGNORECASE)
+    text = re.sub(r"re\s*move", "remove", text, flags=re.IGNORECASE)
+    text = re.sub(r"dis\s*miss", "dismiss", text, flags=re.IGNORECASE)
+    
+    # Open/Show/Display/Launch/Start
+    text = re.sub(r"o\s*pen", "open", text, flags=re.IGNORECASE)
+    text = re.sub(r"sh\s*ow", "show", text, flags=re.IGNORECASE)
+    text = re.sub(r"dis\s*play", "display", text, flags=re.IGNORECASE)
+    text = re.sub(r"la\s*unch", "launch", text, flags=re.IGNORECASE)
+    text = re.sub(r"st\s*art", "start", text, flags=re.IGNORECASE)
+    
+    # Access/Get/Bring
+    text = re.sub(r"ac\s*cess", "access", text, flags=re.IGNORECASE)
+    text = re.sub(r"br\s*ing", "bring", text, flags=re.IGNORECASE)
+    text = re.sub(r"br\s*ing\s*up", "bring up", text, flags=re.IGNORECASE)
+    
+    # Turn off/Shut/Get rid of
+    text = re.sub(r"turn\s*off", "turn off", text, flags=re.IGNORECASE)
+    text = re.sub(r"sh\s*ut", "shut", text, flags=re.IGNORECASE)
+    text = re.sub(r"get\s*rid", "get rid", text, flags=re.IGNORECASE)
+    text = re.sub(r"put\s*away", "put away", text, flags=re.IGNORECASE)
+    
     return text.strip()
 
 class AudioManager:
@@ -889,6 +1846,13 @@ async def gemini_session_handler(websocket):
                             smoothed_level = sum(audio_level_history) / len(audio_level_history)
                             
                             # Voice activity detection logic
+                            # Debug audio levels occasionally
+                            if hasattr(listen_for_audio, 'last_debug_log') and time.time() - listen_for_audio.last_debug_log > 10:
+                                print(f"🔍 Audio level debug - Current: {smoothed_level:.1f}, Voice threshold: {voice_threshold}, Silence threshold: {silence_threshold}")
+                                listen_for_audio.last_debug_log = time.time()
+                            elif not hasattr(listen_for_audio, 'last_debug_log'):
+                                listen_for_audio.last_debug_log = time.time()
+                            
                             if smoothed_level > voice_threshold:
                                 # Voice detected
                                 voice_duration += CHUNK_SIZE / SEND_SAMPLE_RATE
@@ -1063,6 +2027,24 @@ async def gemini_session_handler(websocket):
                                             blob = types.Blob(data=image_data, mime_type="image/jpeg")
                                             await session.send_realtime_input(media=blob)
                                             print(f"Image sent successfully to Gemini")
+                                
+                                elif data.get("type") == "get_cache_stats":
+                                    # Frontend is requesting cache statistics
+                                    cache_stats = get_cache_stats()
+                                    await websocket.send(json.dumps({
+                                        "type": "cache_stats",
+                                        "stats": cache_stats
+                                    }))
+                                    print(f"📊 Sent cache stats to frontend: {cache_stats}")
+                                
+                                elif data.get("type") == "clear_cache":
+                                    # Frontend is requesting to clear the cache
+                                    clear_result = clear_command_cache()
+                                    await websocket.send(json.dumps({
+                                        "type": "cache_cleared",
+                                        "result": clear_result
+                                    }))
+                                    print(f"🧹 Cache cleared by frontend request")
                                             
                             except Exception as e:
                                 print(f"Error handling frontend message: {e}")
@@ -1131,17 +2113,17 @@ async def gemini_session_handler(websocket):
                                                     }))
                                                     transcription_buffer = ""
                                                 else:
-                                                    # 🚀 Use working version's regex processing for enhancement/modification
-                                                    regex_result = await process_voice_command_with_regex(cleaned_buffer, websocket)
-                                                    if regex_result is not None:
-                                                        print(f"🎯 Regex command detected in voice input: {cleaned_buffer}")
+                                                    # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
+                                                    hybrid_result = await hybrid_command_processor(cleaned_buffer, websocket)
+                                                    if hybrid_result is not None:
+                                                        print(f"🎯 Hybrid command detected in voice input: {cleaned_buffer}")
                                                         await websocket.send(json.dumps({
-                                                            "text": regex_result,
-                                                            "command_detected": "regex_processed"
+                                                            "text": hybrid_result,
+                                                            "command_detected": "hybrid_processed"
                                                         }))
                                                         transcription_buffer = ""
                                                     else:
-                                                        print(f"❌ No command detected for: '{cleaned_buffer}'")
+                                                        print(f"🤖 No command detected, will try AI processing on turn complete")
                                             else:
                                                 print(f"⏳ Buffering, not running commands yet: '{cleaned_buffer}'")
 
@@ -1192,16 +2174,16 @@ async def gemini_session_handler(websocket):
                                                 "command_detected": "app_control"
                                             }))
                                         else:
-                                            # 🚀 Use working version's regex processing
-                                            regex_result = await process_voice_command_with_regex(transcription_buffer, websocket)
-                                            if regex_result is not None:
-                                                print(f"🎯 Regex command detected in voice input: {transcription_buffer}")
+                                            # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
+                                            hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
+                                            if hybrid_result is not None:
+                                                print(f"🎯 Hybrid command detected on turn complete: {transcription_buffer}")
                                                 await websocket.send(json.dumps({
-                                                    "text": regex_result,
-                                                    "command_detected": "regex_processed"
+                                                    "text": hybrid_result,
+                                                    "command_detected": "hybrid_processed"
                                                 }))
                                             else:
-                                                print(f"❌ No command detected for: '{transcription_buffer}'")
+                                                print(f"🤖 No command detected by hybrid system, will send to AI for processing")
                                         
                                         # ✅ ALWAYS clear buffer on turn complete (like working version)
                                         transcription_buffer = ""

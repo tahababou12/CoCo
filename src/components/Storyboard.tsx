@@ -15,6 +15,8 @@ interface StoryboardProps {
 }
 
 const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
+  console.log('🎬 Storyboard component rendered with isOpen:', isOpen);
+  
   const [storyboardImages, setStoryboardImages] = useState<StoryboardImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -287,6 +289,13 @@ const Storyboard: React.FC<StoryboardProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  // Don't render anything if not open
+  if (!isOpen) {
+    console.log('🎬 Storyboard not open, returning null');
+    return null;
+  }
+
+  console.log('🎬 Storyboard is open, rendering modal');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
       <div className="fixed inset-0 transition-opacity" onClick={onClose}>

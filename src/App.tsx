@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import Canvas from './components/Canvas'
 import Toolbar from './components/Toolbar'
 import Header from './components/Header'
@@ -80,9 +80,16 @@ const CollaboratorCursors: React.FC = () => {
 function ProtectedApp() {
   const [showStoryboard, setShowStoryboard] = useState(false);
   const webSocket = useWebSocket();
+  
+  // Debug storyboard state changes
+  useEffect(() => {
+    console.log('🔄 showStoryboard state changed to:', showStoryboard);
+  }, [showStoryboard]);
 
   const toggleStoryboard = () => {
+    console.log('🔄 toggleStoryboard called, current state:', showStoryboard);
     setShowStoryboard(!showStoryboard);
+    console.log('🔄 toggleStoryboard will set to:', !showStoryboard);
   };
 
   // Enhanced cursor movement handler with bezier curve interpolation
@@ -108,7 +115,11 @@ function ProtectedApp() {
     >
       <Header />
       <div className="flex-1 overflow-hidden relative">
-        <Canvas onToggleStoryboard={toggleStoryboard} />
+        <Canvas 
+          onToggleStoryboard={toggleStoryboard} 
+          showStoryboard={showStoryboard}
+          onCloseStoryboard={() => setShowStoryboard(false)}
+        />
         <Toolbar />
         <HandDrawing />
         <CollaborationPanel />
