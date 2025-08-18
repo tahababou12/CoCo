@@ -38,6 +38,22 @@ global_server = None
 # Global personality state
 current_personality = "friendly"  # "friendly" or "sarcastic"
 
+# 🎨 Simple app state tracking - just the basics
+app_state = {
+    "storyboard_open": False,
+    "layers_open": False,
+    "tools_open": False,
+    "collaboration_open": False,
+    "generation_settings_open": False,
+    "current_tool": "pencil"
+}
+
+def update_app_state(**kwargs):
+    """Simple function to update app state"""
+    global app_state
+    app_state.update(kwargs)
+    print(f"🧠 Updated app state: {app_state}")
+
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
     print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
@@ -506,6 +522,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in storyboard_open_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected storyboard open command: {text}")
+            # Update app state
+            update_app_state(storyboard_open=True)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -518,6 +537,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in storyboard_close_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected storyboard close command: {text}")
+            # Update app state
+            update_app_state(storyboard_open=False)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "close_panel",
@@ -530,6 +552,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in layers_open_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected layers open command: {text}")
+            # Update app state
+            update_app_state(layers_open=True)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -542,6 +567,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in layers_close_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected layers close command: {text}")
+            # Update app state
+            update_app_state(layers_open=False)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "close_panel",
@@ -666,10 +694,39 @@ User prompt: {user_prompt}
         return response.text.strip()
     return user_prompt
 
-def get_system_instruction(personality):
-    """Get system instruction based on personality"""
+def get_system_instruction(personality, app_state=None):
+    """Get system instruction based on personality and current app state"""
+    
+    # Simple app state info
+    app_info = ""
+    if app_state:
+        open_panels = []
+        if app_state.get("storyboard_open"):
+            open_panels.append("storyboard")
+        if app_state.get("layers_open"):
+            open_panels.append("layers")
+        if app_state.get("tools_open"):
+            open_panels.append("tools")
+        if app_state.get("collaboration_open"):
+            open_panels.append("collaboration")
+        if app_state.get("generation_settings_open"):
+            open_panels.append("generation settings")
+            
+        current_tool = app_state.get("current_tool", "pencil")
+        
+        app_info = f"""
+
+🎨 CURRENT APP STATE:
+• Open Panels: {', '.join(open_panels) if open_panels else 'None'}
+• Current Tool: {current_tool}
+
+IMPORTANT: Use this information to give better context-aware responses:
+• If someone asks to open/close a panel that's already open/closed, tell them the current state
+• If they're using a specific tool, give tool-appropriate suggestions
+• Be aware of what's currently visible in the app
+"""
     if personality == "sarcastic":
-        return """You're a sarcastic, brutally honest drawing critic who helps people create art by being mean and funny about their drawings! You can see their canvas and hear their voice in real-time. 
+        return f"""You're a sarcastic, brutally honest drawing critic who helps people create art by being mean and funny about their drawings! You can see their canvas and hear their voice in real-time.{app_info} 
 
 Your personality:
 - Be sarcastic, witty, and brutally honest about their drawings
@@ -687,7 +744,7 @@ CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say
 
 Be sarcastic, witty, and entertaining while still being helpful and encouraging in your own unique way! Always respond to what you actually see on the canvas!"""
     else:
-        return """You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
+        return f"""You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time.{app_info} 
 
 Your role:
 - Give encouraging, helpful advice about their drawings
@@ -1757,7 +1814,7 @@ async def gemini_session_handler(websocket):
                 output_audio_transcription={},
                 # Enable input transcription (Your speech to text)
                 input_audio_transcription={},
-                system_instruction=get_system_instruction(current_personality)
+                system_instruction=get_system_instruction(current_personality, app_state)
             )
             
             print(f"Final config for Gemini: {live_config}")
