@@ -190,3 +190,31 @@ declare var SpeechRecognition: {
   prototype: SpeechRecognition;
   new(): SpeechRecognition;
 };
+
+export interface WebSocketContextType {
+  socket: WebSocket | null;
+  isConnected: boolean;
+  isConnecting: boolean;
+  users: User[];
+  currentUser: User | null;
+  peerConnections: Record<string, RTCPeerConnection>;
+  remoteStreams: Record<string, MediaStream>;
+  connect: () => void;
+  disconnect: () => void;
+  sendMessage: (message: WebSocketMessage) => void;
+  sendCursorMove: (x: number, y: number) => void;
+  toggleHandTracking: () => void;
+  startWebcamSharing: () => void;
+  stopWebcamSharing: () => void;
+  sharedWebcamStream: MediaStream | null;
+  setSharedWebcamStream: (stream: MediaStream | null) => void;
+  startDrawing: (x: number, y: number) => void;
+  continueDrawing: (x: number, y: number) => void;
+  endDrawing: () => void;
+  addShape: (shape: Shape) => void;
+  deleteShape: (shapeId: string) => void;
+  updateViewTransform: (transform: ViewTransform) => void;
+  // AI Collaboration
+  aiCursor: { x: number; y: number; isDrawing: boolean; currentAction?: string };
+  aiDrawings: any[];
+}

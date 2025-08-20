@@ -11,6 +11,7 @@ import html2canvas from 'html2canvas' // Still needed for package dependencies, 
 import Header from './Header'
 import LayersPanel from './LayersPanel'
 import GridSettings from './GridSettings'
+import AICursor from './AICursor'
 
 
 
@@ -54,6 +55,7 @@ interface CanvasProps {
 
 const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onCloseStoryboard }) => {
   const { state, dispatch } = useDrawing()
+  const { aiCursor } = useWebSocket()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -2765,6 +2767,14 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
           </div>
         </div>
       </div>
+
+      {/* AI Cursor */}
+      <AICursor 
+        x={aiCursor?.x || 400} 
+        y={aiCursor?.y || 300} 
+        isDrawing={aiCursor?.isDrawing || false}
+        currentAction={aiCursor?.currentAction}
+      />
     </div>
   )
 }

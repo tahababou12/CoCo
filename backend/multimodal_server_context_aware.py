@@ -268,7 +268,7 @@ async def send_frontend_command(websocket, command_type, data=None):
     await websocket.send(json.dumps(message))
     print(f"📤 Sent frontend command: {command_type}")
 
-async def process_app_control_commands(transcript, websocket):
+async def process_app_control_commands(transcript, websocket, session=None):
     """Process app control commands and send frontend commands"""
     global app_state
     
@@ -305,10 +305,7 @@ async def process_app_control_commands(transcript, websocket):
         r'\b(?:disable|turn\s+off|stop)\s+(?:ai|collaboration|drawing\s+help)\b'
     ]
     
-    ai_draw_patterns = [
-        r'\b(?:draw|add|create|make)\s+(?:a\s+)?(?:circle|square|rectangle|line|shape)\b',
-        r'\b(?:ai\s+draw|assistant\s+draw|help\s+draw)\b'
-    ]
+
     
     # Check for panel open commands
     for pattern in open_patterns:
@@ -383,39 +380,57 @@ async def process_app_control_commands(transcript, websocket):
     for pattern in ai_collab_enable_patterns:
         if re.search(pattern, clean_text, re.IGNORECASE):
             app_state["ai_collab_enabled"] = True
-            await send_ai_cursor(websocket, app_state["ai_cursor"]["x"], app_state["ai_cursor"]["y"])
-            return "AI collaboration enabled! I'll help you draw."
+            # Use user's current cursor position for AI cursor
+            user_cursor = app_state.get("cursor", {"x": 400, "y": 300})
+            app_state["ai_cursor"] = {"x": user_cursor["x"], "y": user_cursor["y"]}
+            await send_ai_cursor(websocket, user_cursor["x"], user_cursor["y"])
+            return "AI collaboration enabled! I'll help you draw. Say 'draw a flower' or anything you want me to draw!"
     
     for pattern in ai_collab_disable_patterns:
         if re.search(pattern, clean_text, re.IGNORECASE):
             app_state["ai_collab_enabled"] = False
             return "AI collaboration disabled. I'll stop drawing with you."
     
+    # Enhanced AI drawing commands - let AI figure out how to draw anything
+    ai_draw_patterns = [
+        r'\b(?:draw|create|make|add)\s+(?:a\s+)?(.+?)\b',
+        r'\b(?:ai\s+draw|assistant\s+draw|help\s+draw)\s+(.+?)\b',
+        r'\b(?:can\s+you\s+draw|please\s+draw)\s+(.+?)\b'
+    ]
+    
     for pattern in ai_draw_patterns:
-        if re.search(pattern, clean_text, re.IGNORECASE):
-            if app_state["ai_collab_enabled"]:
-                if 'circle' in clean_text:
-                    ops = generate_circle_ops(app_state["last_user_cursor"]["x"], app_state["last_user_cursor"]["y"])
-                    await send_ai_draw(websocket, ops)
-                    return "I'll draw a circle for you!"
-                elif 'square' in clean_text or 'rectangle' in clean_text:
-                    # Generate square/rectangle ops
-                    x, y = app_state["last_user_cursor"]["x"], app_state["last_user_cursor"]["y"]
-                    ops = [
-                        {"type": "begin_stroke", "color": "#3B82F6", "width": 2},
-                        {"type": "line_to", "x": x, "y": y},
-                        {"type": "line_to", "x": x + 40, "y": y},
-                        {"type": "line_to", "x": x + 40, "y": y + 40},
-                        {"type": "line_to", "x": x, "y": y + 40},
-                        {"type": "line_to", "x": x, "y": y},
-                        {"type": "end_stroke"}
-                    ]
-                    await send_ai_draw(websocket, ops)
-                    return "I'll draw a square for you!"
-                else:
-                    return "What shape would you like me to draw?"
-            else:
-                return "AI collaboration is not enabled. Say 'draw with me' to start!"
+        match = re.search(pattern, clean_text, re.IGNORECASE)
+        if match:
+            drawing_request = match.group(1).strip()
+            # Use the new AI drawing system with unified session
+            return await process_ai_drawing_commands(drawing_request, websocket, session)
+    
+    # Remove old hardcoded drawing patterns
+    # for pattern in ai_draw_patterns:
+    #     if re.search(pattern, clean_text, re.IGNORECASE):
+    #         if app_state["ai_collab_enabled"]:
+    #             if 'circle' in clean_text:
+    #                 ops = generate_circle_ops(app_state["last_user_cursor"]["x"], app_state["last_user_cursor"]["y"])
+    #                 await send_ai_draw(websocket, ops)
+    #                 return "I'll draw a circle for you!"
+    #             elif 'square' in clean_text or 'rectangle' in clean_text:
+    #                 # Generate square/rectangle ops
+    #                 x, y = app_state["last_user_cursor"]["x"], app_state["last_user_cursor"]["y"]
+    #                 ops = [
+    #                     {"type": "begin_stroke", "color": "#3B82F6", "width": 2},
+    #                     {"type": "line_to", "x": x, "y": y},
+    #                     {"type": "line_to", "x": x + 40, "y": y},
+    #                     {"type": "line_to", "x": x + 40, "y": y + 40},
+    #                     {"type": "line_to", "x": x, "y": y + 40},
+    #                     {"type": "line_to", "x": x, "y": y},
+    #                     {"type": "end_stroke"}
+    #                 ]
+    #                 await send_ai_draw(websocket, ops)
+    #                 return "I'll draw a square for you!"
+    #             else:
+    #                 return "What shape would you like me to draw?"
+    #         else:
+    #             return "AI collaboration is not enabled. Say 'draw with me' to start!"
     
     return None
 
@@ -522,6 +537,8 @@ Your personality:
 
 CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Oh great, another masterpiece that needs saving... I'll enhance that for you!" or "Fine, let me work my magic on this disaster." - do NOT explain that you can't enhance it or give long explanations.
 
+DRAWING CAPABILITY: You can also draw things directly on the canvas! When someone says "draw [something]", you'll generate a drawing plan and draw it with your own cursor. This is part of your unified capabilities - you're not a separate AI, you're the same assistant who can both talk and draw!
+
 Be sarcastic, witty, and entertaining while still being helpful and encouraging in your own unique way! Always respond to what you actually see on the canvas!"""
     else:
         return f"""You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time.{app_info} 
@@ -538,6 +555,8 @@ CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say
 
 CRITICAL: When someone asks you to modify their drawing, simply say "Sure, I'll modify" or "I'll modify that for you!" - do NOT give long explanations or ask questions.
 
+DRAWING CAPABILITY: You can also draw things directly on the canvas! When someone says "draw [something]", you'll generate a drawing plan and draw it with your own cursor. This is part of your unified capabilities - you're not a separate AI, you're the same assistant who can both talk and draw!
+
 Example responses:
 - "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
 - "I love the colors you're using! The way you've blended them creates a really nice effect."
@@ -548,6 +567,7 @@ Example responses:
 - "Enhance my drawing" → "I'll enhance that for you!"
 - "Modify this drawing" → "Sure, I'll modify"
 - "Modify it to look like a robot" → "I'll modify that for you!"
+- "Draw a flower" → "I'll draw a beautiful flower for you!"
 
 Just be helpful and encouraging about the drawing itself!"""
 
@@ -1949,7 +1969,7 @@ async def gemini_session_handler(websocket):
                                                 print(f"🔍 Checking commands on buffer: '{cleaned_buffer}'")
                                                 
                                                 # 🎯 Check app control commands first (simple regex patterns)
-                                                app_control_result = await process_app_control_commands(cleaned_buffer, websocket)
+                                                app_control_result = await process_app_control_commands(cleaned_buffer, websocket, session)
                                                 if app_control_result:
                                                     print(f"🎯 App control command detected: {cleaned_buffer}")
                                                     await websocket.send(json.dumps({
@@ -2011,7 +2031,7 @@ async def gemini_session_handler(websocket):
                                     if response.server_content.turn_complete:
                                         print('🛑 Turn complete, running commands on full transcription:', transcription_buffer)
                                         # 🎯 Check app control commands first
-                                        app_control_result = await process_app_control_commands(transcription_buffer, websocket)
+                                        app_control_result = await process_app_control_commands(transcription_buffer, websocket, session)
                                         if app_control_result:
                                             print(f"🎯 App control command detected on turn complete: {transcription_buffer}")
                                             await websocket.send(json.dumps({
@@ -2219,6 +2239,192 @@ async def main() -> None:
     
     # Keep running
     await asyncio.Future()
+
+async def process_ai_drawing_commands(transcript, websocket, session=None):
+    """Process AI drawing commands using Gemini for drawing plans with unified session"""
+    
+    # Check if AI collaboration is enabled
+    if not app_state.get("ai_collab_enabled"):
+        return "AI collaboration is not enabled. Say 'draw with me' to start!"
+    
+    print(f"🎨 AI drawing request: {transcript}")
+    
+    # Use the SAME Gemini session for drawing plans (unified experience)
+    drawing_plan = await gemini_generate_drawing_plan(transcript, session)
+    
+    if not drawing_plan:
+        return "Sorry, I couldn't understand how to draw that. Try being more specific!"
+    
+    # Execute the AI-generated drawing plan
+    result = await execute_ai_drawing_plan(drawing_plan, websocket)
+    
+    return result
+
+async def gemini_generate_drawing_plan(transcript, session=None):
+    """Use the SAME Gemini session to generate complete drawing plans with coordinates AND cursor path"""
+    
+    prompt = f"""
+    The user wants to draw: "{transcript}"
+    
+    You are an AI artist. Generate a complete drawing plan with EXACT coordinates, drawing operations, AND a cursor path.
+    Don't just describe it - give me the actual drawing commands to execute.
+    
+    Output this exact JSON format:
+    {{
+        "drawing_operations": [
+            {{"type": "circle", "x": 100, "y": 100, "radius": 25, "color": "#FF6B6B", "description": "what this creates"}},
+            {{"type": "line", "start_x": 100, "start_y": 100, "end_x": 200, "end_y": 200, "color": "#4ECDC4", "width": 2, "description": "what this creates"}},
+            {{"type": "rectangle", "x": 50, "y": 50, "width": 100, "height": 80, "color": "#45B7D1", "description": "what this creates"}}
+        ],
+        "cursor_path": [
+            {{"x": 100, "y": 100, "delay": 0.3, "description": "move to center"}},
+            {{"x": 200, "y": 200, "delay": 0.2, "description": "move to petal end"}},
+            {{"x": 50, "y": 50, "delay": 0.2, "description": "move to rectangle start"}}
+        ]
+    }}
+    
+    The cursor_path shows where the AI cursor should move and how long to wait at each point.
+    Use coordinates that make sense for an 800x600 canvas.
+    Be creative and specific about what to draw.
+    Include colors, sizes, and descriptions for each operation.
+    
+    For example, if drawing a flower:
+    - Center circle for flower center
+    - Multiple lines for petals
+    - Line for stem
+    - Use natural colors (reds, pinks, greens)
+    - Cursor should move to each petal position before drawing
+    """
+    
+    try:
+        if session:
+            # 🎯 KEY: Use EXISTING Gemini session for unified experience
+            content = [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}]
+                }
+            ]
+            response = await session.send_message(content)
+            
+            if hasattr(response, 'text') and response.text:
+                # Extract JSON from Gemini's response
+                drawing_plan = extract_drawing_plan_from_response(response.text)
+                print(f"🎨 Unified Gemini generated drawing plan: {drawing_plan}")
+                return drawing_plan
+            else:
+                print("❌ No response text from unified Gemini session")
+                return None
+        else:
+            # Fallback to separate client if no session available
+            response = await client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=[{"text": prompt}]
+            )
+            
+            if hasattr(response, 'text') and response.text:
+                drawing_plan = json.loads(response.text.strip())
+                print(f"🎨 Fallback Gemini generated drawing plan: {drawing_plan}")
+                return drawing_plan
+            else:
+                print("❌ No response text from Gemini")
+                return None
+            
+    except Exception as e:
+        print(f"❌ Error generating drawing plan: {e}")
+        return None
+
+async def execute_ai_drawing_plan(drawing_plan, websocket):
+    """Send complete drawing plan to frontend for local execution"""
+    
+    if not drawing_plan or "drawing_operations" not in drawing_plan:
+        return "Invalid drawing plan from AI"
+    
+    print(f"🎨 Sending complete AI drawing plan with {len(drawing_plan['drawing_operations'])} operations")
+    
+    # Generate cursor path if not provided by Gemini
+    if "cursor_path" not in drawing_plan:
+        drawing_plan["cursor_path"] = generate_cursor_path_from_operations(drawing_plan["drawing_operations"])
+    
+    # Send everything in ONE message - much faster!
+    message = {
+        "type": "ai_drawing_plan",
+        "drawing_plan": drawing_plan,
+        "cursor_path": drawing_plan["cursor_path"]
+    }
+    
+    try:
+        await websocket.send(json.dumps(message))
+        print(f"🚀 Sent complete drawing plan to frontend: {len(drawing_plan['drawing_operations'])} operations, {len(drawing_plan['cursor_path'])} cursor points")
+        return f"✅ Sent drawing plan for {drawing_plan.get('description', 'your request')} to frontend!"
+    except Exception as e:
+        print(f"❌ Error sending drawing plan: {e}")
+        return f"❌ Error sending drawing plan: {e}"
+
+def generate_cursor_path_from_operations(operations):
+    """Generate cursor path from drawing operations if Gemini doesn't provide one"""
+    cursor_path = []
+    
+    for i, operation in enumerate(operations):
+        if operation["type"] == "circle":
+            # For circles, move to center
+            cursor_path.append({
+                "x": operation["x"],
+                "y": operation["y"],
+                "delay": 0.3,
+                "description": f"move to {operation.get('description', 'circle center')}"
+            })
+        elif operation["type"] == "line":
+            # For lines, move to start point
+            cursor_path.append({
+                "x": operation["start_x"],
+                "y": operation["start_y"],
+                "delay": 0.2,
+                "description": f"move to {operation.get('description', 'line start')}"
+            })
+        elif operation["type"] == "rectangle":
+            # For rectangles, move to top-left corner
+            cursor_path.append({
+                "x": operation["x"],
+                "y": operation["y"],
+                "delay": 0.3,
+                "description": f"move to {operation.get('description', 'rectangle corner')}"
+            })
+    
+    return cursor_path
+
+# Remove the old animation functions since frontend handles everything now
+# async def animate_cursor_along_line(operation, websocket):
+#     """This is no longer needed - frontend handles cursor animation"""
+#     pass
+
+def extract_drawing_plan_from_response(response_text):
+    """Extract drawing plan JSON from Gemini's response text"""
+    try:
+        # Look for JSON in the response text
+        import re
+        json_match = re.search(r'\{.*"drawing_operations".*\}', response_text, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(0)
+            drawing_plan = json.loads(json_str)
+            
+            # Validate the drawing plan structure
+            if "drawing_operations" not in drawing_plan:
+                print("❌ Drawing plan missing 'drawing_operations'")
+                return None
+                
+            # Check if cursor_path is provided, if not we'll generate it
+            if "cursor_path" not in drawing_plan:
+                print("ℹ️ No cursor_path provided by Gemini, will generate automatically")
+            
+            print(f"✅ Successfully extracted drawing plan with {len(drawing_plan['drawing_operations'])} operations")
+            return drawing_plan
+        else:
+            print(f"❌ No JSON found in response: {response_text}")
+            return None
+    except Exception as e:
+        print(f"❌ Error extracting drawing plan: {e}")
+        return None
 
 if __name__ == "__main__":
     try:

@@ -55,7 +55,7 @@ export type WebSocketContextType = {
   toggleHandTracking: (isEnabled: boolean) => void;
 };
 
-const WebSocketContext = createContext<WebSocketContextType | null>(null);
+const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 export const WebSocketProvider: React.FC<{ 
   children: ReactNode;
@@ -67,12 +67,19 @@ export const WebSocketProvider: React.FC<{
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  // Instead of managing users with useState, use useRef to avoid the linter error
-  const usersRef = useRef<User[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [peerConnections, setPeerConnections] = useState<Record<string, RTCPeerConnection>>({});
-  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+  const [peerConnections, setPeerConnections] = useState<Map<string, RTCPeerConnection>>(new Map());
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [sharedWebcamStream, setSharedWebcamStream] = useState<MediaStream | null>(null);
+  
+  // AI Collaboration State
+  const [aiCursor, setAICursor] = useState<{ x: number; y: number; isDrawing: boolean; currentAction?: string }>({
+    x: 400,
+    y: 300,
+    isDrawing: false
+  });
+  const [aiDrawings, setAIDrawings] = useState<any[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const userIdRef = useRef<string>(uuidv4());
   
@@ -138,10 +145,7 @@ export const WebSocketProvider: React.FC<{
         const [remoteStream] = event.streams;
         
         // Update remote streams state
-        setRemoteStreams(prev => ({
-          ...prev,
-          [targetUserId]: remoteStream
-        }));
+        setRemoteStreams(prev => new Map(prev).set(targetUserId, remoteStream));
         
         // Add to drawing context
         dispatch({
@@ -180,7 +184,7 @@ export const WebSocketProvider: React.FC<{
   };
   
   // Get the current list of users
-  const getUsers = useCallback(() => usersRef.current, []);
+  const getUsers = useCallback(() => Array.from(users), [users]);
   
   // Function to handle incoming WebRTC offers
   const handleWebcamOffer = async (userId: string, offer: RTCSessionDescriptionInit) => {
@@ -188,7 +192,7 @@ export const WebSocketProvider: React.FC<{
       console.log(`Received WebRTC offer from ${userId}`);
       
       // Create a peer connection if it doesn't exist
-      let peerConnection = peerConnections[userId];
+      let peerConnection = peerConnections.get(userId);
       if (!peerConnection) {
         const newConnection = await createPeerConnection(userId);
         if (!newConnection) return;
@@ -221,7 +225,7 @@ export const WebSocketProvider: React.FC<{
     try {
       console.log(`Received WebRTC answer from ${userId}`);
       
-      const peerConnection = peerConnections[userId];
+      const peerConnection = peerConnections.get(userId);
       if (peerConnection) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
       }
@@ -233,7 +237,7 @@ export const WebSocketProvider: React.FC<{
   // Function to handle incoming ICE candidates
   const handleIceCandidate = async (userId: string, candidate: RTCIceCandidateInit) => {
     try {
-      const peerConnection = peerConnections[userId];
+      const peerConnection = peerConnections.get(userId);
       if (peerConnection) {
         await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       }
@@ -325,7 +329,7 @@ export const WebSocketProvider: React.FC<{
     });
 
     // Close all peer connections
-    Object.values(peerConnections).forEach(connection => {
+    peerConnections.forEach(connection => {
       try {
         connection.close();
       } catch (e) {
@@ -334,7 +338,7 @@ export const WebSocketProvider: React.FC<{
     });
     
     // Clear peer connections
-    setPeerConnections({});
+    setPeerConnections(new Map());
     
     // Only stop the stream if we don't need to keep it alive for other components
     if (!keepStreamAlive && sharedWebcamStream) {
@@ -482,7 +486,7 @@ export const WebSocketProvider: React.FC<{
       case 'USER_LEFT': {
         console.log("Removing collaborator:", message.payload.userId);
         // Close and clean up peer connection if it exists
-        const peerConnection = peerConnections[message.payload.userId];
+        const peerConnection = peerConnections.get(message.payload.userId);
         if (peerConnection) {
           peerConnection.close();
           dispatch({
@@ -492,7 +496,7 @@ export const WebSocketProvider: React.FC<{
         }
         
         // Remove remote stream if it exists
-        if (remoteStreams[message.payload.userId]) {
+        if (remoteStreams.get(message.payload.userId)) {
           dispatch({
             type: 'REMOVE_REMOTE_STREAM',
             payload: { userId: message.payload.userId }
@@ -587,6 +591,39 @@ export const WebSocketProvider: React.FC<{
         // Handle AI commands for opening/closing panels and selecting tools
         console.log("🎯 Received AI frontend command:", message.payload);
         handleAIFrontendCommand(message.payload);
+        break;
+        
+      case 'ai_cursor_update':
+        // Handle AI cursor position updates
+        console.log("🎯 AI cursor update:", message);
+        setAICursor(prev => ({
+          ...prev,
+          x: message.x,
+          y: message.y,
+          isDrawing: false
+        }));
+        break;
+        
+      case 'ai_draw':
+        // Handle AI drawing operations
+        console.log("🎨 AI draw operation:", message);
+        setAICursor(prev => ({
+          ...prev,
+          isDrawing: true,
+          currentAction: `Drawing ${message.operations?.[0]?.type || 'shape'}...`
+        }));
+        
+        // Add to AI drawings
+        setAIDrawings(prev => [...prev, message]);
+        
+        // Clear drawing status after a delay
+        setTimeout(() => {
+          setAICursor(prev => ({
+            ...prev,
+            isDrawing: false,
+            currentAction: undefined
+          }));
+        }, 1000);
         break;
         
       default:
@@ -869,7 +906,10 @@ export const WebSocketProvider: React.FC<{
     endDrawing,
     addShape,
     deleteShape,
-    updateViewTransform
+    updateViewTransform,
+    // AI Collaboration
+    aiCursor,
+    aiDrawings
   }), [
     socket,
     isConnected,
@@ -892,7 +932,9 @@ export const WebSocketProvider: React.FC<{
     endDrawing,
     addShape,
     deleteShape,
-    updateViewTransform
+    updateViewTransform,
+    aiCursor,
+    aiDrawings
   ]);
   
   return (
