@@ -1699,6 +1699,15 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
         }
       }
       
+      // Handle app control commands triggered by voice
+      if (data.command_detected === 'app_control') {
+        console.log('🎯 Voice app control command detected:', data);
+        // Show confirmation toast for app control commands
+        if (window.showToast && data.text) {
+          window.showToast(`Voice command executed: ${data.text}`, 'success', 3000);
+        }
+      }
+      
       if (data.audio) {
         multimodalAudioQueueRef.current.push(data.audio);
         playNextMultimodalAudio();

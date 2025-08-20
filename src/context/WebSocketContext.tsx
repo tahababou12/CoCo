@@ -57,7 +57,12 @@ export type WebSocketContextType = {
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
 
-export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const WebSocketProvider: React.FC<{ 
+  children: ReactNode;
+  onStoryboardOpen?: () => void;
+  onStoryboardClose?: () => void;
+  storyboardState?: boolean;
+}> = ({ children, onStoryboardOpen, onStoryboardClose, storyboardState = false }) => {
   const { state, dispatch } = useDrawing();
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -71,6 +76,14 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
   const wsRef = useRef<WebSocket | null>(null);
   const userIdRef = useRef<string>(uuidv4());
   
+  // Track current storyboard state for AI commands
+  const currentStoryboardStateRef = useRef<boolean>(storyboardState);
+  
+  // Update ref when prop changes
+  useEffect(() => {
+    currentStoryboardStateRef.current = storyboardState;
+  }, [storyboardState]);
+
   // Calculate available positions
   const availablePositions = useMemo(() => DEFAULT_POSITIONS.filter(
     pos => !state.collaborators.some(user => user.position && 
@@ -559,50 +572,26 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
         break;
         
       case 'WEBCAM_OFFER':
-        if (message.payload.targetUserId === userIdRef.current) {
-          handleWebcamOffer(message.payload.userId, message.payload.offer);
-        }
+        handleWebcamOffer(message.payload.userId, message.payload.offer);
         break;
         
       case 'WEBCAM_ANSWER':
-        if (message.payload.targetUserId === userIdRef.current) {
-          handleWebcamAnswer(message.payload.userId, message.payload.answer);
-        }
+        handleWebcamAnswer(message.payload.userId, message.payload.answer);
         break;
         
       case 'WEBCAM_ICE_CANDIDATE':
-        if (message.payload.targetUserId === userIdRef.current) {
-          handleIceCandidate(message.payload.userId, message.payload.candidate);
-        }
+        handleIceCandidate(message.payload.userId, message.payload.candidate);
         break;
         
-      case 'save_drawing':
-        console.log("🖼️ Save drawing request received from backend");
-        // This will be handled by the drawing context
-        dispatch({ type: 'SAVE_DRAWING_REQUEST' });
-        break;
-        
-      case 'modification_started':
-        console.log("🎨 Modification started:", message.payload);
-        // Handle modification start notification
-        break;
-        
-      case 'modification_error':
-        console.error("❌ Modification error:", message.payload);
-        // Handle modification error
-        break;
-        
-      case 'clear_canvas':
-        console.log("🧹 Clear canvas request received");
-        dispatch({ type: 'CLEAR_CANVAS' });
-        break;
-        
-      case 'ERROR':
-        console.error('Error from server:', message.payload.message);
+      case 'frontend_command':
+        // Handle AI commands for opening/closing panels and selecting tools
+        console.log("🎯 Received AI frontend command:", message.payload);
+        handleAIFrontendCommand(message.payload);
         break;
         
       default:
-        console.warn('Unknown message type:', message);
+        console.log("Unknown message type:", message.type);
+        break;
     }
   };
   
@@ -728,6 +717,134 @@ export const WebSocketProvider: React.FC<{ children: ReactNode }> = ({ children 
     // Placeholder for future implementation
     console.log('updateViewTransform not yet implemented in WebSocket', offsetX, offsetY, scale);
   }, [isConnected, currentUser]);
+  
+  // Function to handle AI frontend commands
+  const handleAIFrontendCommand = (command: any) => {
+    console.log("🎯 Processing AI frontend command:", command);
+    
+    switch (command.command) {
+      case 'open_storyboard':
+        if (onStoryboardOpen) {
+          onStoryboardOpen();
+          currentStoryboardStateRef.current = true;
+          console.log("✅ Opened storyboard via AI command");
+        }
+        break;
+        
+      case 'close_storyboard':
+        if (onStoryboardClose) {
+          onStoryboardClose();
+          currentStoryboardStateRef.current = false;
+          console.log("✅ Closed storyboard via AI command");
+        }
+        break;
+        
+      case 'open_layers':
+        dispatch({ type: 'TOGGLE_LAYERS_PANEL' });
+        break;
+        
+      case 'close_layers':
+        // If layers panel is open, close it
+        if (state.showLayersPanel) {
+          dispatch({ type: 'TOGGLE_LAYERS_PANEL' });
+        }
+        break;
+        
+      case 'open_tools':
+        // Tools panel is always visible, so just acknowledge
+        console.log("✅ Tools panel is already visible");
+        break;
+        
+      case 'close_tools':
+        // Tools panel is always visible, so just acknowledge
+        console.log("✅ Tools panel is always visible");
+        break;
+        
+      case 'open_collaboration':
+        // Collaboration panel is always visible, so just acknowledge
+        console.log("✅ Collaboration panel is already visible");
+        break;
+        
+      case 'close_collaboration':
+        // Collaboration panel is always visible, so just acknowledge
+        console.log("✅ Collaboration panel is always visible");
+        break;
+        
+      case 'open_generation_settings':
+        // For now, just acknowledge - this would need to be implemented
+        console.log("✅ Generation settings command received");
+        break;
+        
+      case 'close_generation_settings':
+        // For now, just acknowledge - this would need to be implemented
+        console.log("✅ Generation settings close command received");
+        break;
+        
+      case 'select_tool':
+        const tool = command.data?.tool;
+        if (tool) {
+          dispatch({ type: 'SET_TOOL', payload: tool });
+          console.log(`✅ Switched to ${tool} tool`);
+        }
+        break;
+        
+      default:
+        console.warn("❌ Unknown AI frontend command:", command.command);
+        break;
+    }
+    
+    // Send updated app state back to backend
+    sendAppStateUpdate();
+  };
+  
+  // Function to send current app state to backend
+  const sendAppStateUpdate = () => {
+    if (socket && isConnected) {
+      const appState = {
+        type: 'app_state',
+        panels: {
+          storyboard: currentStoryboardStateRef.current,
+          layers: state.showLayersPanel,
+          tools: true, // Always visible
+          collaboration: true, // Always visible
+          generation_settings: false // Not implemented yet
+        },
+        current_tool: state.tool,
+        cursor: { x: 0, y: 0 } // Will be updated by cursor tracking
+      };
+      
+      socket.send(JSON.stringify(appState));
+      console.log("📤 Sent app state update to backend:", appState);
+    }
+  };
+
+  // Function to send cursor position to backend
+  const sendCursorUpdate = (x: number, y: number) => {
+    if (socket && isConnected) {
+      const cursorUpdate = {
+        type: 'cursor',
+        cursor: { x, y }
+      };
+      
+      socket.send(JSON.stringify(cursorUpdate));
+      
+      // Also update app state with cursor position
+      const appState = {
+        type: 'app_state',
+        panels: {
+          storyboard: false, // This will be updated by parent component
+          layers: state.showLayersPanel,
+          tools: true,
+          collaboration: true,
+          generation_settings: false
+        },
+        current_tool: state.tool,
+        cursor: { x, y }
+      };
+      
+      socket.send(JSON.stringify(appState));
+    }
+  };
   
   // Update the context value to include the new function
   const contextValue = useMemo(() => ({

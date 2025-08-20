@@ -78,6 +78,9 @@ type DrawingAction =
   | { type: 'UPDATE_GRID_SETTINGS'; payload: Partial<GridSettings> }
   | { type: 'TOGGLE_LAYERS_PANEL' }
   | { type: 'TOGGLE_GRID_SETTINGS' }
+  // AI Commands
+  | { type: 'AI_OPEN_STORYBOARD' }
+  | { type: 'AI_CLOSE_STORYBOARD' }
 
 const initialState: DrawingState = {
   shapes: [],
@@ -755,6 +758,18 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         showGridSettings: !state.showGridSettings
       }
     }
+
+    // AI Commands
+    case 'AI_OPEN_STORYBOARD':
+      return {
+        ...state,
+        showStoryboard: true
+      };
+    case 'AI_CLOSE_STORYBOARD':
+      return {
+        ...state,
+        showStoryboard: false
+      };
 
     default:
       return state

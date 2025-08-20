@@ -96,6 +96,7 @@ export type WebSocketMessage =
   | { type: 'WEBCAM_OFFER'; payload: { userId: string; targetUserId: string; offer: RTCSessionDescriptionInit } }
   | { type: 'WEBCAM_ANSWER'; payload: { userId: string; targetUserId: string; answer: RTCSessionDescriptionInit } }
   | { type: 'WEBCAM_ICE_CANDIDATE'; payload: { userId: string; targetUserId: string; candidate: RTCIceCandidateInit } }
+  | { type: 'frontend_command'; payload: { command: string; data?: any } }
 
 export type WebSocketMessageType = 
   | 'JOIN_ROOM'
@@ -112,7 +113,8 @@ export type WebSocketMessageType =
   | 'USER_STATUS_UPDATE'
   | 'WEBCAM_OFFER'
   | 'WEBCAM_ANSWER'
-  | 'WEBCAM_ICE_CANDIDATE';
+  | 'WEBCAM_ICE_CANDIDATE'
+  | 'frontend_command';
 
 export type DrawingState = {
   shapes: Shape[]

@@ -77,8 +77,13 @@ const CollaboratorCursors: React.FC = () => {
   );
 };
 
-function ProtectedApp() {
-  const [showStoryboard, setShowStoryboard] = useState(false);
+function ProtectedApp({ 
+  showStoryboard, 
+  setShowStoryboard 
+}: { 
+  showStoryboard: boolean; 
+  setShowStoryboard: (show: boolean) => void; 
+}) {
   const webSocket = useWebSocket();
   
   // Debug storyboard state changes
@@ -135,16 +140,31 @@ function ProtectedApp() {
 };
 
 // Wrap the protected component with authentication
-const ProtectedAppWithAuth = withAuthenticationRequired(ProtectedApp);
+const ProtectedAppWithAuth = withAuthenticationRequired(ProtectedApp, {
+  onRedirecting: () => (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600">Loading...</p>
+      </div>
+    </div>
+  )
+});
 
 // No-auth version of the app for development/testing purposes
 function NoAuthApp() {
+  const [showStoryboard, setShowStoryboard] = useState(false);
+  
   return (
     <DrawingProvider>
-      <WebSocketProvider>
+      <WebSocketProvider 
+        onStoryboardOpen={() => setShowStoryboard(true)}
+        onStoryboardClose={() => setShowStoryboard(false)}
+        storyboardState={showStoryboard}
+      >
         <ShapesProvider>
           <HandGestureProvider>
-            <ProtectedApp />
+            <ProtectedApp showStoryboard={showStoryboard} setShowStoryboard={setShowStoryboard} />
           </HandGestureProvider>
         </ShapesProvider>
       </WebSocketProvider>
@@ -158,6 +178,9 @@ function App() {
   
   // Always call hooks at the top level, regardless of whether we use the results
   const { isAuthenticated, isLoading } = useAuth0();
+  
+  // Add storyboard state for authenticated users
+  const [showStoryboard, setShowStoryboard] = useState(false);
   
   if (DISABLE_AUTH) {
     return <NoAuthApp />;
@@ -249,12 +272,16 @@ function App() {
   return (
     <div className="min-h-screen bg-white">
       <DrawingProvider>
-        <WebSocketProvider>
+        <WebSocketProvider 
+          onStoryboardOpen={() => setShowStoryboard(true)}
+          onStoryboardClose={() => setShowStoryboard(false)}
+          storyboardState={showStoryboard}
+        >
           <ShapesProvider>
             <HandGestureProvider>
               {isAuthenticated && (
                 <>
-                  <ProtectedAppWithAuth />
+                  <ProtectedAppWithAuth showStoryboard={showStoryboard} setShowStoryboard={setShowStoryboard} />
                   <PostLoginAuth />
                 </>
               )}

@@ -38,21 +38,69 @@ global_server = None
 # Global personality state
 current_personality = "friendly"  # "friendly" or "sarcastic"
 
-# 🎨 Simple app state tracking - just the basics
+# 🎨 Simple app state tracking
 app_state = {
     "storyboard_open": False,
     "layers_open": False,
     "tools_open": False,
     "collaboration_open": False,
     "generation_settings_open": False,
-    "current_tool": "pencil"
+    "current_tool": "pencil",
+    "ai_collab_enabled": False,
+    "ai_cursor": {"x": 0, "y": 0},
+    "last_user_cursor": {"x": 0, "y": 0}
 }
+
+
 
 def update_app_state(**kwargs):
     """Simple function to update app state"""
     global app_state
     app_state.update(kwargs)
     print(f"🧠 Updated app state: {app_state}")
+
+async def send_ai_cursor(websocket, x, y):
+    """Send AI cursor position update"""
+    try:
+        await websocket.send(json.dumps({
+            "type": "ai_cursor_update",
+            "x": x,
+            "y": y
+        }))
+        update_app_state(ai_cursor={"x": x, "y": y})
+    except Exception as e:
+        print(f"❌ Error sending AI cursor: {e}")
+
+async def send_ai_draw(websocket, ops, cursor=None):
+    """Send AI drawing operations"""
+    try:
+        message = {
+            "type": "ai_draw",
+            "author": "ai",
+            "ops": ops
+        }
+        if cursor:
+            message["cursor"] = cursor
+        await websocket.send(json.dumps(message))
+        print(f"🎨 Sent AI draw: {len(ops)} ops")
+    except Exception as e:
+        print(f"❌ Error sending AI draw: {e}")
+
+def generate_circle_ops(center_x, center_y, radius=20, color="#3B82F6"):
+    """Generate drawing ops for a circle"""
+    import math
+    ops = []
+    steps = 32
+    for i in range(steps + 1):
+        angle = 2 * math.pi * i / steps
+        x = center_x + radius * math.cos(angle)
+        y = center_y + radius * math.sin(angle)
+        if i == 0:
+            ops.append({"op": "begin_stroke", "tool": "pencil", "color": color, "width": 2, "at": {"x": x, "y": y}})
+        else:
+            ops.append({"op": "line_to", "at": {"x": x, "y": y}})
+    ops.append({"op": "end_stroke"})
+    return ops
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully"""
@@ -582,6 +630,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in tools_open_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected tools open command: {text}")
+            # Update app state
+            update_app_state(tools_open=True)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -594,6 +645,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in tools_close_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected tools close command: {text}")
+            # Update app state
+            update_app_state(tools_open=False)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "close_panel",
@@ -606,6 +660,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in collaboration_open_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected collaboration open command: {text}")
+            # Update app state
+            update_app_state(collaboration_open=True)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "open_panel",
@@ -618,6 +675,9 @@ async def process_app_control_commands(text, websocket):
     for pattern in collaboration_close_patterns:
         if re.search(pattern, cleaned_text):
             print(f"🎯 Regex detected collaboration close command: {text}")
+            # Update app state
+            update_app_state(collaboration_open=False)
+            
             await websocket.send(json.dumps({
                 "type": "app_control",
                 "action": "close_panel",
@@ -672,6 +732,66 @@ async def process_app_control_commands(text, websocket):
                 "parameters": {}
             }))
             return "Switching to eraser tool"
+    
+    # 🎨 AI COLLABORATION COMMANDS
+    ai_collab_enable_patterns = [
+        r"draw.*with.*me",
+        r"start.*drawing",
+        r"ai.*draw",
+        r"collaborate",
+        r"help.*me.*draw",
+        r"draw.*together"
+    ]
+    
+    ai_collab_disable_patterns = [
+        r"stop.*drawing",
+        r"stop.*ai",
+        r"end.*collaboration",
+        r"ai.*stop",
+        r"stop.*collaborating"
+    ]
+    
+    ai_draw_patterns = [
+        r"draw.*(circle|square|rectangle|triangle|line|arrow)",
+        r"add.*(circle|square|rectangle|triangle|line|arrow)",
+        r"make.*(circle|square|rectangle|triangle|line|arrow)"
+    ]
+    
+    # Check AI collaboration enable patterns
+    for pattern in ai_collab_enable_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎨 AI collaboration enabled: {text}")
+            update_app_state(ai_collab_enabled=True)
+            return "AI collaboration enabled - I'll draw with you!"
+    
+    # Check AI collaboration disable patterns
+    for pattern in ai_collab_disable_patterns:
+        if re.search(pattern, cleaned_text):
+            print(f"🎨 AI collaboration disabled: {text}")
+            update_app_state(ai_collab_enabled=False)
+            return "AI collaboration disabled"
+    
+    # Check AI drawing patterns
+    for pattern in ai_draw_patterns:
+        if re.search(pattern, cleaned_text):
+            if not app_state.get("ai_collab_enabled"):
+                return "Please say 'draw with me' first to enable AI collaboration"
+            
+            # Extract shape type
+            shape_match = re.search(r"(circle|square|rectangle|triangle|line|arrow)", cleaned_text)
+            if shape_match:
+                shape = shape_match.group(1)
+                # Use user's cursor position or default
+                cursor_x = app_state.get("last_user_cursor", {}).get("x", 400)
+                cursor_y = app_state.get("last_user_cursor", {}).get("y", 300)
+                
+                if shape == "circle":
+                    ops = generate_circle_ops(cursor_x, cursor_y, 30)
+                    await send_ai_draw(websocket, ops, {"x": cursor_x, "y": cursor_y})
+                    return f"Drew a circle at ({cursor_x}, {cursor_y})"
+                # Add more shapes here later
+                
+                return f"Drew a {shape}"
     
     return None  # No app control command detected
 
@@ -1635,8 +1755,8 @@ class AudioManager:
 
     async def initialize(self):
         try:
-            mic_info = self.pya.get_default_input_device_info()
-            print(f"microphone used: {mic_info}")
+        mic_info = self.pya.get_default_input_device_info()
+        print(f"microphone used: {mic_info}")
 
             # Check if event loop is still running
             try:
@@ -1648,23 +1768,23 @@ class AudioManager:
                 print("❌ No running event loop, cannot initialize audio")
                 return False
 
-            self.input_stream = await asyncio.to_thread(
-                self.pya.open,
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=self.input_sample_rate,
-                input=True,
-                input_device_index=mic_info["index"],
-                frames_per_buffer=CHUNK_SIZE,
-            )
+        self.input_stream = await asyncio.to_thread(
+            self.pya.open,
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=self.input_sample_rate,
+            input=True,
+            input_device_index=mic_info["index"],
+            frames_per_buffer=CHUNK_SIZE,
+        )
 
-            self.output_stream = await asyncio.to_thread(
-                self.pya.open,
-                format=FORMAT,
-                channels=CHANNELS,
-                rate=self.output_sample_rate,
-                output=True,
-            )
+        self.output_stream = await asyncio.to_thread(
+            self.pya.open,
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=self.output_sample_rate,
+            output=True,
+        )
             
             return True
             
@@ -1832,8 +1952,8 @@ async def gemini_session_handler(websocket):
                 # Create a dummy audio manager that won't crash
                 audio_manager = None
             else:
-                # Set global audio manager for cleanup
-                global_audio_manager = audio_manager
+            # Set global audio manager for cleanup
+            global_audio_manager = audio_manager
 
             # Set up audio queue for processing
             audio_queue = asyncio.Queue()
@@ -1871,11 +1991,11 @@ async def gemini_session_handler(websocket):
                     
                     while True:
                         try:
-                            data = await asyncio.to_thread(
-                                audio_manager.input_stream.read,
-                                CHUNK_SIZE,
-                                exception_on_overflow=False,
-                            )
+                        data = await asyncio.to_thread(
+                            audio_manager.input_stream.read,
+                            CHUNK_SIZE,
+                            exception_on_overflow=False,
+                        )
                         except Exception as e:
                             print(f"❌ Error reading audio: {e}")
                             break
@@ -1959,7 +2079,7 @@ async def gemini_session_handler(websocket):
                             if client_muted:
                                 # Only log occasionally to avoid spam
                                 if hasattr(listen_for_audio, 'last_mute_log') and time.time() - listen_for_audio.last_mute_log > 5:
-                                    print("🔇 Client muted - ignoring audio input")
+                                print("🔇 Client muted - ignoring audio input")
                                     listen_for_audio.last_mute_log = time.time()
                                 elif not hasattr(listen_for_audio, 'last_mute_log'):
                                     print("🔇 Client muted - ignoring audio input")
@@ -2102,6 +2222,13 @@ async def gemini_session_handler(websocket):
                                         "result": clear_result
                                     }))
                                     print(f"🧹 Cache cleared by frontend request")
+                                
+                                elif data.get("type") == "cursor":
+                                    # Frontend is sending cursor position
+                                    cursor_x = data.get("x", 0)
+                                    cursor_y = data.get("y", 0)
+                                    update_app_state(last_user_cursor={"x": cursor_x, "y": cursor_y})
+                                    print(f"📍 User cursor: ({cursor_x}, {cursor_y})")
                                             
                             except Exception as e:
                                 print(f"Error handling frontend message: {e}")
@@ -2264,8 +2391,8 @@ async def gemini_session_handler(websocket):
                     async with asyncio.TaskGroup() as tg:
                         # Only start audio tasks if audio is properly initialized
                         if audio_manager:
-                            tg.create_task(listen_for_audio())
-                            tg.create_task(process_and_send_audio())
+                        tg.create_task(listen_for_audio())
+                        tg.create_task(process_and_send_audio())
                         else:
                             print("🔇 Audio tasks skipped due to initialization failure")
                         
