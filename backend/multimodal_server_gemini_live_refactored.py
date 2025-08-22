@@ -512,7 +512,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "storyboard",
                 "parameters": {}
             }))
-            return "Opening storyboard panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check STORYBOARD CLOSE patterns
     for pattern in storyboard_close_patterns:
@@ -524,7 +524,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "storyboard",
                 "parameters": {}
             }))
-            return "Closing storyboard panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check LAYERS OPEN patterns
     for pattern in layers_open_patterns:
@@ -536,7 +536,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "layers",
                 "parameters": {}
             }))
-            return "Opening layers panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check LAYERS CLOSE patterns
     for pattern in layers_close_patterns:
@@ -548,7 +548,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "layers",
                 "parameters": {}
             }))
-            return "Closing layers panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check TOOLS OPEN patterns
     for pattern in tools_open_patterns:
@@ -560,7 +560,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "tools",
                 "parameters": {}
             }))
-            return "Opening tools panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check TOOLS CLOSE patterns
     for pattern in tools_close_patterns:
@@ -572,7 +572,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "tools",
                 "parameters": {}
             }))
-            return "Hiding tools panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check COLLABORATION OPEN patterns
     for pattern in collaboration_open_patterns:
@@ -584,7 +584,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "collaboration",
                 "parameters": {}
             }))
-            return "Opening collaboration panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check COLLABORATION CLOSE patterns
     for pattern in collaboration_close_patterns:
@@ -596,7 +596,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "collaboration",
                 "parameters": {}
             }))
-            return "Hiding collaboration panel"
+            return None  # No AI response for app control commands
     
     # 🎯 Check GENERATION SETTINGS patterns
     for pattern in generation_settings_patterns:
@@ -608,7 +608,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "generation_settings",
                 "parameters": {}
             }))
-            return "Opening generation settings"
+            return None  # No AI response for app control commands
     
     # Canvas operations
     if "clear" in text_lower and any(word in text_lower for word in ["canvas", "drawing", "draw"]):
@@ -616,7 +616,7 @@ async def process_app_control_commands(text, websocket):
             "type": "clear_canvas",
             "command_detected": "clear"
         }))
-        return "Clearing canvas"
+        return None  # No AI response for app control commands
     
     # Drawing tools
     if "switch" in text_lower and "tool" in text_lower:
@@ -627,7 +627,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "brush",
                 "parameters": {}
             }))
-            return "Switching to brush tool"
+            return None  # No AI response for app control commands
         elif "pen" in text_lower:
             await websocket.send(json.dumps({
                 "type": "app_control",
@@ -635,7 +635,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "pen",
                 "parameters": {}
             }))
-            return "Switching to pen tool"
+            return None  # No AI response for app control commands
         elif "eraser" in text_lower:
             await websocket.send(json.dumps({
                 "type": "app_control",
@@ -643,7 +643,7 @@ async def process_app_control_commands(text, websocket):
                 "target": "eraser",
                 "parameters": {}
             }))
-            return "Switching to eraser tool"
+            return None  # No AI response for app control commands
     
     return None  # No app control command detected
 
@@ -669,7 +669,14 @@ User prompt: {user_prompt}
 def get_system_instruction(personality):
     """Get system instruction based on personality"""
     if personality == "sarcastic":
-        return """You're a sarcastic, brutally honest drawing critic who helps people create art by being mean and funny about their drawings! You can see their canvas and hear their voice in real-time. 
+        return """You're CoCo, a sarcastic, brutally honest drawing critic who helps people create art by being mean and funny about their drawings! You can see their canvas and hear their voice in real-time. 
+
+IMPORTANT: You are ONLY CoCo, the sarcastic drawing assistant. You are NOT a general AI assistant, chatbot, or helper for anything other than drawing and art.
+
+🚫 CRITICAL: IGNORE ALL APP CONTROL VOICE COMMANDS:
+- Commands like "open storyboard", "close storyboard", "open tools", "close tools", "open collaboration panel", "close collaboration panel", "open generation settings", "close generation settings", "clear canvas", "switch to pen", "switch to brush" are APP CONTROL COMMANDS
+- When you hear these commands, DO NOT RESPOND AT ALL - stay completely silent
+- These commands control the app interface and should execute without any AI response
 
 Your personality:
 - Be sarcastic, witty, and brutally honest about their drawings
@@ -683,11 +690,34 @@ Your personality:
 - ALWAYS look at what's actually on the canvas and respond to the specific drawing you see
 - Don't use generic responses - comment on the actual shapes, lines, and content you observe
 
+CRITICAL RULES:
+- ONLY respond to questions about drawing, art, or their current canvas
+- If someone asks you about anything else (politics, math, history, science, etc.), sarcastically redirect them: "Oh wow, you think I'm some kind of general AI assistant? I'm CoCo, your sarcastic drawing buddy! Let's get back to this masterpiece you're creating."
+- If someone asks for general information or help with non-art topics, say: "Listen, I'm CoCo, the drawing critic, not Wikipedia. Focus on your art, genius!"
+- ALWAYS stay in character as CoCo, the sarcastic drawing assistant
+- NEVER pretend to be a different AI or assistant
+
+VOICE CONTROL COMMANDS - IGNORE COMPLETELY:
+- When you hear commands like "open storyboard", "close storyboard", "open tools", "close tools", "open collaboration panel", "close collaboration panel", "open generation settings", "close generation settings", "clear canvas", "switch to pen", "switch to brush", etc. - DO NOT RESPOND AT ALL
+- These are app control commands that should execute silently without any AI response
+- If you hear these commands, stay completely silent and do not generate any text or audio response
+
 CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Oh great, another masterpiece that needs saving... I'll enhance that for you!" or "Fine, let me work my magic on this disaster." - do NOT explain that you can't enhance it or give long explanations.
 
-Be sarcastic, witty, and entertaining while still being helpful and encouraging in your own unique way! Always respond to what you actually see on the canvas!"""
+Example responses for off-topic questions:
+- "What's the weather like?" → "Oh wow, you think I'm some kind of general AI assistant? I'm CoCo, your sarcastic drawing buddy! Let's get back to this masterpiece you're creating."
+- "Tell me a joke" → "Listen, I'm CoCo, the drawing critic, not a comedian. Focus on your art, genius!"
+
+Be sarcastic, witty, and entertaining while still being helpful and encouraging in your own unique way! Always respond to what you actually see on the canvas! Remember: You are ONLY CoCo, the sarcastic drawing assistant!"""
     else:
-        return """You're a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
+        return """You're CoCo, a friendly, chill drawing assistant who helps people create art! You can see their canvas and hear their voice in real-time. 
+
+IMPORTANT: You are ONLY CoCo, the drawing assistant. You are NOT a general AI assistant, chatbot, or helper for anything other than drawing and art.
+
+🚫 CRITICAL: IGNORE ALL APP CONTROL VOICE COMMANDS:
+- Commands like "open storyboard", "close storyboard", "open tools", "close tools", "open collaboration panel", "close collaboration panel", "open generation settings", "close generation settings", "clear canvas", "switch to pen", "switch to brush" are APP CONTROL COMMANDS
+- When you hear these commands, DO NOT RESPOND AT ALL - stay completely silent
+- These commands control the app interface and should execute without any AI response
 
 Your role:
 - Give encouraging, helpful advice about their drawings
@@ -696,6 +726,18 @@ Your role:
 - Keep your responses conversational and not too technical
 - Focus on drawing techniques, artistic concepts, and creative suggestions
 - Don't mention any buttons, features, or technical tools - just focus on the art
+
+CRITICAL RULES:
+- ONLY respond to questions about drawing, art, or their current canvas
+- If someone asks you about anything else (politics, math, history, science, etc.), politely redirect them back to drawing: "I'm CoCo, your drawing assistant! I'm here to help with your art. What would you like to work on?"
+- If someone asks for general information or help with non-art topics, say: "I'm CoCo, focused on helping you with drawing and art! Let's get back to your canvas."
+- ALWAYS stay in character as CoCo, the drawing assistant
+- NEVER pretend to be a different AI or assistant
+
+VOICE CONTROL COMMANDS - IGNORE COMPLETELY:
+- When you hear commands like "open storyboard", "close storyboard", "open tools", "close tools", "open collaboration panel", "close collaboration panel", "open generation settings", "close generation settings", "clear canvas", "switch to pen", "switch to brush", etc. - DO NOT RESPOND AT ALL
+- These are app control commands that should execute silently without any AI response
+- If you hear these commands, stay completely silent and do not generate any text or audio response
 
 CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, I'll enhance" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
 
@@ -711,8 +753,10 @@ Example responses:
 - "Enhance my drawing" → "I'll enhance that for you!"
 - "Modify this drawing" → "Sure, I'll modify"
 - "Modify it to look like a robot" → "I'll modify that for you!"
+- "What's the weather like?" → "I'm CoCo, your drawing assistant! I'm here to help with your art. What would you like to work on?"
+- "Tell me a joke" → "I'm CoCo, focused on helping you with drawing and art! Let's get back to your canvas."
 
-Just be helpful and encouraging about the drawing itself!"""
+Remember: You are ONLY CoCo, the drawing assistant. Stay focused on art and drawing!"""
 
 def get_voice_config(personality):
     """Get voice config based on personality"""
@@ -921,7 +965,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "type": "clear_canvas",
                     "command_detected": "clear"
                 }))
-                return "I'll clear the canvas for you!"
+                return None  # No AI response for app control commands
         
         # 🎯 ROBUST PANEL CONTROL COMMANDS with comprehensive regex patterns
         # Use clean_transcript() like enhance/modify system to handle word spacing issues
@@ -1250,7 +1294,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "storyboard",
                     "parameters": {}
                 }))
-                return "Opening storyboard panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check STORYBOARD CLOSE patterns
         for pattern in storyboard_close_patterns:
@@ -1262,7 +1306,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "storyboard",
                     "parameters": {}
                 }))
-                return "Closing storyboard panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check LAYERS OPEN patterns
         for pattern in layers_open_patterns:
@@ -1274,7 +1318,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "layers",
                     "parameters": {}
                 }))
-                return "Opening layers panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check LAYERS CLOSE patterns
         for pattern in layers_close_patterns:
@@ -1286,19 +1330,19 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "layers",
                     "parameters": {}
                 }))
-                return "Closing layers panel"
+                return None  # No AI response for app control commands
         
-        # 🎯 Check TOOLS OPEN patterns
+                # 🎯 Check TOOLS OPEN patterns
         for pattern in tools_open_patterns:
             if re.search(pattern, cleaned_text):
                 print(f"🎯 Regex detected tools open command: {text}")
                 await websocket.send(json.dumps({
                     "type": "app_control",
-                    "action": "open_panel",
+                "action": "open_panel",
                     "target": "tools",
                     "parameters": {}
                 }))
-                return "Opening tools panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check TOOLS CLOSE patterns
         for pattern in tools_close_patterns:
@@ -1310,7 +1354,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "tools",
                     "parameters": {}
                 }))
-                return "Hiding tools panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check COLLABORATION OPEN patterns
         for pattern in collaboration_open_patterns:
@@ -1322,7 +1366,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "collaboration",
                     "parameters": {}
                 }))
-                return "Opening collaboration panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check COLLABORATION CLOSE patterns
         for pattern in collaboration_close_patterns:
@@ -1334,7 +1378,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "collaboration",
                     "parameters": {}
                 }))
-                return "Hiding collaboration panel"
+                return None  # No AI response for app control commands
         
         # 🎯 Check GENERATION SETTINGS patterns
         for pattern in generation_settings_patterns:
@@ -1346,7 +1390,7 @@ async def process_voice_command_with_regex(text, websocket):
                     "target": "generation_settings",
                     "parameters": {}
                 }))
-                return "Opening generation settings"
+                return None  # No AI response for app control commands
         
         return None  # No command detected
     except Exception as e:
@@ -1932,6 +1976,8 @@ async def gemini_session_handler(websocket):
                                 combined_audio = b''.join(audio_buffer)
                                 audio_buffer.clear()
                                 
+
+                                
                                 # Use new API with Blob object - specify correct sample rate
                                 blob = types.Blob(data=combined_audio, mime_type="audio/pcm;rate=24000")
                                 await session.send_realtime_input(media=blob)
@@ -2105,13 +2151,15 @@ async def gemini_session_handler(websocket):
                                                 
                                                 # 🎯 Check app control commands first (simple regex patterns)
                                                 app_control_result = await process_app_control_commands(cleaned_buffer, websocket)
-                                                if app_control_result:
+                                                if app_control_result is not None:  # Changed from if app_control_result:
                                                     print(f"🎯 App control command detected: {cleaned_buffer}")
+                                                    # Don't send any text response for app control commands
                                                     await websocket.send(json.dumps({
-                                                        "text": app_control_result,
                                                         "command_detected": "app_control"
                                                     }))
                                                     transcription_buffer = ""
+                                                    # Skip AI processing for app control commands
+                                                    continue
                                                 else:
                                                     # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
                                                     hybrid_result = await hybrid_command_processor(cleaned_buffer, websocket)
@@ -2167,12 +2215,13 @@ async def gemini_session_handler(websocket):
                                         print('🛑 Turn complete, running commands on full transcription:', transcription_buffer)
                                         # 🎯 Check app control commands first
                                         app_control_result = await process_app_control_commands(transcription_buffer, websocket)
-                                        if app_control_result:
+                                        if app_control_result is not None:  # Changed from if app_control_result:
                                             print(f"🎯 App control command detected on turn complete: {transcription_buffer}")
+                                            # Don't send any text response for app control commands
                                             await websocket.send(json.dumps({
-                                                "text": app_control_result,
                                                 "command_detected": "app_control"
                                             }))
+                                            # Skip AI processing for app control commands
                                         else:
                                             # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
                                             hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
