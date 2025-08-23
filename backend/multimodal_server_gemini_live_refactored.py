@@ -1332,13 +1332,13 @@ async def process_voice_command_with_regex(text, websocket):
                 }))
                 return None  # No AI response for app control commands
         
-                # 🎯 Check TOOLS OPEN patterns
+        # 🎯 Check TOOLS OPEN patterns
         for pattern in tools_open_patterns:
             if re.search(pattern, cleaned_text):
                 print(f"🎯 Regex detected tools open command: {text}")
                 await websocket.send(json.dumps({
                     "type": "app_control",
-                "action": "open_panel",
+                    "action": "open_panel",
                     "target": "tools",
                     "parameters": {}
                 }))
@@ -1959,6 +1959,9 @@ async def gemini_session_handler(websocket):
                     if not audio_manager:
                         print("🔇 Audio manager not available, skipping audio processing")
                         return
+                    
+                    # Initialize flag to track when to skip audio
+                    process_and_send_audio.skip_audio = False
                         
                     print("📤 Starting to send audio to Gemini...")
                     audio_buffer = []  # Buffer to accumulate audio for better quality
@@ -1976,7 +1979,13 @@ async def gemini_session_handler(websocket):
                                 combined_audio = b''.join(audio_buffer)
                                 audio_buffer.clear()
                                 
-
+                                # Check if we should skip sending this audio (e.g., during app control commands)
+                                # This will be set by the receive_from_gemini function when app control is detected
+                                if hasattr(process_and_send_audio, 'skip_audio') and process_and_send_audio.skip_audio:
+                                    print("🚫 Skipping audio to Gemini due to app control command")
+                                    process_and_send_audio.skip_audio = False
+                                    audio_queue.task_done()
+                                    continue
                                 
                                 # Use new API with Blob object - specify correct sample rate
                                 blob = types.Blob(data=combined_audio, mime_type="audio/pcm;rate=24000")
@@ -2108,6 +2117,9 @@ async def gemini_session_handler(websocket):
                         transcription_buffer = ""
                         last_transcription_time = 0
                         transcription_timeout = 3.0  # Increased to 3 seconds for more natural speech pauses
+                        # Flag to track when app control commands are detected
+                        app_control_detected = False
+                        app_control_timeout = 2.0  # Time to ignore audio after app control command
                         
                         while True:
                             try:
@@ -2158,6 +2170,11 @@ async def gemini_session_handler(websocket):
                                                         "command_detected": "app_control"
                                                     }))
                                                     transcription_buffer = ""
+                                                    # Set flag to ignore audio for a short time
+                                                    app_control_detected = True
+                                                    # Set flag to skip sending next audio to Gemini
+                                                    if hasattr(process_and_send_audio, 'skip_audio'):
+                                                        process_and_send_audio.skip_audio = True
                                                     # Skip AI processing for app control commands
                                                     continue
                                                 else:
@@ -2221,6 +2238,11 @@ async def gemini_session_handler(websocket):
                                             await websocket.send(json.dumps({
                                                 "command_detected": "app_control"
                                             }))
+                                            # Set flag to ignore audio for a short time
+                                            app_control_detected = True
+                                            # Set flag to skip sending next audio to Gemini
+                                            if hasattr(process_and_send_audio, 'skip_audio'):
+                                                process_and_send_audio.skip_audio = True
                                             # Skip AI processing for app control commands
                                         else:
                                             # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
