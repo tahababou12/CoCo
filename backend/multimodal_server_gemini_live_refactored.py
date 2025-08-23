@@ -822,19 +822,13 @@ VOICE CONTROL COMMANDS - IGNORE COMPLETELY:
 
 CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Oh great, another masterpiece that needs saving... I'll enhance that for you!" or "Fine, let me work my magic on this disaster." - do NOT explain that you can't enhance it or give long explanations.
 
-🎨 DRAWING REQUESTS - GENERATE INTELLIGENT INSTRUCTIONS:
-- When someone asks you to draw something (e.g., "can you draw a car", "draw a tree", "draw a house"), you MUST respond with ONLY structured drawing instructions
-- Format your response as: DRAWING: [object_name] with clear step-by-step instructions
-- Think intelligently about the object's structure and break it down into logical drawing steps
-- Give clear instructions for what to draw first, second, third, etc.
-- Include main outlines, details, and specific drawing order
-- Examples:
-  * "can you draw a circle" → "DRAWING: circle - Draw a smooth circular path starting at (150,100), going right to (200,100), down to (200,150), left to (150,150), up to (150,100)"
-  * "draw a house" → "DRAWING: house - 1) Draw main body rectangle: (100,150) to (100,100) to (160,100) to (160,150) to (100,150). 2) Draw roof triangle: (100,100) to (130,70) to (160,100). 3) Draw door: (120,150) to (140,150) to (140,120) to (120,120) to (120,150)"
-  * "draw a car" → "DRAWING: car - 1) Draw car body outline: (80,140) to (200,140) to (210,130) to (210,120) to (190,120) to (190,110) to (110,110) to (110,120) to (100,120) to (80,140). 2) Draw front window: (110,110) to (190,110) to (190,120) to (110,120) to (110,110). 3) Draw wheels: Left wheel at (120,150) radius 15, Right wheel at (180,150) radius 15"
-- Use coordinate range 50-250 for good canvas placement
-- Be creative and think about the actual shape, features, and logical drawing order
-- Use the exact format "DRAWING: [object] - [step-by-step instructions]" - no other text or explanations
+🎨 DRAWING REQUESTS - QUICK RESPONSE ONLY:
+- When someone asks you to draw something (e.g., "can you draw a car", "draw a tree", "draw a house"), respond with ONLY a quick confirmation
+- Keep your response under 2 seconds - just say "Sure!" or "On it!" or "Let me draw that for you!"
+- Do NOT try to generate coordinates or drawing instructions
+- Do NOT explain what you're going to draw
+- The system will handle the actual drawing coordinates separately
+- Example responses: "Sure!", "On it!", "Let me draw that for you!", "I'll create that for you!"
 
 Example responses for off-topic questions:
 - "What's the weather like?" → "Oh wow, you think I'm some kind of general AI assistant? I'm CoCo, your sarcastic drawing buddy! Let's get back to this masterpiece you're creating."
@@ -875,19 +869,13 @@ CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say
 
 CRITICAL: When someone asks you to modify their drawing, simply say "Sure, I'll modify" or "I'll modify that for you!" - do NOT give long explanations or ask questions.
 
-🎨 DRAWING REQUESTS - GENERATE INTELLIGENT INSTRUCTIONS:
-- When someone asks you to draw something (e.g., "can you draw a car", "draw a tree", "draw a house"), you MUST respond with ONLY structured drawing instructions
-- Format your response as: DRAWING: [object_name] with clear step-by-step instructions
-- Think intelligently about the object's structure and break it down into logical drawing steps
-- Give clear instructions for what to draw first, second, third, etc.
-- Include main outlines, details, and specific drawing order
-- Examples:
-  * "can you draw a circle" → "DRAWING: circle - Draw a smooth circular path starting at (150,100), going right to (200,100), down to (200,150), left to (150,150), up to (150,100)"
-  * "draw a house" → "DRAWING: house - 1) Draw main body rectangle: (100,150) to (100,100) to (160,100) to (160,150) to (100,150). 2) Draw roof triangle: (100,100) to (130,70) to (160,100). 3) Draw door: (120,150) to (140,150) to (140,120) to (120,120) to (120,120)"
-  * "draw a car" → "DRAWING: car - 1) Draw car body outline: (80,140) to (200,140) to (210,130) to (210,120) to (190,120) to (190,110) to (110,110) to (110,120) to (100,120) to (80,140). 2) Draw front window: (110,110) to (190,110) to (190,120) to (110,120) to (110,110). 3) Draw wheels: Left wheel at (120,150) radius 15, Right wheel at (180,150) radius 15"
-- Use coordinate range 50-250 for good canvas placement
-- Be creative and think about the actual shape, features, and logical drawing order
-- Use the exact format "DRAWING: [object] - [step-by-step instructions]" - no other text or explanations
+🎨 DRAWING REQUESTS - QUICK RESPONSE ONLY:
+- When someone asks you to draw something (e.g., "can you draw a car", "draw a tree", "draw a house"), respond with ONLY a quick confirmation
+- Keep your response under 2 seconds - just say "Sure!" or "On it!" or "Let me draw that for you!"
+- Do NOT try to generate coordinates or drawing instructions
+- Do NOT explain what you're going to draw
+- The system will handle the actual drawing coordinates separately
+- Example responses: "Sure!", "On it!", "Let me draw that for you!", "I'll create that for you!"
 
 Example responses:
 - "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
@@ -2328,8 +2316,19 @@ async def gemini_session_handler(websocket):
                                                     drawing_result = await process_drawing_commands(cleaned_buffer, websocket)
                                                     if drawing_result is not None:
                                                         print(f"🎨 Drawing command detected: {cleaned_buffer}")
-                                                        # Let Gemini process the drawing request
-                                                        # The drawing command will be sent to Gemini for coordinate generation
+                                                        print(f"🎨 Calling Gemini Pro for structured drawing data...")
+                                                        
+                                                        # Call Gemini Pro for drawing coordinates
+                                                        drawing_data = await call_gemini_pro_for_drawing(cleaned_buffer)
+                                                        
+                                                        if drawing_data:
+                                                            print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
+                                                            print(f"🎨 Object: {drawing_data.get('object')}")
+                                                            print(f"🎨 Number of shapes: {len(drawing_data.get('shapes', []))}")
+                                                            print(f"🎨 Ready to send to frontend for drawing!")
+                                                        else:
+                                                            print(f"❌ FAILED: No drawing data from Gemini Pro")
+                                                        
                                                         continue
                                                     else:
                                                         # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
@@ -2424,8 +2423,18 @@ async def gemini_session_handler(websocket):
                                             drawing_result = await process_drawing_commands(transcription_buffer, websocket)
                                             if drawing_result is not None:
                                                 print(f"🎨 Drawing command detected on turn complete: {transcription_buffer}")
-                                                # Let Gemini process the drawing request
-                                                # The drawing command will be sent to Gemini for coordinate generation
+                                                print(f"🎨 Calling Gemini Pro for structured drawing data...")
+                                                
+                                                # Call Gemini Pro for drawing coordinates
+                                                drawing_data = await call_gemini_pro_for_drawing(transcription_buffer)
+                                                
+                                                if drawing_data:
+                                                    print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
+                                                    print(f"🎨 Object: {drawing_data.get('object')}")
+                                                    print(f"🎨 Number of shapes: {len(drawing_data.get('shapes', []))}")
+                                                    print(f"🎨 Ready to send to frontend for drawing!")
+                                                else:
+                                                    print(f"❌ FAILED: No drawing data from Gemini Pro")
                                             else:
                                                 # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
                                                 hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
@@ -2627,6 +2636,77 @@ async def main() -> None:
     
     # Keep running
     await asyncio.Future()
+
+async def call_gemini_pro_for_drawing(drawing_request):
+    """Call Gemini Pro to generate structured drawing coordinates"""
+    try:
+        import os
+        GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
+        
+        # Use the same client but different model
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        
+        prompt = f"""
+You are a drawing coordinate generator. The user wants to draw: {drawing_request}
+
+Generate ONLY a JSON response with drawing instructions in this exact format:
+{{
+  "type": "drawing_instructions",
+  "object": "car",
+  "shapes": [
+    {{
+      "shape_type": "pencil",
+      "action": "start",
+      "points": [[80, 140]],
+      "style": {{
+        "strokeColor": "#000000",
+        "strokeWidth": 2,
+        "fillColor": "transparent"
+      }}
+    }},
+    {{
+      "shape_type": "pencil", 
+      "action": "continue",
+      "points": [[200, 140], [210, 130], [210, 120], [190, 120], [190, 110], [110, 110], [110, 120], [100, 120], [80, 140]]
+    }},
+    {{
+      "shape_type": "pencil",
+      "action": "end"
+    }}
+  ]
+}}
+
+Keep coordinates in range 50-250. Be creative but realistic. Return ONLY the JSON, no other text.
+"""
+        
+        print(f"🚀 Calling Gemini Pro for drawing: {drawing_request}")
+        
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-1.5-flash",
+            contents=[{"text": prompt}]
+        )
+        
+        if hasattr(response, 'text') and response.text:
+            print(f"✅ Gemini Pro response received: {response.text}")
+            
+            # Try to parse JSON
+            try:
+                import json
+                drawing_data = json.loads(response.text.strip())
+                print(f"🎨 Parsed drawing data: {json.dumps(drawing_data, indent=2)}")
+                return drawing_data
+            except json.JSONDecodeError as e:
+                print(f"❌ Failed to parse JSON from Gemini Pro: {e}")
+                print(f"❌ Raw response: {response.text}")
+                return None
+        else:
+            print(f"❌ No text response from Gemini Pro")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error calling Gemini Pro: {e}")
+        return None
 
 if __name__ == "__main__":
     try:
