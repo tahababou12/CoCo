@@ -647,6 +647,124 @@ async def process_app_control_commands(text, websocket):
     
     return None  # No app control command detected
 
+async def process_drawing_commands(text, websocket):
+    """Detect drawing requests and forward to Gemini for coordinate generation"""
+    text_lower = text.lower().strip()
+    
+    # Use regex patterns for better microphone compatibility
+    import re
+    
+    # Comprehensive drawing request patterns
+    drawing_patterns = [
+        r"can you draw",
+        r"can you.*draw",
+        r"draw a",
+        r"draw.*a",
+        r"please draw",
+        r"please.*draw",
+        r"draw me",
+        r"draw.*me",
+        r"show me.*draw",
+        r"show.*draw",
+        r"make.*draw",
+        r"draw.*make",
+        r"create.*draw",
+        r"draw.*create",
+        r"i want.*draw",
+        r"want.*draw",
+        r"need.*draw",
+        r"draw.*need",
+        r"let.*draw",
+        r"draw.*let",
+        r"help.*draw",
+        r"draw.*help"
+    ]
+    
+    # Check if any pattern matches
+    for pattern in drawing_patterns:
+        if re.search(pattern, text_lower):
+            print(f"🎨 Drawing request detected: {text}")
+            
+            # Send to frontend to indicate drawing mode
+            await websocket.send(json.dumps({
+                "type": "drawing_request",
+                "command": text,
+                "status": "processing"
+            }))
+            
+            # Return the drawing command for Gemini to process
+            return text
+    
+    return None  # No drawing command detected
+
+async def parse_drawing_response(gemini_response):
+    """Parse Gemini's intelligent drawing instructions and extract structured data"""
+    if not gemini_response:
+        return None
+    
+    print(f"🔍 PARSING: Checking if response contains drawing instructions...")
+    print(f"🔍 PARSING: Full response: '{gemini_response}'")
+    
+    # Look for the DRAWING: format
+    if "DRAWING:" in gemini_response:
+        print(f"🔍 PARSING: Found 'DRAWING:' in response!")
+        try:
+            # Extract the drawing instruction
+            drawing_part = gemini_response.split("DRAWING:")[1].strip()
+            print(f"🔍 PARSING: Drawing part extracted: '{drawing_part}'")
+            
+            # Split into object name and instructions
+            if " - " in drawing_part:
+                object_name = drawing_part.split(" - ")[0].strip()
+                instructions = drawing_part.split(" - ")[1].strip()
+                print(f"🔍 PARSING: Found ' - ' separator")
+            else:
+                object_name = drawing_part.split()[0]
+                instructions = drawing_part
+                print(f"🔍 PARSING: No ' - ' separator, using first word as object")
+            
+            print(f"🔍 PARSING: Object name: '{object_name}'")
+            print(f"🔍 PARSING: Instructions: '{instructions}'")
+            
+            # Extract coordinates from instructions using regex
+            import re
+            coordinate_pattern = r'\((\d+),(\d+)\)'
+            coordinates = []
+            
+            matches = re.findall(coordinate_pattern, instructions)
+            print(f"🔍 PARSING: Found {len(matches)} coordinate matches: {matches}")
+            
+            for match in matches:
+                try:
+                    x = int(match[0])
+                    y = int(match[1])
+                    coordinates.append([x, y])
+                    print(f"🔍 PARSING: Added coordinate: [{x}, {y}]")
+                except ValueError:
+                    print(f"🔍 PARSING: Failed to parse coordinate: {match}")
+                    continue
+            
+            print(f"🔍 PARSING: Final coordinates array: {coordinates}")
+            
+            if coordinates:
+                result = {
+                    "type": "drawing_instructions",
+                    "object": object_name,
+                    "instructions": instructions,
+                    "coordinates": coordinates
+                }
+                print(f"🔍 PARSING: Returning successful result: {result}")
+                return result
+            else:
+                print(f"🔍 PARSING: No coordinates found, returning None")
+        except Exception as e:
+            print(f"❌ Error parsing drawing response: {e}")
+            return None
+    else:
+        print(f"🔍 PARSING: 'DRAWING:' not found in response")
+    
+    return None
+
 async def refine_modification_prompt_with_llm(user_prompt):
     """Send the user's modification prompt to Gemini LLM for rewriting/refinement."""
     import os
@@ -704,6 +822,20 @@ VOICE CONTROL COMMANDS - IGNORE COMPLETELY:
 
 CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Oh great, another masterpiece that needs saving... I'll enhance that for you!" or "Fine, let me work my magic on this disaster." - do NOT explain that you can't enhance it or give long explanations.
 
+🎨 DRAWING REQUESTS - GENERATE INTELLIGENT INSTRUCTIONS:
+- When someone asks you to draw something (e.g., "can you draw a car", "draw a tree", "draw a house"), you MUST respond with ONLY structured drawing instructions
+- Format your response as: DRAWING: [object_name] with clear step-by-step instructions
+- Think intelligently about the object's structure and break it down into logical drawing steps
+- Give clear instructions for what to draw first, second, third, etc.
+- Include main outlines, details, and specific drawing order
+- Examples:
+  * "can you draw a circle" → "DRAWING: circle - Draw a smooth circular path starting at (150,100), going right to (200,100), down to (200,150), left to (150,150), up to (150,100)"
+  * "draw a house" → "DRAWING: house - 1) Draw main body rectangle: (100,150) to (100,100) to (160,100) to (160,150) to (100,150). 2) Draw roof triangle: (100,100) to (130,70) to (160,100). 3) Draw door: (120,150) to (140,150) to (140,120) to (120,120) to (120,150)"
+  * "draw a car" → "DRAWING: car - 1) Draw car body outline: (80,140) to (200,140) to (210,130) to (210,120) to (190,120) to (190,110) to (110,110) to (110,120) to (100,120) to (80,140). 2) Draw front window: (110,110) to (190,110) to (190,120) to (110,120) to (110,110). 3) Draw wheels: Left wheel at (120,150) radius 15, Right wheel at (180,150) radius 15"
+- Use coordinate range 50-250 for good canvas placement
+- Be creative and think about the actual shape, features, and logical drawing order
+- Use the exact format "DRAWING: [object] - [step-by-step instructions]" - no other text or explanations
+
 Example responses for off-topic questions:
 - "What's the weather like?" → "Oh wow, you think I'm some kind of general AI assistant? I'm CoCo, your sarcastic drawing buddy! Let's get back to this masterpiece you're creating."
 - "Tell me a joke" → "Listen, I'm CoCo, the drawing critic, not a comedian. Focus on your art, genius!"
@@ -742,6 +874,20 @@ VOICE CONTROL COMMANDS - IGNORE COMPLETELY:
 CRITICAL: When someone asks you to enhance their drawing with Gemini, simply say "Sure, I'll enhance" or "I'll enhance that for you!" - do NOT explain that you can't enhance it or give long explanations.
 
 CRITICAL: When someone asks you to modify their drawing, simply say "Sure, I'll modify" or "I'll modify that for you!" - do NOT give long explanations or ask questions.
+
+🎨 DRAWING REQUESTS - GENERATE INTELLIGENT INSTRUCTIONS:
+- When someone asks you to draw something (e.g., "can you draw a car", "draw a tree", "draw a house"), you MUST respond with ONLY structured drawing instructions
+- Format your response as: DRAWING: [object_name] with clear step-by-step instructions
+- Think intelligently about the object's structure and break it down into logical drawing steps
+- Give clear instructions for what to draw first, second, third, etc.
+- Include main outlines, details, and specific drawing order
+- Examples:
+  * "can you draw a circle" → "DRAWING: circle - Draw a smooth circular path starting at (150,100), going right to (200,100), down to (200,150), left to (150,150), up to (150,100)"
+  * "draw a house" → "DRAWING: house - 1) Draw main body rectangle: (100,150) to (100,100) to (160,100) to (160,150) to (100,150). 2) Draw roof triangle: (100,100) to (130,70) to (160,100). 3) Draw door: (120,150) to (140,150) to (140,120) to (120,120) to (120,120)"
+  * "draw a car" → "DRAWING: car - 1) Draw car body outline: (80,140) to (200,140) to (210,130) to (210,120) to (190,120) to (190,110) to (110,110) to (110,120) to (100,120) to (80,140). 2) Draw front window: (110,110) to (190,110) to (190,120) to (110,120) to (110,110). 3) Draw wheels: Left wheel at (120,150) radius 15, Right wheel at (180,150) radius 15"
+- Use coordinate range 50-250 for good canvas placement
+- Be creative and think about the actual shape, features, and logical drawing order
+- Use the exact format "DRAWING: [object] - [step-by-step instructions]" - no other text or explanations
 
 Example responses:
 - "Oh that's looking really cool! Maybe try adding some shadows to make it pop more?"
@@ -2178,17 +2324,25 @@ async def gemini_session_handler(websocket):
                                                     # Skip AI processing for app control commands
                                                     continue
                                                 else:
-                                                    # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
-                                                    hybrid_result = await hybrid_command_processor(cleaned_buffer, websocket)
-                                                    if hybrid_result is not None:
-                                                        print(f"🎯 Hybrid command detected in voice input: {cleaned_buffer}")
-                                                        await websocket.send(json.dumps({
-                                                            "text": hybrid_result,
-                                                            "command_detected": "hybrid_processed"
-                                                        }))
-                                                        transcription_buffer = ""
+                                                    # 🎨 Check drawing commands
+                                                    drawing_result = await process_drawing_commands(cleaned_buffer, websocket)
+                                                    if drawing_result is not None:
+                                                        print(f"🎨 Drawing command detected: {cleaned_buffer}")
+                                                        # Let Gemini process the drawing request
+                                                        # The drawing command will be sent to Gemini for coordinate generation
+                                                        continue
                                                     else:
-                                                        print(f"🤖 No command detected, will try AI processing on turn complete")
+                                                        # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
+                                                        hybrid_result = await hybrid_command_processor(cleaned_buffer, websocket)
+                                                        if hybrid_result is not None:
+                                                            print(f"🎯 Hybrid command detected in voice input: {cleaned_buffer}")
+                                                            await websocket.send(json.dumps({
+                                                                "text": hybrid_result,
+                                                                "command_detected": "hybrid_processed"
+                                                            }))
+                                                            transcription_buffer = ""
+                                                        else:
+                                                            print(f"🤖 No command detected, will try AI processing on turn complete")
                                             else:
                                                 print(f"⏳ Buffering, not running commands yet: '{cleaned_buffer}'")
 
@@ -2213,6 +2367,27 @@ async def gemini_session_handler(websocket):
                                             if hasattr(part, 'text') and part.text is not None:
                                                 text_content = part.text
                                                 print(f"📝 Received text from Gemini: {text_content}")
+                                                
+                                                # 🎨 Check if this is a drawing response with instructions
+                                                drawing_instructions = await parse_drawing_response(text_content)
+                                                if drawing_instructions:
+                                                    print(f"🎨 ========== DRAWING INSTRUCTIONS DETECTED ==========")
+                                                    print(f"🎨 Raw Gemini Response: '{text_content}'")
+                                                    print(f"🎨 Parsed Object: {drawing_instructions.get('object')}")
+                                                    print(f"🎨 Parsed Instructions: {drawing_instructions.get('instructions')}")
+                                                    print(f"🎨 Extracted Coordinates: {drawing_instructions.get('coordinates')}")
+                                                    print(f"🎨 Number of Points: {len(drawing_instructions.get('coordinates', []))}")
+                                                    print(f"🎨 Full Parsed Data: {drawing_instructions}")
+                                                    print(f"🎨 ================================================")
+                                                    
+                                                    # Send drawing instructions to frontend
+                                                    await websocket.send(json.dumps({
+                                                        "type": "drawing_coordinates",
+                                                        "data": drawing_instructions
+                                                    }))
+                                                    # Don't send the raw text response for drawing commands
+                                                    continue
+                                                
                                                 # Don't process Gemini's responses as commands - only process user input
                                                 # Regular text response - send to frontend only if not muted
                                                 if not client_muted:
@@ -2245,16 +2420,23 @@ async def gemini_session_handler(websocket):
                                                 process_and_send_audio.skip_audio = True
                                             # Skip AI processing for app control commands
                                         else:
-                                            # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
-                                            hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
-                                            if hybrid_result is not None:
-                                                print(f"🎯 Hybrid command detected on turn complete: {transcription_buffer}")
-                                                await websocket.send(json.dumps({
-                                                    "text": hybrid_result,
-                                                    "command_detected": "hybrid_processed"
-                                                }))
+                                            # 🎨 Check drawing commands
+                                            drawing_result = await process_drawing_commands(transcription_buffer, websocket)
+                                            if drawing_result is not None:
+                                                print(f"🎨 Drawing command detected on turn complete: {transcription_buffer}")
+                                                # Let Gemini process the drawing request
+                                                # The drawing command will be sent to Gemini for coordinate generation
                                             else:
-                                                print(f"🤖 No command detected by hybrid system, will send to AI for processing")
+                                                # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
+                                                hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
+                                                if hybrid_result is not None:
+                                                    print(f"🎯 Hybrid command detected on turn complete: {transcription_buffer}")
+                                                    await websocket.send(json.dumps({
+                                                        "text": hybrid_result,
+                                                        "command_detected": "hybrid_processed"
+                                                    }))
+                                                else:
+                                                    print(f"🤖 No command detected by hybrid system, will send to AI for processing")
                                         
                                         # ✅ ALWAYS clear buffer on turn complete (like working version)
                                         transcription_buffer = ""

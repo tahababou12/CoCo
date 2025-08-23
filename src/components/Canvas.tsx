@@ -1671,6 +1671,26 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
         enhanceDrawingWithGeminiWithPrompt('Enhance this sketch into an image with more detail');
       }
       
+      // 🎨 Handle drawing request messages
+      if (data.type === 'drawing_request') {
+        console.log('🎨 DRAWING REQUEST RECEIVED:', data);
+        if (window.showToast) {
+          window.showToast(`🎨 Drawing request: ${data.command}`, 'info', 3000);
+        }
+      }
+      
+      // 🎨 Handle drawing instructions messages
+      if (data.type === 'drawing_coordinates') {
+        console.log('🎨 DRAWING INSTRUCTIONS RECEIVED:', data);
+        console.log('🎨 Object:', data.data.object);
+        console.log('🎨 Instructions:', data.data.instructions);
+        console.log('🎨 Coordinates:', data.data.coordinates);
+        if (window.showToast) {
+          window.showToast(`🎨 Ready to draw ${data.data.object} with ${data.data.coordinates.length} points!`, 'success', 5000);
+        }
+        // TODO: Implement cursor animation here
+      }
+
       if (data.text) {
         const newMessage = {
           type: 'assistant' as const,
