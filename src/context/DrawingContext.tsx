@@ -132,7 +132,7 @@ const initialState: DrawingState = {
 }
 
 function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
-  console.log(`Action received: ${action.type}`);
+      // console.log(`Action received: ${action.type}`);
   
   switch (action.type) {
     case 'SET_TOOL':
@@ -155,6 +155,9 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         style: { ...state.defaultStyle },
         isSelected: false,
       }
+
+      console.log('🔍 START_DRAWING DEBUG - Creating new shape:', newShape);
+      console.log('🔍 START_DRAWING DEBUG - Timestamp:', new Date().toISOString());
 
       return {
         ...state,
@@ -244,6 +247,13 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
         newShapes = [...state.shapes, shapeToSave];
       }
 
+      console.log('🔍 END_DRAWING DEBUG - Adding shape to array. New count:', newShapes.length);
+      console.log('🔍 END_DRAWING DEBUG - Shape being added:', shapeToSave);
+      console.log('🔍 END_DRAWING DEBUG - Previous shapes count:', state.shapes.length);
+      console.log('🔍 END_DRAWING DEBUG - Previous shapes:', state.shapes);
+      console.log('🔍 END_DRAWING DEBUG - Current shape before clearing:', state.currentShape);
+      console.log('🔍 END_DRAWING DEBUG - Timestamp:', new Date().toISOString());
+      
       return {
         ...state,
         shapes: newShapes,
@@ -653,6 +663,10 @@ function drawingReducer(state: DrawingState, action: DrawingAction): DrawingStat
     }
 
     case 'CLEAR_ALL': {
+      console.log('🚨 CLEAR_ALL action dispatched!');
+      console.log('🚨 Stack trace:', new Error().stack);
+      console.log('🚨 CLEAR_ALL - Current shapes count before clearing:', state.shapes.length);
+      console.log('🚨 CLEAR_ALL - Timestamp:', new Date().toISOString());
       // End any current drawing first
       if (state.currentShape) {
         // We don't save the current drawing, just discard it.

@@ -17,6 +17,13 @@ import GridSettings from './GridSettings'
 // Debug flag to control console logging
 const DEBUG = false;
 
+// Clean console logging - only show essential debug info
+const log = (message: string, ...args: any[]) => {
+  if (DEBUG) {
+    console.log(message, ...args);
+  }
+};
+
 // Define a type for the enhanced image
 interface EnhancedImage {
   id: string;
@@ -60,6 +67,9 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
   const [isPanning, setIsPanning] = useState(false)
   const [lastPanPoint, setLastPanPoint] = useState<Point | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
+  const [aiCursorVisible, setAICursorVisible] = useState(false)
+  const [aiCursorPosition, setAICursorPosition] = useState<Point>({ x: 0, y: 0 })
+  const [isAIDrawing, setIsAIDrawing] = useState(false)
   const [textInput, setTextInput] = useState<{
     visible: boolean;
     position: Point;
@@ -133,17 +143,21 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
 
   // Debug effect to log when aiMode changes
   useEffect(() => {
-    console.log('🎯 AI Mode changed to:', aiMode);
+    log('AI Mode changed to:', aiMode);
   }, [aiMode]);
 
 
 
   // Debug effect to log when shapes change
   useEffect(() => {
-    console.log('🔄 SHAPES CHANGED - Current count:', state.shapes.length);
-    console.log('🔄 SHAPES CHANGED - Shapes:', stateRef.current.shapes);
-    console.log('🔄 SHAPES CHANGED - Is AI connected:', isMultimodalConnected);
-  }, [state.shapes, isMultimodalConnected]);
+    console.log('🔍 SHAPES DEBUG - Count:', state.shapes.length);
+    if (state.shapes.length > 0) {
+      console.log('🔍 SHAPES DEBUG - Last shape:', state.shapes[state.shapes.length - 1]);
+      console.log('🔍 SHAPES DEBUG - All shapes:', state.shapes);
+    } else {
+      console.log('🔍 SHAPES DEBUG - All shapes cleared!');
+    }
+  }, [state.shapes]);
 
   // Define renderCanvas function before it's used in effects
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -201,7 +215,12 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
   const renderCanvas = () => {
     const canvas = canvasRef.current;
     const context = ctxRef.current;
-    if (!canvas || !context) return;
+    if (!canvas || !context) {
+      console.log('❌ Canvas or context not available');
+      return;
+    }
+    
+    console.log('🔍 CANVAS DEBUG - Rendering with', state.shapes.length, 'shapes');
     
     // Clear the entire canvas
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -223,21 +242,55 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
     context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
     context.scale(state.viewTransform.scale, state.viewTransform.scale);
 
-    state.shapes.forEach(shape => renderShape(context, shape));
+    console.log('🔍 RENDER DEBUG - About to render', state.shapes.length, 'shapes');
+    state.shapes.forEach((shape, index) => {
+      console.log(`🔍 RENDER DEBUG - Rendering shape ${index}:`, shape.type, shape.points);
+      renderShape(context, shape);
+    });
 
     if (state.currentShape) {
+      log('Rendering current shape:', state.currentShape.type);
       const currentShapeWithStyle = {
         ...state.currentShape,
         style: { ...state.defaultStyle, ...state.currentShape.style }
       };
       renderShape(context, currentShapeWithStyle);
     }
+    
+    // Render AI cursor if visible
+    if (aiCursorVisible) {
+      context.save();
+      context.translate(state.viewTransform.offsetX, state.viewTransform.offsetY);
+      context.scale(state.viewTransform.scale, state.viewTransform.scale);
+      
+      // Draw AI cursor (red circle with crosshair)
+      context.beginPath();
+      context.arc(aiCursorPosition.x, aiCursorPosition.y, 8, 0, Math.PI * 2);
+      context.fillStyle = 'rgba(255, 0, 0, 0.8)';
+      context.fill();
+      context.strokeStyle = 'white';
+      context.lineWidth = 2;
+      context.stroke();
+      
+      // Draw crosshair
+      context.beginPath();
+      context.moveTo(aiCursorPosition.x - 12, aiCursorPosition.y);
+      context.lineTo(aiCursorPosition.x + 12, aiCursorPosition.y);
+      context.moveTo(aiCursorPosition.x, aiCursorPosition.y - 12);
+      context.lineTo(aiCursorPosition.x, aiCursorPosition.y + 12);
+      context.strokeStyle = 'white';
+      context.lineWidth = 2;
+      context.stroke();
+      
+      context.restore();
+    }
+    
     context.restore();
     
     // Trigger immediate canvas capture after rendering is complete
     const triggerCapture = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
     if (triggerCapture && (isDrawing || state.currentShape)) {
-      console.log('🎨 Rendering complete, triggering canvas capture...');
+      log('Rendering complete');
       // Small delay to ensure rendering is fully complete
       setTimeout(() => {
         const triggerCaptureInner = (window as Window & { triggerImmediateCanvasCapture?: () => void }).triggerImmediateCanvasCapture;
@@ -285,7 +338,15 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
     return () => resizeObserver.disconnect();
   }, []);
 
-  useLayoutEffect(renderCanvas, [state.shapes, state.currentShape, state.viewTransform]);
+  useLayoutEffect(() => {
+    log('useLayoutEffect triggered - re-rendering canvas');
+    log('State changed:', {
+      shapesCount: state.shapes.length,
+      currentShape: state.currentShape ? state.currentShape.type : null,
+      viewTransform: state.viewTransform
+    });
+    renderCanvas();
+  }, [state.shapes, state.currentShape, state.viewTransform, aiCursorVisible, aiCursorPosition]);
 
   // Add specific effect to handle drawing state changes
   useEffect(() => {
@@ -496,13 +557,13 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
     // Capture canvas during drawing for real-time streaming (FAST VERSION)
     if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
       const drawStartTime = performance.now();
-      console.log('⏱️ [PERFORMANCE] Starting FAST drawing capture...');
+      // console.log('⏱️ [PERFORMANCE] Starting FAST drawing capture...');
       
       // Use direct canvas capture instead of slow html2canvas
       const canvas = canvasRef.current;
       if (canvas) {
         const captureTime = performance.now();
-        console.log(`⏱️ [PERFORMANCE] Direct canvas access took: ${captureTime - drawStartTime}ms`);
+        // console.log(`⏱️ [PERFORMANCE] Direct canvas access took: ${captureTime - drawStartTime}ms`);
         
         const imageData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
         const dataUrlTime = performance.now();
@@ -804,79 +865,110 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
     dispatch({ type: 'CLEAR_ALL' });
   };
 
-  // 🚀 AI Drawing Function - Executes drawing with cursor animation
-  const executeAIDrawing = async (shapes: any[]) => {
-    console.log('🎨 Starting AI drawing execution with', shapes.length, 'shapes');
+  // AI Drawing Function - Uses ADD_SHAPE directly (like the red rectangle that worked)
+  const executeAIDrawing = async (drawingSteps: any[]) => {
+    console.log('🎨 AI Drawing: FUNCTION CALLED!');
+    console.log('🎨 AI Drawing: Starting with', drawingSteps.length, 'drawing steps');
     
-    for (const shape of shapes) {
+    // Set AI drawing flag to prevent interference
+    setIsAIDrawing(true);
+    
+    // Show AI cursor
+    setAICursorVisible(true);
+    
+    // Group steps into shapes first
+    const shapes: any[] = [];
+    let currentShape: any = null;
+    let currentPoints: {x: number, y: number}[] = [];
+    
+    // First pass: group all steps into complete shapes
+    for (let stepIndex = 0; stepIndex < drawingSteps.length; stepIndex++) {
+      const step = drawingSteps[stepIndex];
+      
       try {
-        // Map backend shape types to frontend types
-        let frontendShapeType = shape.shape_type;
-        if (shape.shape_type === 'circle') {
-          frontendShapeType = 'ellipse';
-        } else if (shape.shape_type === 'triangle') {
-          frontendShapeType = 'pencil'; // Use pencil to draw triangle as connected lines
-        }
-        
-        // Ensure the shape type is supported
-        if (!['rectangle', 'ellipse', 'line', 'pencil'].includes(frontendShapeType)) {
-          console.warn(`⚠️ Unsupported shape type: ${shape.shape_type}, falling back to pencil`);
-          frontendShapeType = 'pencil';
-        }
-        
-        // Set the style for this shape
-        if (shape.style) {
-          dispatch({ type: 'SET_STYLE', payload: shape.style });
-        }
-        
-                  // Start drawing at the first point
-          if (shape.points && shape.points.length > 0) {
-            console.log(`🎨 Drawing ${frontendShapeType} starting at`, shape.points[0]);
-            
-            // For shapes that need multiple points (pencil, line), draw through all points
-            if (frontendShapeType === 'pencil' || frontendShapeType === 'line') {
-              dispatch({ type: 'START_DRAWING', payload: { 
-                point: { x: shape.points[0][0], y: shape.points[0][1] }, 
-                type: frontendShapeType 
-              }});
-              
-              // Move through all remaining points with animation
-              for (let i = 1; i < shape.points.length; i++) {
-                await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay for smooth animation
-                const point = { x: shape.points[i][0], y: shape.points[i][1] };
-                console.log(`🎨 Moving to point ${i}:`, point);
-                dispatch({ type: 'CONTINUE_DRAWING', payload: point });
-              }
-              
-              // End drawing this shape
-              dispatch({ type: 'END_DRAWING' });
-            } else {
-              // For rectangle and ellipse, just draw with start and end points
-              dispatch({ type: 'START_DRAWING', payload: { 
-                point: { x: shape.points[0][0], y: shape.points[0][1] }, 
-                type: frontendShapeType 
-              }});
-              
-              // Add the second point for rectangle/ellipse
-              if (shape.points.length > 1) {
-                await new Promise(resolve => setTimeout(resolve, 100)); // Slightly longer delay for shape completion
-                const endPoint = { x: shape.points[1][0], y: shape.points[1][1] };
-                console.log(`🎨 Completing ${frontendShapeType} at`, endPoint);
-                dispatch({ type: 'CONTINUE_DRAWING', payload: endPoint });
-              }
-              
-              // End drawing this shape
-              dispatch({ type: 'END_DRAWING' });
+        switch (step.action) {
+          case 'start_drawing':
+            let frontendShapeType = step.shape_type;
+            if (step.shape_type === 'circle') frontendShapeType = 'ellipse';
+            if (step.shape_type === 'triangle') frontendShapeType = 'pencil';
+            if (!['rectangle', 'ellipse', 'line', 'pencil'].includes(frontendShapeType)) {
+              frontendShapeType = 'pencil';
             }
             
-            console.log(`🎨 Finished drawing ${frontendShapeType}`);
-          }
+            currentShape = { 
+              type: frontendShapeType, 
+              points: [],
+              style: step.style || { strokeColor: '#000000', strokeWidth: 2, fillColor: 'transparent', opacity: 1 }
+            };
+            currentPoints = [];
+            
+            const startPoint = { x: step.point[0], y: step.point[1] };
+            currentPoints.push(startPoint);
+            break;
+            
+          case 'move_cursor':
+            if (currentShape) {
+              const movePoint = { x: step.point[0], y: step.point[1] };
+              currentPoints.push(movePoint);
+            }
+            break;
+            
+          case 'end_shape':
+            if (currentShape && currentPoints.length > 0) {
+              const finalShape = {
+                id: `ai-shape-${Date.now()}-${Math.random()}`,
+                type: currentShape.type,
+                points: currentPoints,
+                style: currentShape.style,
+                isSelected: false
+              };
+              
+              shapes.push(finalShape);
+              currentShape = null;
+              currentPoints = [];
+            }
+            break;
+        }
       } catch (error) {
-        console.error('❌ Error drawing shape:', shape, error);
+        console.error('❌ Error grouping step:', step, error);
       }
     }
     
-    console.log('🎨 AI drawing execution completed!');
+    console.log('🎨 AI Drawing: Grouped', shapes.length, 'shapes');
+    
+    // Second pass: animate cursor and add shapes directly (like the red rectangle)
+    for (let shapeIndex = 0; shapeIndex < shapes.length; shapeIndex++) {
+      const shape = shapes[shapeIndex];
+      console.log(`🎨 AI Drawing: Adding shape ${shapeIndex + 1}/${shapes.length}:`, shape.type);
+      
+      // Move cursor to start position
+      console.log('🎨 AI Drawing: Moving cursor to start:', shape.points[0]);
+      setAICursorPosition(shape.points[0]);
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Move cursor through all points to show the path
+      for (let pointIndex = 1; pointIndex < shape.points.length; pointIndex++) {
+        const point = shape.points[pointIndex];
+        console.log('🎨 AI Drawing: Moving cursor to:', point);
+        setAICursorPosition(point);
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      // Add the complete shape directly (like the red rectangle)
+      console.log('🎨 AI Drawing: Adding shape with ADD_SHAPE:', shape);
+      dispatch({ type: 'ADD_SHAPE', payload: shape });
+      
+      // Wait before next shape
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    
+    // Hide AI cursor when done
+    setAICursorVisible(false);
+    
+    // Clear AI drawing flag
+    setIsAIDrawing(false);
+    
+    console.log('🎨 AI Drawing: All shapes added!');
   };
 
   const saveCanvasAsPNG = async () => {
@@ -1477,12 +1569,12 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
         initializeMultimodalAudio();
         
         // Start live streaming
-        console.log(`📷 Starting live streaming for ${aiModeRef.current} AI...`);
+        // console.log(`📷 Starting live streaming for ${aiModeRef.current} AI...`);
         startLiveStreaming();
       };
       
       multimodalWebSocketRef.current.onmessage = (event) => {
-        console.log('📨 RAW WEBSOCKET MESSAGE RECEIVED:', event.data);
+        // console.log('📨 RAW WEBSOCKET MESSAGE RECEIVED:', event.data);
         handleMultimodalMessage(event);
       };
       
@@ -1661,11 +1753,11 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
   
 
   const handleMultimodalMessage = useCallback(async (event: MessageEvent) => {
-    console.log('📨 MULTIMODAL MESSAGE RECEIVED:', event.data);
+    // console.log('📨 MULTIMODAL MESSAGE RECEIVED:', event.data);
     
     try {
       const data = JSON.parse(event.data);
-      console.log('📨 PARSED MESSAGE DATA:', data);
+      // console.log('📨 PARSED MESSAGE DATA:', data);
       
       // If muted, ignore all voice/audio related messages
       if (isMuted) {
@@ -1748,7 +1840,7 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
       
       // 🎨 Handle drawing request messages
       if (data.type === 'drawing_request') {
-        console.log('🎨 DRAWING REQUEST RECEIVED:', data);
+        console.log('🎨 Drawing request:', data.command);
         if (window.showToast) {
           window.showToast(`🎨 Drawing request: ${data.command}`, 'info', 3000);
         }
@@ -1756,19 +1848,18 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
       
       // 🎨 Handle drawing instructions messages
       if (data.type === 'drawing_coordinates') {
-        console.log('🎨 DRAWING INSTRUCTIONS RECEIVED:', data);
-        console.log('🎨 Object:', data.data.object);
-        console.log('🎨 Number of shapes:', data.data.shapes?.length || 0);
-        console.log('🎨 Shapes data:', data.data.shapes);
+        console.log('🎨 Drawing instructions received for:', data.data.object);
+        console.log('🎨 Drawing steps count:', data.data.drawing_steps?.length || 0);
+        console.log('🎨 Full drawing data:', JSON.stringify(data.data, null, 2));
         
         if (window.showToast) {
-          const shapeCount = data.data.shapes?.length || 0;
-          window.showToast(`🎨 Ready to draw ${data.data.object} with ${shapeCount} shapes!`, 'success', 5000);
+          const stepCount = data.data.drawing_steps?.length || 0;
+          window.showToast(`🎨 Ready to draw ${data.data.object} with ${stepCount} steps!`, 'success', 5000);
         }
         
         // 🚀 Execute AI drawing with cursor animation
-        if (data.data.shapes && data.data.shapes.length > 0) {
-          executeAIDrawing(data.data.shapes);
+        if (data.data.drawing_steps && data.data.drawing_steps.length > 0) {
+          executeAIDrawing(data.data.drawing_steps);
         }
       }
 
@@ -2025,6 +2116,18 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
 
   // 🧠 NEW: Get real-time app context for AI
   const getAppContext = () => {
+    // Get canvas image for AI context
+    let canvasImage = null;
+    try {
+      if (canvasRef.current) {
+        canvasImage = canvasRef.current.toDataURL('image/jpeg', 0.8);
+        // Remove the data:image/jpeg;base64, prefix
+        canvasImage = canvasImage.split(',')[1];
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to capture canvas image for AI context:', error);
+    }
+
     const context = {
       // Panel states
       panels: {
@@ -2042,6 +2145,7 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
         isDrawing: isDrawing,
         hasContent: state.shapes.length > 0,
         currentShape: state.currentShape ? state.currentShape.type : null,
+        canvasImage: canvasImage, // Add canvas image for AI
       },
       
       // View state
@@ -2050,6 +2154,8 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
         offsetX: state.viewTransform.offsetX,
         offsetY: state.viewTransform.offsetY,
         isPanning: isPanning,
+        canvasWidth: canvasRef.current?.width || 800,
+        canvasHeight: canvasRef.current?.height || 600,
       },
       
       // AI connection state
@@ -2070,6 +2176,12 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
 
   // 🧠 NEW: Send app context to AI periodically
   const sendAppContextToAI = useCallback(() => {
+    // Don't send context during AI drawing to prevent interference
+    if (isAIDrawing) {
+      console.log('🧠 Skipping context send during AI drawing');
+      return;
+    }
+    
     if (isMultimodalConnected && multimodalWebSocketRef.current?.readyState === WebSocket.OPEN) {
       const context = getAppContext();
       const contextMessage = {
@@ -2081,7 +2193,7 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
       multimodalWebSocketRef.current.send(JSON.stringify(contextMessage));
       console.log('🧠 Sent app context to AI:', contextMessage);
     }
-  }, [isMultimodalConnected, state.showLayersPanel, state.showGridSettings, state.tool, state.shapes.length, isDrawing, isPanning, isMuted, voiceStatus, isRecording]);
+  }, [isMultimodalConnected, state.showLayersPanel, state.showGridSettings, state.tool, state.shapes.length, isDrawing, isPanning, isMuted, voiceStatus, isRecording, isAIDrawing]);
 
   // 🧠 NEW: Send context when important things change
   useEffect(() => {
@@ -2233,7 +2345,7 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
 
   // Start continuous canvas streaming
   const startLiveStreaming = () => {
-    console.log('📷 Starting continuous canvas streaming...');
+            // console.log('📷 Starting continuous canvas streaming...');
     setIsLiveStreaming(true);
     
     // Capture canvas container every 5 seconds (increased from 2 seconds to reduce interference)
@@ -2281,7 +2393,7 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
 
   // Stop continuous canvas streaming
   const stopLiveStreaming = () => {
-    console.log('📷 Stopping continuous canvas streaming...');
+            // console.log('📷 Stopping continuous canvas streaming...');
     setIsLiveStreaming(false);
     
     if (multimodalStreamingIntervalRef.current) {

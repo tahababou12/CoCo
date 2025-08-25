@@ -25,7 +25,7 @@ interface StoryboardFrame {
 }
 
 const Header: React.FC<HeaderProps> = () => {
-  console.log('🎯 Header component rendered');
+      // console.log('🎯 Header component rendered');
   
   const { state, dispatch } = useDrawing()
   const { isAuthenticated } = useAuth0()

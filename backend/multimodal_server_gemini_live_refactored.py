@@ -647,6 +647,9 @@ async def process_app_control_commands(text, websocket):
     
     return None  # No app control command detected
 
+# Global variable to store canvas context
+canvas_context = {}
+
 async def process_drawing_commands(text, websocket):
     """Detect drawing requests and execute them with Gemini Pro"""
     text_lower = text.lower().strip()
@@ -692,9 +695,15 @@ async def process_drawing_commands(text, websocket):
                 "status": "processing"
             }))
             
-            # 🚀 EXECUTE THE DRAWING RIGHT NOW!
+            # 🚀 IMMEDIATE VOICE RESPONSE!
+            await websocket.send(json.dumps({
+                "type": "assistant_transcript",
+                "output_transcription": "Sure, please wait while I draw that for you!"
+            }))
+            
+            # 🚀 EXECUTE THE DRAWING IN BACKGROUND!
             print(f"🎨 Calling Gemini Pro for structured drawing data...")
-            drawing_data = await call_gemini_pro_for_drawing(text)
+            drawing_data = await call_gemini_pro_for_drawing(text, canvas_context)
             
             if drawing_data:
                 print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
@@ -2252,6 +2261,12 @@ async def gemini_session_handler(websocket):
                                         "result": clear_result
                                     }))
                                     print(f"🧹 Cache cleared by frontend request")
+                                
+                                elif data.get("type") == "app_context":
+                                    # Frontend is sending canvas context
+                                    global canvas_context
+                                    canvas_context = data.get("context", {})
+                                    print(f"🧠 Received canvas context: {len(canvas_context.get('drawing', {}).get('shapes', []))} shapes")
                                             
                             except Exception as e:
                                 print(f"Error handling frontend message: {e}")
@@ -2407,11 +2422,11 @@ async def gemini_session_handler(websocket):
                                                 process_and_send_audio.skip_audio = True
                                             # Skip AI processing for app control commands
                                         else:
-                                            # 🎨 Check drawing commands (now handled in real-time)
-                                            drawing_result = await process_drawing_commands(transcription_buffer, websocket)
-                                            if drawing_result is not None:
-                                                print(f"🎨 Drawing command already processed in real-time: {transcription_buffer}")
-                                            else:
+                                            # 🎨 Drawing commands are handled in real-time only, not on turn complete
+                                            # drawing_result = await process_drawing_commands(transcription_buffer, websocket)
+                                            # if drawing_result is not None:
+                                            #     print(f"🎨 Drawing command already processed in real-time: {transcription_buffer}")
+                                            # else:
                                                 # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
                                                 hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
                                                 if hybrid_result is not None:
@@ -2613,7 +2628,7 @@ async def main() -> None:
     # Keep running
     await asyncio.Future()
 
-async def call_gemini_pro_for_drawing(drawing_request):
+async def call_gemini_pro_for_drawing(drawing_request, canvas_context=None):
     """Call Gemini Pro to generate structured drawing coordinates"""
     try:
         import os
@@ -2622,18 +2637,28 @@ async def call_gemini_pro_for_drawing(drawing_request):
         # Use the same client but different model
         client = genai.Client(api_key=GEMINI_API_KEY)
         
+        # Get canvas dimensions from context or use defaults
+        canvas_width = canvas_context.get('view', {}).get('canvasWidth', 800) if canvas_context else 800
+        canvas_height = canvas_context.get('view', {}).get('canvasHeight', 600) if canvas_context else 600
+        
+        # Build multimodal content
+        contents = []
+        
+        # Add text prompt
         prompt = f"""
-You are a drawing coordinate generator. The user wants to draw: {drawing_request}
+You are a drawing coordinate generator for AI cursor animation. The user wants to draw: {drawing_request}
 
-Generate ONLY a JSON response with drawing instructions in this exact format:
+Look at the canvas image and generate SEQUENTIAL drawing steps that simulate a human drawing with a cursor. Each step should be a small movement that builds the drawing progressively.
+
+Generate ONLY a JSON response with sequential drawing steps in this exact format:
 {{
-  "type": "drawing_instructions",
   "object": "car",
-  "shapes": [
+  "drawing_steps": [
     {{
+      "step": 1,
+      "action": "start_drawing",
       "shape_type": "pencil",
-      "action": "start",
-      "points": [[80, 140]],
+      "point": [{canvas_width//2 - 100}, {canvas_height//2 - 50}],
       "style": {{
         "strokeColor": "#000000",
         "strokeWidth": 2,
@@ -2641,19 +2666,101 @@ Generate ONLY a JSON response with drawing instructions in this exact format:
       }}
     }},
     {{
-      "shape_type": "pencil", 
-      "action": "continue",
-      "points": [[200, 140], [210, 130], [210, 120], [190, 120], [190, 110], [110, 110], [110, 120], [100, 120], [80, 140]]
+      "step": 2,
+      "action": "move_cursor",
+      "point": [{canvas_width//2 - 80}, {canvas_height//2 - 50}]
     }},
     {{
-      "shape_type": "pencil",
-      "action": "end"
+      "step": 3,
+      "action": "move_cursor", 
+      "point": [{canvas_width//2 - 60}, {canvas_height//2 - 55}]
+    }},
+    {{
+      "step": 4,
+      "action": "move_cursor",
+      "point": [{canvas_width//2 - 40}, {canvas_height//2 - 60}]
+    }},
+    {{
+      "step": 5,
+      "action": "end_shape"
+    }},
+    {{
+      "step": 6,
+      "action": "start_drawing",
+      "shape_type": "rectangle",
+      "point": [{canvas_width//2 - 100}, {canvas_height//2 - 80}],
+      "style": {{
+        "strokeColor": "#000000",
+        "strokeWidth": 2,
+        "fillColor": "transparent"
+      }}
+    }},
+    {{
+      "step": 7,
+      "action": "move_cursor",
+      "point": [{canvas_width//2 + 100}, {canvas_height//2 - 80}]
+    }},
+    {{
+      "step": 8,
+      "action": "end_shape"
     }}
   ]
 }}
 
-Keep coordinates in range 50-250. Be creative but realistic. Return ONLY the JSON, no other text.
+Instructions:
+- Each step should be a small, realistic cursor movement (5-20 pixels)
+- Use "start_drawing" to begin a new shape
+- Use "move_cursor" for small movements within a shape
+- Use "end_shape" to finish a shape
+- Use "pencil" for freehand drawing (car body, details)
+- Use "rectangle" for geometric shapes (car body, windows)
+- Use "ellipse" for circles (wheels)
+- Use "line" for straight lines
+- IMPORTANT: Draw in the CENTER of the canvas
+- X coordinates should be around {canvas_width//2} ± 100 pixels (center ± 100)
+- Y coordinates should be around {canvas_height//2} ± 80 pixels (center ± 80)
+- This ensures the drawing is visible in the middle of the screen
+- Be creative but realistic - draw like a human would
+- Return ONLY the JSON, no other text
 """
+        
+        contents.append({"text": prompt})
+        
+        # Add canvas image if available
+        if canvas_context and canvas_context.get('drawing', {}).get('canvasImage'):
+            try:
+                # Decode base64 canvas image
+                canvas_image_data = base64.b64decode(canvas_context['drawing']['canvasImage'])
+                print(f"🎨 Adding canvas image to Gemini Pro: {len(canvas_image_data)} bytes")
+                
+                # Add image to contents
+                contents.append({
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": canvas_context['drawing']['canvasImage']
+                    }
+                })
+            except Exception as e:
+                print(f"⚠️ Failed to add canvas image: {e}")
+        
+        # Update prompt with canvas dimensions
+        prompt += f"""
+
+Canvas Information:
+- Canvas width: {canvas_width} pixels
+- Canvas height: {canvas_height} pixels
+- Coordinate range: X (0-{canvas_width}), Y (0-{canvas_height})
+
+Use these dimensions to ensure your drawing fits properly on the canvas.
+"""
+        
+        print(f"🚀 Calling Gemini Pro with {len(contents)} content parts")
+        
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-1.5-flash",
+            contents=contents
+        )
         
         print(f"🚀 Calling Gemini Pro for drawing: {drawing_request}")
         
