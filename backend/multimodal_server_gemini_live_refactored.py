@@ -648,7 +648,7 @@ async def process_app_control_commands(text, websocket):
     return None  # No app control command detected
 
 async def process_drawing_commands(text, websocket):
-    """Detect drawing requests and forward to Gemini for coordinate generation"""
+    """Detect drawing requests and execute them with Gemini Pro"""
     text_lower = text.lower().strip()
     
     # Use regex patterns for better microphone compatibility
@@ -692,8 +692,26 @@ async def process_drawing_commands(text, websocket):
                 "status": "processing"
             }))
             
-            # Return the drawing command for Gemini to process
-            return text
+            # 🚀 EXECUTE THE DRAWING RIGHT NOW!
+            print(f"🎨 Calling Gemini Pro for structured drawing data...")
+            drawing_data = await call_gemini_pro_for_drawing(text)
+            
+            if drawing_data:
+                print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
+                print(f"🎨 Object: {drawing_data.get('object')}")
+                print(f"🎨 Number of shapes: {len(drawing_data.get('shapes', []))}")
+                print(f"🎨 Sending to frontend for drawing...")
+                
+                # Send drawing data to frontend
+                await websocket.send(json.dumps({
+                    "type": "drawing_coordinates",
+                    "data": drawing_data
+                }))
+                print(f"🎨 Drawing data sent to frontend successfully!")
+                return text  # Return success
+            else:
+                print(f"❌ FAILED: No drawing data from Gemini Pro")
+                return None
     
     return None  # No drawing command detected
 
@@ -2312,23 +2330,10 @@ async def gemini_session_handler(websocket):
                                                     # Skip AI processing for app control commands
                                                     continue
                                                 else:
-                                                    # 🎨 Check drawing commands
+                                                    # 🎨 Check drawing commands (now handled in real-time)
                                                     drawing_result = await process_drawing_commands(cleaned_buffer, websocket)
                                                     if drawing_result is not None:
-                                                        print(f"🎨 Drawing command detected: {cleaned_buffer}")
-                                                        print(f"🎨 Calling Gemini Pro for structured drawing data...")
-                                                        
-                                                        # Call Gemini Pro for drawing coordinates
-                                                        drawing_data = await call_gemini_pro_for_drawing(cleaned_buffer)
-                                                        
-                                                        if drawing_data:
-                                                            print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
-                                                            print(f"🎨 Object: {drawing_data.get('object')}")
-                                                            print(f"🎨 Number of shapes: {len(drawing_data.get('shapes', []))}")
-                                                            print(f"🎨 Ready to send to frontend for drawing!")
-                                                        else:
-                                                            print(f"❌ FAILED: No drawing data from Gemini Pro")
-                                                        
+                                                        print(f"🎨 Drawing command already processed in real-time: {cleaned_buffer}")
                                                         continue
                                                     else:
                                                         # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
@@ -2367,25 +2372,8 @@ async def gemini_session_handler(websocket):
                                                 text_content = part.text
                                                 print(f"📝 Received text from Gemini: {text_content}")
                                                 
-                                                # 🎨 Check if this is a drawing response with instructions
-                                                drawing_instructions = await parse_drawing_response(text_content)
-                                                if drawing_instructions:
-                                                    print(f"🎨 ========== DRAWING INSTRUCTIONS DETECTED ==========")
-                                                    print(f"🎨 Raw Gemini Response: '{text_content}'")
-                                                    print(f"🎨 Parsed Object: {drawing_instructions.get('object')}")
-                                                    print(f"🎨 Parsed Instructions: {drawing_instructions.get('instructions')}")
-                                                    print(f"🎨 Extracted Coordinates: {drawing_instructions.get('coordinates')}")
-                                                    print(f"🎨 Number of Points: {len(drawing_instructions.get('coordinates', []))}")
-                                                    print(f"🎨 Full Parsed Data: {drawing_instructions}")
-                                                    print(f"🎨 ================================================")
-                                                    
-                                                    # Send drawing instructions to frontend
-                                                    await websocket.send(json.dumps({
-                                                        "type": "drawing_coordinates",
-                                                        "data": drawing_instructions
-                                                    }))
-                                                    # Don't send the raw text response for drawing commands
-                                                    continue
+                                                # 🎨 Drawing commands are now handled in real-time via process_drawing_commands
+                                                # No need to parse Gemini's responses for drawing instructions
                                                 
                                                 # Don't process Gemini's responses as commands - only process user input
                                                 # Regular text response - send to frontend only if not muted
@@ -2419,22 +2407,10 @@ async def gemini_session_handler(websocket):
                                                 process_and_send_audio.skip_audio = True
                                             # Skip AI processing for app control commands
                                         else:
-                                            # 🎨 Check drawing commands
+                                            # 🎨 Check drawing commands (now handled in real-time)
                                             drawing_result = await process_drawing_commands(transcription_buffer, websocket)
                                             if drawing_result is not None:
-                                                print(f"🎨 Drawing command detected on turn complete: {transcription_buffer}")
-                                                print(f"🎨 Calling Gemini Pro for structured drawing data...")
-                                                
-                                                # Call Gemini Pro for drawing coordinates
-                                                drawing_data = await call_gemini_pro_for_drawing(transcription_buffer)
-                                                
-                                                if drawing_data:
-                                                    print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
-                                                    print(f"🎨 Object: {drawing_data.get('object')}")
-                                                    print(f"🎨 Number of shapes: {len(drawing_data.get('shapes', []))}")
-                                                    print(f"🎨 Ready to send to frontend for drawing!")
-                                                else:
-                                                    print(f"❌ FAILED: No drawing data from Gemini Pro")
+                                                print(f"🎨 Drawing command already processed in real-time: {transcription_buffer}")
                                             else:
                                                 # 🚀 Use HYBRID COMMAND SYSTEM: Cache → Regex → AI
                                                 hybrid_result = await hybrid_command_processor(transcription_buffer, websocket)
@@ -2690,15 +2666,28 @@ Keep coordinates in range 50-250. Be creative but realistic. Return ONLY the JSO
         if hasattr(response, 'text') and response.text:
             print(f"✅ Gemini Pro response received: {response.text}")
             
+            # Clean the response - remove markdown code blocks if present
+            cleaned_text = response.text.strip()
+            if cleaned_text.startswith('```json'):
+                cleaned_text = cleaned_text[7:]  # Remove ```json
+            if cleaned_text.startswith('```'):
+                cleaned_text = cleaned_text[3:]  # Remove ```
+            if cleaned_text.endswith('```'):
+                cleaned_text = cleaned_text[:-3]  # Remove ```
+            
+            cleaned_text = cleaned_text.strip()
+            print(f"🧹 Cleaned text: {cleaned_text}")
+            
             # Try to parse JSON
             try:
                 import json
-                drawing_data = json.loads(response.text.strip())
+                drawing_data = json.loads(cleaned_text)
                 print(f"🎨 Parsed drawing data: {json.dumps(drawing_data, indent=2)}")
                 return drawing_data
             except json.JSONDecodeError as e:
                 print(f"❌ Failed to parse JSON from Gemini Pro: {e}")
                 print(f"❌ Raw response: {response.text}")
+                print(f"❌ Cleaned text: {cleaned_text}")
                 return None
         else:
             print(f"❌ No text response from Gemini Pro")

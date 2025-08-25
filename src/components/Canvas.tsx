@@ -804,6 +804,81 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
     dispatch({ type: 'CLEAR_ALL' });
   };
 
+  // 🚀 AI Drawing Function - Executes drawing with cursor animation
+  const executeAIDrawing = async (shapes: any[]) => {
+    console.log('🎨 Starting AI drawing execution with', shapes.length, 'shapes');
+    
+    for (const shape of shapes) {
+      try {
+        // Map backend shape types to frontend types
+        let frontendShapeType = shape.shape_type;
+        if (shape.shape_type === 'circle') {
+          frontendShapeType = 'ellipse';
+        } else if (shape.shape_type === 'triangle') {
+          frontendShapeType = 'pencil'; // Use pencil to draw triangle as connected lines
+        }
+        
+        // Ensure the shape type is supported
+        if (!['rectangle', 'ellipse', 'line', 'pencil'].includes(frontendShapeType)) {
+          console.warn(`⚠️ Unsupported shape type: ${shape.shape_type}, falling back to pencil`);
+          frontendShapeType = 'pencil';
+        }
+        
+        // Set the style for this shape
+        if (shape.style) {
+          dispatch({ type: 'SET_STYLE', payload: shape.style });
+        }
+        
+                  // Start drawing at the first point
+          if (shape.points && shape.points.length > 0) {
+            console.log(`🎨 Drawing ${frontendShapeType} starting at`, shape.points[0]);
+            
+            // For shapes that need multiple points (pencil, line), draw through all points
+            if (frontendShapeType === 'pencil' || frontendShapeType === 'line') {
+              dispatch({ type: 'START_DRAWING', payload: { 
+                point: { x: shape.points[0][0], y: shape.points[0][1] }, 
+                type: frontendShapeType 
+              }});
+              
+              // Move through all remaining points with animation
+              for (let i = 1; i < shape.points.length; i++) {
+                await new Promise(resolve => setTimeout(resolve, 50)); // 50ms delay for smooth animation
+                const point = { x: shape.points[i][0], y: shape.points[i][1] };
+                console.log(`🎨 Moving to point ${i}:`, point);
+                dispatch({ type: 'CONTINUE_DRAWING', payload: point });
+              }
+              
+              // End drawing this shape
+              dispatch({ type: 'END_DRAWING' });
+            } else {
+              // For rectangle and ellipse, just draw with start and end points
+              dispatch({ type: 'START_DRAWING', payload: { 
+                point: { x: shape.points[0][0], y: shape.points[0][1] }, 
+                type: frontendShapeType 
+              }});
+              
+              // Add the second point for rectangle/ellipse
+              if (shape.points.length > 1) {
+                await new Promise(resolve => setTimeout(resolve, 100)); // Slightly longer delay for shape completion
+                const endPoint = { x: shape.points[1][0], y: shape.points[1][1] };
+                console.log(`🎨 Completing ${frontendShapeType} at`, endPoint);
+                dispatch({ type: 'CONTINUE_DRAWING', payload: endPoint });
+              }
+              
+              // End drawing this shape
+              dispatch({ type: 'END_DRAWING' });
+            }
+            
+            console.log(`🎨 Finished drawing ${frontendShapeType}`);
+          }
+      } catch (error) {
+        console.error('❌ Error drawing shape:', shape, error);
+      }
+    }
+    
+    console.log('🎨 AI drawing execution completed!');
+  };
+
   const saveCanvasAsPNG = async () => {
     const canvas = canvasRef.current;
     if (!canvas || state.shapes.length === 0) return;
@@ -1683,12 +1758,18 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
       if (data.type === 'drawing_coordinates') {
         console.log('🎨 DRAWING INSTRUCTIONS RECEIVED:', data);
         console.log('🎨 Object:', data.data.object);
-        console.log('🎨 Instructions:', data.data.instructions);
-        console.log('🎨 Coordinates:', data.data.coordinates);
+        console.log('🎨 Number of shapes:', data.data.shapes?.length || 0);
+        console.log('🎨 Shapes data:', data.data.shapes);
+        
         if (window.showToast) {
-          window.showToast(`🎨 Ready to draw ${data.data.object} with ${data.data.coordinates.length} points!`, 'success', 5000);
+          const shapeCount = data.data.shapes?.length || 0;
+          window.showToast(`🎨 Ready to draw ${data.data.object} with ${shapeCount} shapes!`, 'success', 5000);
         }
-        // TODO: Implement cursor animation here
+        
+        // 🚀 Execute AI drawing with cursor animation
+        if (data.data.shapes && data.data.shapes.length > 0) {
+          executeAIDrawing(data.data.shapes);
+        }
       }
 
       if (data.text) {
