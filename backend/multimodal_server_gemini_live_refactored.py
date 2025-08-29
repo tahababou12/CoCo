@@ -701,6 +701,13 @@ async def process_drawing_commands(text, websocket):
                 "output_transcription": "Sure, please wait while I draw that for you!"
             }))
             
+            # 🎨 SEND LOADING NOTIFICATION
+            await websocket.send(json.dumps({
+                "type": "drawing_loading",
+                "status": "loading",
+                "message": "Generating drawing coordinates with AI..."
+            }))
+            
             # 🚀 EXECUTE THE DRAWING IN BACKGROUND!
             print(f"🎨 Calling Gemini Pro for structured drawing data...")
             drawing_data = await call_gemini_pro_for_drawing(text, canvas_context)
@@ -708,8 +715,15 @@ async def process_drawing_commands(text, websocket):
             if drawing_data:
                 print(f"🎨 SUCCESS: Drawing data received from Gemini Pro!")
                 print(f"🎨 Object: {drawing_data.get('object')}")
-                print(f"🎨 Number of shapes: {len(drawing_data.get('shapes', []))}")
+                print(f"🎨 Number of drawing steps: {len(drawing_data.get('drawing_steps', []))}")
                 print(f"🎨 Sending to frontend for drawing...")
+                
+                # 🎨 SEND LOADING COMPLETE NOTIFICATION
+                await websocket.send(json.dumps({
+                    "type": "drawing_loading",
+                    "status": "complete",
+                    "message": "Ready to draw!"
+                }))
                 
                 # Send drawing data to frontend
                 await websocket.send(json.dumps({
@@ -720,6 +734,14 @@ async def process_drawing_commands(text, websocket):
                 return text  # Return success
             else:
                 print(f"❌ FAILED: No drawing data from Gemini Pro")
+                
+                # 🎨 SEND LOADING ERROR NOTIFICATION
+                await websocket.send(json.dumps({
+                    "type": "drawing_loading",
+                    "status": "error",
+                    "message": "Failed to generate drawing. Please try again."
+                }))
+                
                 return None
     
     return None  # No drawing command detected
@@ -2648,17 +2670,17 @@ async def call_gemini_pro_for_drawing(drawing_request, canvas_context=None):
         prompt = f"""
 You are a drawing coordinate generator for AI cursor animation. The user wants to draw: {drawing_request}
 
-Look at the canvas image and generate SEQUENTIAL drawing steps that simulate a human drawing with a cursor. Each step should be a small movement that builds the drawing progressively.
+Generate ONLY the MINIMAL number of drawing steps needed to create a recognizable, simple version of the requested object. Use common sense - don't overcomplicate it!
 
 Generate ONLY a JSON response with sequential drawing steps in this exact format:
 {{
-  "object": "car",
+  "object": "house",
   "drawing_steps": [
     {{
       "step": 1,
       "action": "start_drawing",
-      "shape_type": "pencil",
-      "point": [{canvas_width//2 - 100}, {canvas_height//2 - 50}],
+      "shape_type": "rectangle",
+      "point": [{canvas_width//2 - 80}, {canvas_height//2 - 40}],
       "style": {{
         "strokeColor": "#000000",
         "strokeWidth": 2,
@@ -2668,17 +2690,17 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
     {{
       "step": 2,
       "action": "move_cursor",
-      "point": [{canvas_width//2 - 80}, {canvas_height//2 - 50}]
+      "point": [{canvas_width//2 + 80}, {canvas_height//2 - 40}]
     }},
     {{
       "step": 3,
-      "action": "move_cursor", 
-      "point": [{canvas_width//2 - 60}, {canvas_height//2 - 55}]
+      "action": "move_cursor",
+      "point": [{canvas_width//2 + 80}, {canvas_height//2 + 60}]
     }},
     {{
       "step": 4,
       "action": "move_cursor",
-      "point": [{canvas_width//2 - 40}, {canvas_height//2 - 60}]
+      "point": [{canvas_width//2 - 80}, {canvas_height//2 + 60}]
     }},
     {{
       "step": 5,
@@ -2687,8 +2709,8 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
     {{
       "step": 6,
       "action": "start_drawing",
-      "shape_type": "rectangle",
-      "point": [{canvas_width//2 - 100}, {canvas_height//2 - 80}],
+      "shape_type": "line",
+      "point": [{canvas_width//2 - 80}, {canvas_height//2 - 40}],
       "style": {{
         "strokeColor": "#000000",
         "strokeWidth": 2,
@@ -2698,7 +2720,7 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
     {{
       "step": 7,
       "action": "move_cursor",
-      "point": [{canvas_width//2 + 100}, {canvas_height//2 - 80}]
+      "point": [{canvas_width//2 + 80}, {canvas_height//2 - 40}]
     }},
     {{
       "step": 8,
@@ -2707,20 +2729,23 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
   ]
 }}
 
-Instructions:
-- Each step should be a small, realistic cursor movement (5-20 pixels)
-- Use "start_drawing" to begin a new shape
-- Use "move_cursor" for small movements within a shape
-- Use "end_shape" to finish a shape
-- Use "pencil" for freehand drawing (car body, details)
-- Use "rectangle" for geometric shapes (car body, windows)
-- Use "ellipse" for circles (wheels)
-- Use "line" for straight lines
-- IMPORTANT: Draw in the CENTER of the canvas
-- X coordinates should be around {canvas_width//2} ± 100 pixels (center ± 100)
-- Y coordinates should be around {canvas_height//2} ± 80 pixels (center ± 80)
-- This ensures the drawing is visible in the middle of the screen
-- Be creative but realistic - draw like a human would
+CRITICAL INSTRUCTIONS:
+- Use COMMON SENSE to determine appropriate detail level for ANY object the user requests
+- Make shapes detailed and visually interesting, not just basic outlines
+- Examples of detail level (but NOT limited to these):
+  * A house: main body, roof, windows, door, maybe chimney
+  * A car: body, wheels, windows, headlights, maybe details
+  * A tree: trunk, branches, leaves, maybe roots
+  * A cat: head, body, legs, tail, ears, face details
+  * A flower: petals, stem, leaves, maybe center details
+  * ANY object: include enough features to make it recognizable and interesting
+- Each shape should use enough points to be recognizable and detailed
+- Use "start_drawing" to begin a new shape, "move_cursor" for key points, "end_shape" to finish
+- Draw in the CENTER of the canvas: X around {canvas_width//2} ± 80 pixels, Y around {canvas_height//2} ± 60 pixels
+- Use "rectangle" for straight edges, "ellipse" for circles, "line" for simple lines
+- Use "pencil" for complex, organic shapes like tree branches, animal outlines, curved paths, detailed features
+- Be creative and detailed - add visual interest while keeping it realistic
+- You can draw ANYTHING the user asks for - animals, objects, scenes, etc.
 - Return ONLY the JSON, no other text
 """
         
@@ -2743,31 +2768,14 @@ Instructions:
             except Exception as e:
                 print(f"⚠️ Failed to add canvas image: {e}")
         
-        # Update prompt with canvas dimensions
-        prompt += f"""
-
-Canvas Information:
-- Canvas width: {canvas_width} pixels
-- Canvas height: {canvas_height} pixels
-- Coordinate range: X (0-{canvas_width}), Y (0-{canvas_height})
-
-Use these dimensions to ensure your drawing fits properly on the canvas.
-"""
-        
-        print(f"🚀 Calling Gemini Pro with {len(contents)} content parts")
-        
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model="gemini-1.5-flash",
-            contents=contents
-        )
+        # Canvas dimensions are already included in the main prompt above
         
         print(f"🚀 Calling Gemini Pro for drawing: {drawing_request}")
         
         response = await asyncio.to_thread(
             client.models.generate_content,
             model="gemini-1.5-flash",
-            contents=[{"text": prompt}]
+            contents=contents
         )
         
         if hasattr(response, 'text') and response.text:

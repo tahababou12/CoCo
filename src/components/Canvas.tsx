@@ -890,8 +890,8 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
           case 'start_drawing':
             let frontendShapeType = step.shape_type;
             if (step.shape_type === 'circle') frontendShapeType = 'ellipse';
-            if (step.shape_type === 'triangle') frontendShapeType = 'pencil';
-            if (!['rectangle', 'ellipse', 'line', 'pencil'].includes(frontendShapeType)) {
+            if (step.shape_type === 'triangle') frontendShapeType = 'triangle';
+            if (!['rectangle', 'ellipse', 'line', 'triangle', 'pencil'].includes(frontendShapeType)) {
               frontendShapeType = 'pencil';
             }
             
@@ -2686,7 +2686,13 @@ const Canvas: React.FC<CanvasProps> = ({ onToggleStoryboard, showStoryboard, onC
             {isMultimodalConnected ? (
               <span className="flex items-center space-x-2">
                 {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
-                <span>{isMuted ? "Muted" : "Listening"}</span>
+                <span>
+                  {isMuted ? "Muted" : 
+                   voiceStatus === 'listening' ? "Listening..." :
+                   isPlayingAudio ? "AI Speaking..." :
+                   isLiveStreaming ? "AI Sees Canvas" :
+                   "Listening"}
+                </span>
               </span>
             ) : (
               <span className="flex items-center space-x-2">

@@ -32,6 +32,9 @@ export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape): void =
     case 'line':
       drawLine(ctx, shape.points, shape.isSelected)
       break
+    case 'triangle':
+      drawTriangle(ctx, shape.points, shape.isSelected)
+      break
     case 'pencil':
       drawPencil(ctx, shape.points, shape.isSelected)
       break
@@ -40,9 +43,18 @@ export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape): void =
       break
     case 'image': {
       if (shape.image && shape.points.length >= 2) {
-        const [startPoint, endPoint] = shape.points;
-        const width = endPoint.x - startPoint.x;
-        const height = endPoint.y - startPoint.y;
+        // Handle multiple points by finding the bounding box
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        
+        shape.points.forEach(point => {
+          minX = Math.min(minX, point.x)
+          minY = Math.min(minY, point.y)
+          maxX = Math.max(maxX, point.x)
+          maxY = Math.max(maxY, point.y)
+        })
+        
+        const width = maxX - minX
+        const height = maxY - minY
         
         // Load image
         const img = new Image();
@@ -50,11 +62,11 @@ export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape): void =
         
         // If the image is already loaded, draw it immediately
         if (img.complete) {
-          ctx.drawImage(img, startPoint.x, startPoint.y, width, height);
+          ctx.drawImage(img, minX, minY, width, height);
         } else {
           // Otherwise, draw when loaded
           img.onload = () => {
-            ctx.drawImage(img, startPoint.x, startPoint.y, width, height);
+            ctx.drawImage(img, minX, minY, width, height);
           };
         }
       }
@@ -76,19 +88,28 @@ const drawRectangle = (
 ) => {
   if (points.length < 2) return
 
-  const [start, end] = points
-  const width = end.x - start.x
-  const height = end.y - start.y
+  // Handle multiple points by finding the bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  
+  points.forEach(point => {
+    minX = Math.min(minX, point.x)
+    minY = Math.min(minY, point.y)
+    maxX = Math.max(maxX, point.x)
+    maxY = Math.max(maxY, point.y)
+  })
+  
+  const width = maxX - minX
+  const height = maxY - minY
 
   // Draw rectangle
   if (fillColor !== 'transparent') {
-    ctx.fillRect(start.x, start.y, width, height)
+    ctx.fillRect(minX, minY, width, height)
   }
-  ctx.strokeRect(start.x, start.y, width, height)
+  ctx.strokeRect(minX, minY, width, height)
 
   // Draw selection handles if selected
   if (isSelected) {
-    drawSelectionHandles(ctx, start.x, start.y, width, height)
+    drawSelectionHandles(ctx, minX, minY, width, height)
   }
 }
 
@@ -100,11 +121,20 @@ const drawEllipse = (
 ) => {
   if (points.length < 2) return
 
-  const [start, end] = points
-  const centerX = (start.x + end.x) / 2
-  const centerY = (start.y + end.y) / 2
-  const radiusX = Math.abs(end.x - start.x) / 2
-  const radiusY = Math.abs(end.y - start.y) / 2
+  // Handle multiple points by finding the bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  
+  points.forEach(point => {
+    minX = Math.min(minX, point.x)
+    minY = Math.min(minY, point.y)
+    maxX = Math.max(maxX, point.x)
+    maxY = Math.max(maxY, point.y)
+  })
+  
+  const centerX = (minX + maxX) / 2
+  const centerY = (minY + maxY) / 2
+  const radiusX = Math.abs(maxX - minX) / 2
+  const radiusY = Math.abs(maxY - minY) / 2
 
   // Draw ellipse
   ctx.beginPath()
@@ -116,7 +146,7 @@ const drawEllipse = (
 
   // Draw selection handles if selected
   if (isSelected) {
-    drawSelectionHandles(ctx, start.x, start.y, end.x - start.x, end.y - start.y)
+    drawSelectionHandles(ctx, minX, minY, maxX - minX, maxY - minY)
   }
 }
 
@@ -127,17 +157,55 @@ const drawLine = (
 ) => {
   if (points.length < 2) return
 
-  const [start, end] = points
-
-  // Draw line
+  // Handle multiple points by drawing a path through all of them
   ctx.beginPath()
-  ctx.moveTo(start.x, start.y)
-  ctx.lineTo(end.x, end.y)
+  ctx.moveTo(points[0].x, points[0].y)
+  
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y)
+  }
+  
   ctx.stroke()
 
   // Draw selection handles if selected
   if (isSelected) {
+    // Use first and last points for selection handles
+    const start = points[0]
+    const end = points[points.length - 1]
     drawEndpointHandles(ctx, start, end)
+  }
+}
+
+const drawTriangle = (
+  ctx: CanvasRenderingContext2D,
+  points: { x: number; y: number }[],
+  isSelected: boolean
+) => {
+  if (points.length < 3) return
+
+  // Draw triangle with all 3 sides
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  ctx.lineTo(points[1].x, points[1].y)
+  ctx.lineTo(points[2].x, points[2].y)
+  ctx.closePath() // This automatically closes the triangle
+  ctx.stroke()
+
+  // Draw selection handles if selected
+  if (isSelected) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    
+    points.forEach(point => {
+      minX = Math.min(minX, point.x)
+      minY = Math.min(minY, point.y)
+      maxX = Math.max(maxX, point.x)
+      maxY = Math.max(maxY, point.y)
+    })
+    
+    const width = maxX - minX
+    const height = maxY - minY
+    
+    drawSelectionHandles(ctx, minX, minY, width, height)
   }
 }
 
