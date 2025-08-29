@@ -2670,7 +2670,12 @@ async def call_gemini_pro_for_drawing(drawing_request, canvas_context=None):
         prompt = f"""
 You are a drawing coordinate generator for AI cursor animation. The user wants to draw: {drawing_request}
 
-Generate ONLY the MINIMAL number of drawing steps needed to create a recognizable, simple version of the requested object. Use common sense - don't overcomplicate it!
+IMPORTANT: You can see the current canvas content! Use this to:
+1. If adding to existing drawings: place new elements intelligently around what's already there
+2. If drawing something new: use the center area but don't be afraid to use the full canvas
+3. Make sure new elements don't overlap with existing ones unless intended
+
+Generate the appropriate number of drawing steps needed to create a recognizable, detailed version of the requested object. Use common sense for complexity!
 
 Generate ONLY a JSON response with sequential drawing steps in this exact format:
 {{
@@ -2730,21 +2735,23 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
 }}
 
 CRITICAL INSTRUCTIONS:
-- Use COMMON SENSE to determine appropriate detail level for ANY object the user requests
-- Make shapes detailed and visually interesting, not just basic outlines
-- Examples of detail level (but NOT limited to these):
-  * A house: main body, roof, windows, door, maybe chimney
-  * A car: body, wheels, windows, headlights, maybe details
-  * A tree: trunk, branches, leaves, maybe roots
-  * A cat: head, body, legs, tail, ears, face details
-  * A flower: petals, stem, leaves, maybe center details
-  * ANY object: include enough features to make it recognizable and interesting
-- Each shape should use enough points to be recognizable and detailed
+- Create HIGHLY DETAILED, visually rich drawings that look professional and complete
+- Use your visual knowledge to draw objects as they actually look in real life
+- Be creative and add visual interest - don't settle for basic outlines
+- IMPORTANT: Draw like a professional artist - add curves, angles, realistic proportions, and fine details
+- Use MANY points for complex shapes - don't be afraid of 20+ steps for detailed objects
+- Push the boundaries of what's possible - make drawings that impress and look realistic
 - Use "start_drawing" to begin a new shape, "move_cursor" for key points, "end_shape" to finish
-- Draw in the CENTER of the canvas: X around {canvas_width//2} ± 80 pixels, Y around {canvas_height//2} ± 60 pixels
+- Use the FULL canvas intelligently based on context:
+  * If adding to existing drawings: place new elements intelligently around what's already there
+  * If drawing something new: use the center area but don't be afraid to use the full canvas
+  * Make sure new elements don't overlap with existing ones unless intended
+  * For new drawings: use center area (X around {canvas_width//2} ± 100 pixels, Y around {canvas_height//2} ± 80 pixels)
+  * For adding details: use coordinates that make sense relative to existing drawings
 - Use "rectangle" for straight edges, "ellipse" for circles, "line" for simple lines
 - Use "pencil" for complex, organic shapes like tree branches, animal outlines, curved paths, detailed features
-- Be creative and detailed - add visual interest while keeping it realistic
+- PREFER "pencil" tool for most objects - it allows for more natural, curved, realistic shapes
+- Don't just connect dots with straight lines - create smooth, natural curves and realistic proportions
 - You can draw ANYTHING the user asks for - animals, objects, scenes, etc.
 - Return ONLY the JSON, no other text
 """
@@ -2774,7 +2781,7 @@ CRITICAL INSTRUCTIONS:
         
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-exp",
             contents=contents
         )
         
