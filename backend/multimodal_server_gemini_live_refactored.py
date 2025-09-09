@@ -2668,14 +2668,25 @@ async def call_gemini_pro_for_drawing(drawing_request, canvas_context=None):
         
         # Add text prompt
         prompt = f"""
-You are a drawing coordinate generator for AI cursor animation. The user wants to draw: {drawing_request}
+You are a professional architectural illustrator creating detailed, realistic drawings. The user wants to draw: {drawing_request}
 
-IMPORTANT: You can see the current canvas content! Use this to:
+CRITICAL: Create a recognizable, well-proportioned drawing that looks like the actual object. Think about:
+- Realistic proportions and perspective
+- Key identifying features that make it recognizable
+- Proper architectural elements (for buildings)
+- Natural shapes and curves (for organic objects)
+
+CANVAS CONTEXT: You can see the current canvas content! Use this to:
 1. If adding to existing drawings: place new elements intelligently around what's already there
 2. If drawing something new: use the center area but don't be afraid to use the full canvas
 3. Make sure new elements don't overlap with existing ones unless intended
 
-Generate the appropriate number of drawing steps needed to create a recognizable, detailed version of the requested object. Use common sense for complexity!
+DRAWING INSTRUCTIONS:
+- Use MANY points for smooth curves (minimum 10-15 points per curve)
+- Create realistic proportions (houses should be wider than tall, cars longer than tall, etc.)
+- Add details that make it recognizable (windows, doors, wheels, etc.)
+- Use proper perspective and depth
+- Make it look professional, not like a child's drawing
 
 Generate ONLY a JSON response with sequential drawing steps in this exact format:
 {{
@@ -2684,23 +2695,23 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
     {{
       "step": 1,
       "action": "start_drawing",
-      "shape_type": "rectangle",
-      "point": [{canvas_width//2 - 80}, {canvas_height//2 - 40}],
+      "shape_type": "pencil",
+      "point": [{canvas_width//2 - 100}, {canvas_height//2 - 50}],
       "style": {{
         "strokeColor": "#000000",
-        "strokeWidth": 2,
+        "strokeWidth": 3,
         "fillColor": "transparent"
       }}
     }},
     {{
       "step": 2,
       "action": "move_cursor",
-      "point": [{canvas_width//2 + 80}, {canvas_height//2 - 40}]
+      "point": [{canvas_width//2 + 100}, {canvas_height//2 - 50}]
     }},
     {{
       "step": 3,
       "action": "move_cursor",
-      "point": [{canvas_width//2 + 80}, {canvas_height//2 + 60}]
+      "point": [{canvas_width//2 + 100}, {canvas_height//2 + 80}]
     }},
     {{
       "step": 4,
@@ -2733,6 +2744,24 @@ Generate ONLY a JSON response with sequential drawing steps in this exact format
     }}
   ]
 }}
+
+SPECIFIC HOUSE DRAWING INSTRUCTIONS:
+For a HOUSE, create these elements in order:
+1. MAIN STRUCTURE: Draw a wide rectangle (house body) - should be 2x wider than tall
+2. ROOF: Draw a triangular roof on top - use pencil with many points for smooth lines
+3. WINDOWS: Add 2-3 rectangular windows on the front
+4. DOOR: Add a rectangular door in the center
+5. CHIMNEY: Add a small rectangle on the roof
+6. FOUNDATION: Add a wider rectangle at the bottom
+7. DETAILS: Add window frames, door handle, roof shingles
+
+COORDINATE GUIDELINES:
+- House body: width 200px, height 120px, centered on canvas
+- Roof: triangular, 20px taller than house body
+- Windows: 30x40px rectangles, evenly spaced
+- Door: 40x80px rectangle, centered
+- Use MANY points for curves (minimum 8-12 points per curve)
+- Make it look like a real house, not abstract shapes
 
 CRITICAL INSTRUCTIONS:
 - Create HIGHLY DETAILED, visually rich drawings that look professional and complete

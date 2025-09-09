@@ -36,7 +36,7 @@ export const renderShape = (ctx: CanvasRenderingContext2D, shape: Shape): void =
       drawTriangle(ctx, shape.points, shape.isSelected)
       break
     case 'pencil':
-      drawPencil(ctx, shape.points, shape.isSelected)
+      drawSmoothPencil(ctx, shape.points, shape.isSelected)
       break
     case 'text':
       drawText(ctx, shape.points[0], shape.text || '', shape.style.fontSize || 16, shape.isSelected)
@@ -224,6 +224,61 @@ const drawPencil = (
     ctx.lineTo(points[i].x, points[i].y)
   }
   
+  ctx.stroke()
+
+  // Draw selection outline if selected
+  if (isSelected) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    
+    points.forEach(point => {
+      minX = Math.min(minX, point.x)
+      minY = Math.min(minY, point.y)
+      maxX = Math.max(maxX, point.x)
+      maxY = Math.max(maxY, point.y)
+    })
+    
+    const width = maxX - minX
+    const height = maxY - minY
+    
+    drawSelectionHandles(ctx, minX, minY, width, height)
+  }
+}
+
+const drawSmoothPencil = (
+  ctx: CanvasRenderingContext2D,
+  points: { x: number; y: number }[],
+  isSelected: boolean
+) => {
+  if (points.length < 2) return
+
+  // Use quadratic curves for smooth lines
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  
+  if (points.length === 2) {
+    // Simple line for 2 points
+    ctx.lineTo(points[1].x, points[1].y)
+  } else {
+    // Smooth curves for 3+ points using quadratic curves
+    for (let i = 1; i < points.length - 1; i++) {
+      const current = points[i]
+      const next = points[i + 1]
+      
+      // Calculate control point for smooth curve
+      const controlX = (current.x + next.x) / 2
+      const controlY = (current.y + next.y) / 2
+      
+      ctx.quadraticCurveTo(current.x, current.y, controlX, controlY)
+    }
+    
+    // Draw to the last point
+    const lastPoint = points[points.length - 1]
+    ctx.lineTo(lastPoint.x, lastPoint.y)
+  }
+  
+  // Set smooth line properties
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
   ctx.stroke()
 
   // Draw selection outline if selected
